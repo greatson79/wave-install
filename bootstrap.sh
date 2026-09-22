@@ -198,13 +198,40 @@ PY
 
 step_s01() {
   require_command claude || return 1
-  local pin version
+  local pin minimum version comparison
   pin="$(json_value "$STEPS_FILE" 'tooling.claude_code_version')"
-  [[ "$pin" == __*__ ]] && fail_message "Claude Code 버전 핀이 아직 정해지지 않음" && return 1
+  if [[ "$pin" == __*__ ]]; then
+    fail_message "Claude Code 버전 핀이 아직 정해지지 않음"
+    return 1
+  fi
+  minimum="$(json_value "$STEPS_FILE" 'tooling.claude_code_min_version')" || return 1
+  if [[ -z "$minimum" || "$minimum" == __*__ ]]; then
+    fail_message "Claude Code 최소 버전 미정"
+    return 1
+  fi
   version="$(claude --version 2>/dev/null)" || return 1
-  [[ "$version" == *"$pin"* ]] || fail_message "Claude Code 버전 핀 불일치" || return 1
   mkdir -p "$WAVE_HOME/tooling"
   printf '%s\n' "$version" > "$WAVE_HOME/tooling/claude.version"
+  # 최소값은 정식 X.Y.Z 릴리스. 빌드 메타데이터는 비교하지 않는다.
+  comparison="$(python3 - "$version" "$minimum" <<'PY'
+import re, sys
+core = r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+actual = re.fullmatch(core + r'(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?: \(Claude Code\))?', sys.argv[1])
+minimum = re.fullmatch(core, sys.argv[2])
+if not actual or not minimum:
+    sys.exit(2)
+pre = actual.group(4)
+if pre and any(p.isdigit() and len(p) > 1 and p[0] == '0' for p in pre.split('.')):
+    sys.exit(2)
+a = tuple(map(int, actual.group(1, 2, 3)))
+b = tuple(map(int, minimum.group(1, 2, 3)))
+print('ok' if a > b or (a == b and not pre) else 'upgrade')
+PY
+)" || { fail_message "Claude Code semver 형식 확인 불가"; return 1; }
+  if [[ "$comparison" == upgrade ]]; then
+    log "중단: Claude Code $minimum 이상 필요. claude update로 업그레이드한 뒤 다시 실행하세요."
+    return 1
+  fi
   STEP_OBSERVED="$(python3 - "$version" <<'PY'
 import json, sys
 print(json.dumps({"claude_version": sys.argv[1]}))

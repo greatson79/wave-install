@@ -1,7 +1,7 @@
 {
   "schema": "wave-install.steps.v1",
   "product": "Wave Terminal",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",
@@ -30,7 +30,8 @@
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI"
   },
   "tooling": {
-    "claude_code_version": "__CLAUDE_CODE_VERSION_PIN__",
+    "claude_code_version": "2.1.278",
+    "claude_code_min_version": "2.1.278",
     "min_free_bytes": 5368709120,
     "max_injected_bytes_per_seat": 20480
   },
@@ -71,7 +72,7 @@
       ],
       "on_fail": {
         "error_id": "WT-S01-CLAUDE",
-        "message": "고정 버전 Claude Code가 설치·확인되지 않았습니다. 버전 핀과 설치 안내를 확인하세요.",
+        "message": "Claude Code 2.1.278 이상이 필요합니다. claude update로 업그레이드한 뒤 다시 실행하세요.",
         "next": "retry"
       },
       "optional": false

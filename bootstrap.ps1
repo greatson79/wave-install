@@ -131,11 +131,33 @@ function Run-S01 {
   if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw "claude 명령 없음" }
   $pin = [string](Get-ConfigValue "tooling.claude_code_version")
   if ($pin -like "__*__") { throw "Claude Code 버전 핀이 아직 정해지지 않음" }
+  $minimum = [string](Get-ConfigValue "tooling.claude_code_min_version")
+  if (-not $minimum -or $minimum -like "__*__") { throw "Claude Code 최소 버전 미정" }
   $version = (& claude --version 2>$null | Out-String).Trim()
-  if (-not $version.Contains($pin)) { throw "Claude Code 버전 핀 불일치" }
+  if ($LASTEXITCODE -ne 0) { throw "Claude Code 버전 조회 실패" }
   $tooling = Join-Path $WaveHome "tooling"
   New-Item -ItemType Directory -Force -Path $tooling | Out-Null
   Set-Content -LiteralPath (Join-Path $tooling "claude.version") -Value $version -Encoding UTF8
+  # 최소값은 정식 X.Y.Z 릴리스. 빌드 메타데이터는 비교하지 않는다.
+  $core = '(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+  $actual = [regex]::Match($version, '\A' + $core + '(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?: \(Claude Code\))?\z')
+  $floor = [regex]::Match($minimum, '\A' + $core + '\z')
+  if (-not $actual.Success -or -not $floor.Success) { throw "Claude Code semver 형식 확인 불가" }
+  $pre = $actual.Groups[4].Value
+  foreach ($part in $pre.Split('.')) {
+    if ($part -cmatch '^0[0-9]+$') { throw "Claude Code semver 형식 확인 불가" }
+  }
+  $comparison = 0
+  for ($i = 1; $i -le 3; $i++) {
+    $a = $actual.Groups[$i].Value
+    $b = $floor.Groups[$i].Value
+    $comparison = $a.Length.CompareTo($b.Length)
+    if ($comparison -eq 0) { $comparison = [string]::CompareOrdinal($a, $b) }
+    if ($comparison -ne 0) { break }
+  }
+  if ($comparison -lt 0 -or ($comparison -eq 0 -and $pre)) {
+    throw "중단: Claude Code $minimum 이상 필요. claude update로 업그레이드한 뒤 다시 실행하세요."
+  }
   $script:StepObserved = [ordered]@{ claude_version = $version }
 }
 

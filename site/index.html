@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Wave Terminal 설치 안내 — 출처와 무결성을 확인한 뒤 안전하게 시작하세요." />
+    <meta name="description" content="Wave Terminal 설치 안내 — 출처와 파일 무결성, macOS 공증 상태를 확인하세요." />
     <title>Wave Terminal — 설치 안내</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2312263b'/%3E%3Cpath d='M9 21h4V11H9zm6 0h4V7h-4zm6 0h4V4h-4z' fill='%2338d9cb'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
@@ -22,7 +22,7 @@
         <a href="#unsigned">첫 실행</a>
         <a href="#help">문제 해결</a>
       </nav>
-      <span class="header-tag">LIGHT / v0.1.0</span>
+      <span class="header-tag">LIGHT / v0.1.1</span>
     </header>
 
     <main id="main">
@@ -60,7 +60,7 @@
         <div class="section-heading">
           <p class="eyebrow">01 / INSTALL</p>
           <h2 id="install-title">운영체제에 맞는 한 줄을 복사하세요.</h2>
-          <p>사용자 폴더에 설치하며 관리자 권한을 요구하지 않습니다. 아래 명령의 도메인은 S5 공개 배포 때 실제 Wave Academy 주소로 연결됩니다.</p>
+          <p><a href="https://github.com/greatson79/wave-install/archive/refs/tags/v0.1.1.zip">전체 설치팩 v0.1.1</a>을 내려받아 압축을 풀고, 터미널에서 해당 폴더로 이동한 뒤 실행하세요. Claude Code 2.1.278 이상이 필요합니다. 설치기 한 파일만으로는 설치할 수 없습니다.</p>
         </div>
         <div class="install-layout">
           <div class="command-card">
@@ -72,10 +72,10 @@
               <span class="command-label" id="command-label">macOS · 사용자 폴더 설치</span>
             </div>
             <div class="command-line">
-              <code id="install-command">curl -fsSL https://your-domain.example/get/bootstrap.sh -o "$HOME/install-wave.sh" &amp;&amp; bash "$HOME/install-wave.sh"</code>
+              <code id="install-command">curl -fsSL https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.sh -o bootstrap.sh &amp;&amp; bash bootstrap.sh</code>
               <button class="copy-button" type="button" id="copy-command" aria-describedby="copy-status">복사</button>
             </div>
-            <p class="copy-status" id="copy-status" role="status" aria-live="polite">S5에서 도메인 연결 후 실행하세요.</p>
+            <p class="copy-status" id="copy-status" role="status" aria-live="polite">전체 설치팩 폴더에서 실행하세요. v0.1.1 전체 설치 검증은 진행 중입니다.</p>
           </div>
           <aside class="release-card" aria-label="다운로드 확인 기준">
             <p class="eyebrow">DOWNLOAD GATE</p>
@@ -88,7 +88,7 @@
             <a href="#downloads" class="text-link">검증 방법 읽기 <span aria-hidden="true">→</span></a>
           </aside>
         </div>
-        <div class="guard-grid" aria-label="설치 안전 원칙">
+        <div class="guard-grid" aria-label="설치 확인 원칙">
           <article class="guard-card"><span class="card-number">A</span><h3>로컬 범위</h3><p>설치 파일과 상태 파일은 사용자 폴더 안에서만 다룹니다.</p></article>
           <article class="guard-card"><span class="card-number">B</span><h3>검증 우선</h3><p>서명되지 않은 앱은 실행 전에 Release·SHA256·minisign을 확인합니다.</p></article>
           <article class="guard-card"><span class="card-number">C</span><h3>실패를 숨기지 않음</h3><p>각 단계는 실제 exit 결과로만 통과하며 false-green을 허용하지 않습니다.</p></article>
@@ -112,18 +112,19 @@
           <div class="warning-icon" aria-hidden="true">!</div>
           <div>
             <p class="eyebrow">03 / FIRST RUN</p>
-            <h2 id="unsigned-title">코드 서명 없음. 그래서 확인 절차를 먼저 안내합니다.</h2>
-            <p>현재 Apple·Microsoft 개발자 서명은 제공되지 않습니다. 출처와 파일 무결성이 확인된 경우에만 운영체제의 실행 확인 절차를 진행하세요.</p>
+            <h2 id="unsigned-title">macOS 공증 미완: 실행 전에 현재 상태를 확인하세요.</h2>
+            <p>두 DMG 모두 Apple 공증 없음 · spctl 거부됨. arm64 앱은 리소스 봉인 검증에 실패했고, x64 앱은 미서명입니다. SHA256·minisign 검증은 배포 파일의 무결성 확인이며 Apple 공증을 대신하지 않습니다.</p>
           </div>
         </div>
         <div class="unsigned-grid">
           <article class="procedure-card">
             <div class="procedure-head"><span class="platform-badge mac-badge">macOS</span><span>Gatekeeper</span></div>
             <ol>
-              <li>Finder에서 공식 Release에서 받은 DMG를 엽니다.</li>
-              <li>먼저 SHA256SUMS와 minisign 검증 결과가 통과했는지 확인합니다.</li>
+              <li>공식 Release에서 받은 DMG의 SHA256SUMS·minisign 검증부터 확인합니다.</li>
+              <li>DMG에서 사용자 폴더로 복사한 앱의 위치를 확인합니다.</li>
               <li>앱을 Control-클릭(또는 우클릭)하고 <strong>열기</strong>를 선택합니다.</li>
-              <li>차단 안내가 계속되면 시스템 설정 → 개인정보 보호 및 보안 → 보안 영역에서 해당 앱의 <strong>확인 없이 열기</strong>를 선택한 뒤, 다시 앱을 열고 <strong>열기</strong>를 누릅니다.</li>
+              <li>출처와 무결성을 확인하고 격리속성 해제를 직접 선택한 경우에만, 설치된 해당 앱에 한해 <code>xattr -dr com.apple.quarantine "$HOME/.wave/apps/Wave Terminal.app"</code>을 실행합니다. 다른 위치에 복사했다면 실제 앱 경로로 바꾸세요.</li>
+              <li>격리속성 해제는 서명 결함을 고치거나 공증을 추가하지 않습니다. 실행 성공은 확인되지 않았으며, 계속 차단되면 중단하고 오류를 전달하세요.</li>
             </ol>
             <p class="procedure-stop"><strong>해시가 다르거나 출처를 확인할 수 없으면 실행하지 마세요.</strong></p>
           </article>
@@ -151,7 +152,7 @@
           <article class="download-step"><span>02</span><h3>SHA256</h3><p>다운로드한 파일의 SHA256을 Release의 <code>SHA256SUMS</code>와 비교합니다.</p></article>
           <article class="download-step"><span>03</span><h3>minisign</h3><p>공개된 서명 파일과 Wave의 공개키로 minisign 검증을 통과시킵니다.</p></article>
         </div>
-        <div class="release-note"><span class="note-mark">i</span><p>v0.1.0 Release·서명 공개키·SHA256 연결을 완료했습니다. 공식 도메인은 별도 결재 전까지 연결하지 않고 임시 배포 URL만 검증합니다.</p></div>
+        <div class="release-note"><span class="note-mark">i</span><p>설치팩 v0.1.1은 Wave Terminal v0.1.0 DMG를 사용합니다. v0.1.1 전체 설치 검증과 macOS 공증은 미완입니다. 공식 도메인은 아직 연결하지 않았습니다.</p></div>
       </section>
 
       <section class="section help-section" id="help" aria-labelledby="help-title">

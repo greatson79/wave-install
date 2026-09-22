@@ -37,6 +37,7 @@ html = contents["index.html"].decode()
 if "<base" in html.lower() or html.count("<head>") != 1 or "LIGHT / " + tag not in html:
     fail("UNEXPECTED_SOURCE_HTML")
 html = html.replace("<head>", '<head>\n    <base href="/get/">\n    <meta name="wave-install-source-tag" content="' + tag + '">\n    <meta name="wave-install-source-commit" content="' + commit + '">', 1)
+html = html.replace("공식 도메인은 아직 연결하지 않았습니다.", "공개 설치 안내: waveainetworks.com/get · kylechoi.com/get.")
 contents["index.html"] = html.encode()
 app = contents["app.js"].decode()
 old = '["../steps.json", "./steps.json"]'

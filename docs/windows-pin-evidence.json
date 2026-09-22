@@ -1,0 +1,16 @@
+{
+  "source": "GitHub authenticated draft release asset download",
+  "repository": "greatson79/wave-terminal",
+  "release_id": 393617276,
+  "tag": "v0.1.0-windows-draft-20260922",
+  "draft": true,
+  "asset_id": 581202018,
+  "asset": "wave-terminal-0.1.0-windows-x64-setup.exe",
+  "version": "0.1.0",
+  "bytes": 128814816,
+  "sha256": "733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3",
+  "checksums": "733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3  wave-terminal-0.1.0-windows-x64-setup.exe\n",
+  "minisig_downloaded": true,
+  "result": "pin-check-passed",
+  "public_release_verified": false
+}

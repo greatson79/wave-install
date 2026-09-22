@@ -22,10 +22,10 @@ $StepStatus = "passed"
 
 # 이 설치 도우미는 oogisoogi/jarvis-install(MIT)을 바탕으로 구현했습니다.
 # 원작 cys-terminal: idoforgod (MIT). LICENSES/jarvis-install-MIT.txt 참조.
-# Windows 릴리스 판올림 때 바꾸는 핀 3값. 미확정 값을 실측값으로 가장하지 않는다.
-$WaveVersion = '__WINDOWS_RELEASE_VERSION__'
-$WaveWinBytes = 0
-$WaveWinSha256 = '__WINDOWS_RELEASE_SHA256__'
+# Windows 릴리스 판올림 때 바꾸는 핀 3값. s746 수정 draft 검체(2026-09-22).
+$WaveVersion = '0.1.0'
+$WaveWinBytes = 128814816
+$WaveWinSha256 = '733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3'
 $WaveWinFile = "wave-terminal-${WaveVersion}-windows-x64-setup.exe"
 $InstallDoneFile = Join-Path $WaveHome 'install-done.txt'
 $RerunDoneWindowSec = 600
@@ -225,7 +225,7 @@ $HelpRulesJson = @'
     "pattern": "핀 미확정|릴리스 자리표시자|릴리스.*유효하지|릴리스.*HTTPS|asset 파일명|(?i:404|not found)",
     "action1": "배포 담당자에게 Windows 버전·바이트·SHA256 확정을 요청하세요.",
     "action2": "확정 자산이 게시된 뒤 다시 실행하세요.",
-    "case": "현재 steps.json windows_x64=null 및 Windows 핀 미확정",
+    "case": "초기 이식의 windows_x64=null·핀 미확정 재현(현재 핀 확정)",
     "os": "win",
     "sample": "Windows 릴리스 핀 미확정"
   },

@@ -8,9 +8,15 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 ## Windows 릴리스 핀
 
 `bootstrap.ps1` 상단의 `WaveVersion`, `WaveWinBytes`, `WaveWinSha256`이 판올림 시 수정할 3값입니다.
-`WaveWinFile`은 버전에서 파생합니다. **현재 확정 Windows 자산이 제공되지 않아 버전·SHA256은
-자리표시자, 바이트는 0입니다.** `steps.json`의 Windows 자산도 null입니다. 이 상태에서
-공개 릴리스 검사와 실제 Windows 다운로드는 실패해야 합니다. 픽스처 통과를 출하 증거로 쓰지 않습니다.
+`WaveWinFile`은 버전에서 파생합니다. s746 수정 검체의 확정값은 다음과 같습니다.
+
+- 버전: `0.1.0`
+- 파일: `wave-terminal-0.1.0-windows-x64-setup.exe`
+- 바이트: `128814816`
+- SHA256: `733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3`
+
+`steps.json`과 `site/steps.json`의 Windows 매핑도 기존 공개 `v0.1.0` 경로로 맞췄습니다.
+공개 전 draft 대조와 공개 릴리스 대조는 별도로 기록하며, 픽스처 통과를 출하 증거로 쓰지 않습니다.
 
 배포 담당자는 실제 서명된 자산과 SHA256SUMS를 확보한 뒤 다음을 함께 갱신합니다.
 

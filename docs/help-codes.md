@@ -38,7 +38,7 @@
 1. 배포 담당자에게 Windows 버전·바이트·SHA256 확정을 요청하세요.
 2. 확정 자산이 게시된 뒤 다시 실행하세요.
 
-근거: 현재 steps.json windows_x64=null 및 Windows 핀 미확정 · OS: win
+근거: 초기 이식의 windows_x64=null·핀 미확정 재현(현재 핀 확정) · OS: win
 
 <a id="j-net-01"></a>
 

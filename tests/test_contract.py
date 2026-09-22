@@ -108,11 +108,8 @@ def assert_contract(require_resolved_release: bool) -> None:
         assert not placeholders, f"S2 자리표시자 잔존: {placeholders}"
         assert release["repository"] == "greatson79/wave-terminal"
         assert release["version"] == "0.1.0"
-        assert release["asset_name"]["windows_x64"] is None
-        assert release["asset_url"]["windows_x64"] is None
-        assert release["sha256"]["windows_x64"] is None
-        assert release["minisig_url"]["windows_x64"] is None
-        for platform in ("macos_arm64", "macos_x64"):
+        assert release["asset_name"]["windows_x64"] == "wave-terminal-0.1.0-windows-x64-setup.exe"
+        for platform in ("macos_arm64", "macos_x64", "windows_x64"):
             assert re.fullmatch(r"[0-9a-f]{64}", release["sha256"][platform])
             assert release["asset_url"][platform].endswith(release["asset_name"][platform])
             assert release["minisig_url"][platform].endswith(release["asset_name"][platform] + ".minisig")

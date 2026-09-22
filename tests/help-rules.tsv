@@ -2,7 +2,7 @@ code	symptom	pattern	action1	action2	case	os	sample
 J-AV-01	보안 제품이 실행을 차단함	(?i)virus|malware|바이러스|악성.*차단	백신 알림의 이름·대상 파일·조치를 확인하세요.	해당 화면과 install.log를 담당자에게 전달하세요. 예외를 자동 등록하지 않습니다.	우리 오류 분류 회귀(보안 오류 주입); 실기 미관측	win	Operation did not complete because the file contains a virus
 J-AV-02	다운로드한 설치 파일이 사라짐	검증된 artifact 없음|받은 파일이 사라졌습니다	백신 격리 기록에서 대상 파일을 확인하세요.	같은 설치 명령으로 다시 받으세요.	우리 S04 artifact 누락 재현; 백신 원인 미확정	win	검증된 artifact 없음
 J-AV-03	이전 실행이 실행 중 상태로 중단됨	지난 실행이 끝을 알리지 않고 멈췄습니다	창을 직접 닫았는지 확인하세요. 백신 기록도 확인하세요.	같은 명령으로 완료 단계를 건너뛰고 이어가세요.	우리 running 상태 중단 회귀; 백신 원인 미확정	win	지난 실행이 끝을 알리지 않고 멈췄습니다
-J-DL-05	확정된 Windows 릴리스 정보가 없음	핀 미확정|릴리스 자리표시자|릴리스.*유효하지|릴리스.*HTTPS|asset 파일명|(?i:404|not found)	배포 담당자에게 Windows 버전·바이트·SHA256 확정을 요청하세요.	확정 자산이 게시된 뒤 다시 실행하세요.	현재 steps.json windows_x64=null 및 Windows 핀 미확정	win	Windows 릴리스 핀 미확정
+J-DL-05	확정된 Windows 릴리스 정보가 없음	핀 미확정|릴리스 자리표시자|릴리스.*유효하지|릴리스.*HTTPS|asset 파일명|(?i:404|not found)	배포 담당자에게 Windows 버전·바이트·SHA256 확정을 요청하세요.	확정 자산이 게시된 뒤 다시 실행하세요.	초기 이식의 windows_x64=null·핀 미확정 재현(현재 핀 확정)	win	Windows 릴리스 핀 미확정
 J-NET-01	이름 해석 또는 네트워크 연결 실패	(?i)name.*resolv|network.*unreachable|인터넷 연결 없음	인터넷 연결과 DNS 설정을 확인하세요.	연결을 복구한 뒤 같은 설치 명령을 실행하세요.	우리 네트워크 오류 주입 회귀; 실기 미관측	win	Network is unreachable
 J-NET-02	설치 설정 서버에서 응답을 받지 못함	W-CONFIG-NET	설치 설정 URL과 서버 상태를 확인하세요.	잠시 뒤 같은 설치 명령을 다시 실행하세요.	우리 Load-Config 요청 실패 회귀; 실기 미관측	win	W-CONFIG-NET: steps.json 요청 실패
 J-NET-03	릴리스 서버에서 응답을 받지 못함	W-DOWNLOAD-NET|(?i:timed out|timeout|connection.*reset)	릴리스 서버 연결과 프록시 설정을 확인하세요.	잠시 뒤 다시 실행하세요. 진행 보고 실패는 설치를 막지 않습니다.	우리 S03 다운로드 실패 회귀; 실기 미관측	win	W-DOWNLOAD-NET: 릴리스 요청 실패

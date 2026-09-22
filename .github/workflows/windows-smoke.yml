@@ -1,0 +1,86 @@
+name: Windows signed installer smoke
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      terminal_tag:
+        description: wave-terminal의 서명된 공개 Release 태그 (wave-install 태그 아님)
+        default: v0.1.1
+        required: true
+        type: string
+      expected_installer_sha256:
+        description: 독립 검수한 Windows setup.exe SHA256
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  bootstrap-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 2026-09-10 upstream missing-brace incident: precheck before ANY PS execution.
+      - name: PowerShell delimiter precheck (first check)
+        shell: cmd
+        run: python tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 scripts/windows-smoke.ps1
+      - name: Native Windows PowerShell 5.1 and PowerShell 7 parsing
+        shell: powershell
+        run: |
+          $files = @('bootstrap.ps1', 'reinstall.ps1', 'reset.ps1', 'scripts/windows-smoke.ps1')
+          foreach ($file in $files) {
+            $tokens = $null; $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw ($errors | Out-String) }
+          }
+          pwsh -NoProfile -Command '$t=$null; $e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "bootstrap.ps1"),[ref]$t,[ref]$e); if($e.Count){throw ($e | Out-String)}'
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 parse failed' }
+      - name: Canonical help, mutation tests, and helper behavior
+        shell: pwsh
+        env:
+          WAVE_NO_PROGRESS: '1'
+        run: |
+          python tests/help-rules-check.py
+          if ($LASTEXITCODE -ne 0) { throw 'help rules failed' }
+          python tests/test_windows_checks.py
+          if ($LASTEXITCODE -ne 0) { throw 'checker mutants failed' }
+          python tests/win-pin-mutate.py
+          if ($LASTEXITCODE -ne 0) { throw 'pin mutants failed' }
+          foreach ($engine in @('powershell', 'pwsh')) {
+            $env:PWSH = (Get-Command $engine).Source
+            python tests/test_windows_bootstrap.py
+            if ($LASTEXITCODE -ne 0) { throw "helper tests failed: $engine" }
+          }
+      - name: Published release pin (mandatory on release smoke)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: bash tests/win-pin-release.sh
+  signed-install:
+    if: github.event_name == 'workflow_dispatch'
+    needs: bootstrap-contract
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Runner does not verify V3/antivirus interference, GUI/SmartScreen,
+      # Korean/space account names, or real login after [3/10].
+      - name: PowerShell delimiter precheck (first check)
+        shell: cmd
+        run: python tests/ps-balance.py bootstrap.ps1 scripts/windows-smoke.ps1
+      - name: Install signature verifier
+        shell: pwsh
+        run: |
+          choco install minisign --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'minisign 준비 실패' }
+          Get-Command minisign -ErrorAction Stop
+      - name: Native DryRun and signed NSIS installation
+        shell: pwsh
+        env:
+          WAVE_TERMINAL_TAG: ${{ inputs.terminal_tag }}
+          WAVE_TERMINAL_SHA256: ${{ inputs.expected_installer_sha256 }}
+        run: ./scripts/windows-smoke.ps1 -TerminalTag $env:WAVE_TERMINAL_TAG -ExpectedInstallerSha256 $env:WAVE_TERMINAL_SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-signed-install-smoke-${{ github.sha }}
+          path: windows-smoke-evidence.json
+          if-no-files-found: error

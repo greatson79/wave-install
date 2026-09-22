@@ -1,0 +1,20 @@
+code	symptom	pattern	action1	action2	case	os	sample
+J-AV-01	보안 제품이 실행을 차단함	(?i)virus|malware|바이러스|악성.*차단	백신 알림의 이름·대상 파일·조치를 확인하세요.	해당 화면과 install.log를 담당자에게 전달하세요. 예외를 자동 등록하지 않습니다.	우리 오류 분류 회귀(보안 오류 주입); 실기 미관측	win	Operation did not complete because the file contains a virus
+J-AV-02	다운로드한 설치 파일이 사라짐	검증된 artifact 없음|받은 파일이 사라졌습니다	백신 격리 기록에서 대상 파일을 확인하세요.	같은 설치 명령으로 다시 받으세요.	우리 S04 artifact 누락 재현; 백신 원인 미확정	win	검증된 artifact 없음
+J-AV-03	이전 실행이 실행 중 상태로 중단됨	지난 실행이 끝을 알리지 않고 멈췄습니다	창을 직접 닫았는지 확인하세요. 백신 기록도 확인하세요.	같은 명령으로 완료 단계를 건너뛰고 이어가세요.	우리 running 상태 중단 회귀; 백신 원인 미확정	win	지난 실행이 끝을 알리지 않고 멈췄습니다
+J-DL-05	확정된 Windows 릴리스 정보가 없음	핀 미확정|릴리스 자리표시자|릴리스.*유효하지|릴리스.*HTTPS|asset 파일명|(?i:404|not found)	배포 담당자에게 Windows 버전·바이트·SHA256 확정을 요청하세요.	확정 자산이 게시된 뒤 다시 실행하세요.	현재 steps.json windows_x64=null 및 Windows 핀 미확정	win	Windows 릴리스 핀 미확정
+J-NET-01	이름 해석 또는 네트워크 연결 실패	(?i)name.*resolv|network.*unreachable|인터넷 연결 없음	인터넷 연결과 DNS 설정을 확인하세요.	연결을 복구한 뒤 같은 설치 명령을 실행하세요.	우리 네트워크 오류 주입 회귀; 실기 미관측	win	Network is unreachable
+J-NET-02	설치 설정 서버에서 응답을 받지 못함	W-CONFIG-NET	설치 설정 URL과 서버 상태를 확인하세요.	잠시 뒤 같은 설치 명령을 다시 실행하세요.	우리 Load-Config 요청 실패 회귀; 실기 미관측	win	W-CONFIG-NET: steps.json 요청 실패
+J-NET-03	릴리스 서버에서 응답을 받지 못함	W-DOWNLOAD-NET|(?i:timed out|timeout|connection.*reset)	릴리스 서버 연결과 프록시 설정을 확인하세요.	잠시 뒤 다시 실행하세요. 진행 보고 실패는 설치를 막지 않습니다.	우리 S03 다운로드 실패 회귀; 실기 미관측	win	W-DOWNLOAD-NET: 릴리스 요청 실패
+J-RM-01	파일이 사용 중이라 설치 작업 실패	(?i)being used by another process|sharing violation|파일.*사용 중	열려 있는 Wave Terminal 창을 닫으세요.	같은 설치 명령을 다시 실행하세요.	우리 파일 잠금 오류 주입 회귀; 실기 미관측	win	The file is being used by another process
+J-PATH-01	필요한 명령 또는 설치 결과 경로가 없음	명령 없음|셸 경로 불일치|cys/cysd 경로가 없음|cysd 없음	새 PowerShell 창에서 명령과 사용자 설치 경로를 확인하세요.	claude 또는 minisign이 없으면 해당 도구 설치를 완료하세요.	우리 S04 설치 결과 누락 회귀 및 S01 명령 검사	win	claude 명령 없음
+J-LOGIN-01	Claude 인증 상태 확인 실패	Claude 로그인 상태 확인 실패	claude auth login으로 브라우저 승인을 마치세요.	같은 설치 명령을 다시 실행하세요. 토큰은 보내지 마세요.	우리 S02 비정상 종료 회귀; 실제 계정 로그인 미검증	win	Claude 로그인 상태 확인 실패
+J-LOGIN-02	인증 코드가 거부됨	(?i)invalid.*(?:authorization|authentication).*code|로그인 코드.*거부	새 로그인 흐름에서 발급된 코드를 사용하세요.	계속 실패하면 오류 코드만 담당자에게 알려 주세요.	우리 인증 오류 주입 회귀; 현 S02는 코드 입력을 수집하지 않음	win	Invalid authentication code
+J-HOME-01	허용되지 않는 작업 폴더	사용자 프로필 밖 경로|W-HOME	WAVE_HOME을 해제하고 사용자 프로필 안 기본 경로로 다시 실행하세요.	기존 사용자 파일은 삭제하지 마세요.	우리 Assert-UserPath 경계 검사 회귀	win	사용자 프로필 밖 경로는 허용하지 않음
+J-PERM-01	파일 또는 폴더 접근 권한 부족	(?i)access.*denied|unauthorized|권한.*없|permission.*denied	사용자 프로필 폴더에 쓰기 권한이 있는지 확인하세요.	관리 컴퓨터라면 담당자에게 문의하세요.	우리 파일 쓰기 권한 오류 주입 회귀; 실기 미관측	win	Access to the path is denied
+J-DISK-01	설치 공간 부족	(?i)디스크 여유 공간 부족|disk.*full|not enough.*space	설치 드라이브에서 steps.json의 min_free_bytes 이상 확보하세요.	같은 설치 명령을 다시 실행하세요.	우리 S00 디스크 부족 조건 회귀; 실기 미관측	win	디스크 여유 공간 부족
+J-VER-01	필수 도구 버전 또는 플랫폼이 맞지 않음	Claude Code.*(?:이상 필요|semver|버전|미정)|지원하지 않는 Windows|Windows가 아님|W-CYSD-PE	Claude Code는 claude update로 갱신하세요.	Windows x64와 지원 PowerShell에서 다시 실행하세요.	우리 S01 버전 경계·S04 PE-x64 회귀	win	중단: Claude Code 2.1.278 이상 필요
+J-DL-03	파일 지문 측정 실패	W-HASH-READ	파일을 읽을 수 있는지 확인하고 다시 받으세요.	계속되면 install.log와 오류 코드를 전달하세요.	우리 해시 읽기 실패 주입 회귀; 실기 미관측	win	W-HASH-READ: 지문을 잴 수 없습니다
+J-DL-04	릴리스 핀·크기·지문·서명 불일치	SHA256 불일치|바이트 불일치|핀 불일치|minisign 검증 실패|W-NSIS-ASSET	검증되지 않은 파일은 실행하지 말고 같은 명령으로 다시 받으세요.	반복되면 배포 담당자에게 핀과 릴리스 대조를 요청하세요.	우리 S04 변조 회귀·win-pin-mutate 검체	win	W-ARTIFACT-CHANGED: 설치 직전 SHA256 불일치
+J-PS32-01	32비트 PowerShell로 실행됨	32비트 PowerShell	시작 메뉴에서 x86이 붙지 않은 Windows PowerShell을 여세요.	같은 설치 명령을 다시 실행하세요.	우리 32비트 프로세스 분류 회귀; 실기 미관측	win	32비트 PowerShell에서는 실행할 수 없습니다
+J-UNK-00	분류하지 못한 설치 실패	(?s).*	install-state.json의 오류 ID와 install.log를 확인하세요.	민감한 값을 가린 뒤 담당자에게 오류 코드를 알려 주세요.	우리 S04 비정상 NSIS 종료 등 미분류 회귀	win	W-NSIS-EXIT: 설치기 종료값 7

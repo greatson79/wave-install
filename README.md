@@ -15,8 +15,8 @@ Wave AI Networks의 Wave Terminal 라이트 설치 GitHub 배포와 설치 가�
 Wave Terminal은 원개발자 idoforgod의 [`cys-terminal`](https://github.com/idoforgod/cys-terminal)
 (MIT)을 기반으로 한 파생본입니다. 원본 고지와 라이선스는 `wave-pack/LICENSES/`에 기록합니다.
 
-설치 가이드의 흐름과 공개 배포 구성은 [`oogisoogi/jarvis-install`](https://github.com/oogisoogi/jarvis-install)
-(MIT)을 참고했습니다. 해당 저장소의 코드를 이 저장소에 복제했다는 뜻은 아닙니다.
+이 설치 도우미는 oogisoogi/jarvis-install(MIT)을 바탕으로 구조·함수 단위로 이식했습니다.
+[참고 저장소](https://github.com/oogisoogi/jarvis-install)의 고지는 `LICENSES/jarvis-install-MIT.txt`에 보존합니다.
 
 ## 무결성
 
@@ -129,3 +129,10 @@ PWSH=/path/to/pwsh python3 tests/test_state_contract.py
 공통 회귀는 임시 HOME·가짜 외부 명령에서 설치기 함수와 상태 기록을 검사합니다.
 PowerShell 테스트는 호스트의 PowerShell 실행체로 수행하며 Windows 운영체제 실설치 판정은 아닙니다.
 독립 전체 설치 판정과 자격증명·데몬 등록 실검증은 별도로 남습니다.
+
+## Windows bootstrap 구조 이식
+
+Windows 설치기는 핀 3값, `[1/10]`~`[10/10]` 출력, 검증 뒤 웹 표식 제거,
+12범주 J-코드, fail-open `/api/progress` 보고, 600초 완료 표지와 자동 이어하기를 사용합니다.
+현재 Windows 핀은 미확정이므로 실제 다운로드·공개 릴리스 검사는 차단됩니다.
+[핀 갱신·재실행·검증 절차](docs/windows-bootstrap.md)와 [진단 코드](docs/help-codes.md)를 참고하세요.

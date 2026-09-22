@@ -26,8 +26,8 @@
       command: 'curl -fsSL https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.sh -o bootstrap.sh && bash bootstrap.sh'
     },
     windows: {
-      label: "Windows · 준비 중",
-      command: "Windows 설치기는 준비 중입니다."
+      label: "Windows · PowerShell 설치",
+      command: 'irm https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.ps1 -OutFile bootstrap.ps1; .\\bootstrap.ps1'
     }
   };
 

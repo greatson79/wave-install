@@ -129,14 +129,15 @@
             <p class="procedure-stop"><strong>해시가 다르거나 출처를 확인할 수 없으면 실행하지 마세요.</strong></p>
           </article>
           <article class="procedure-card">
-            <div class="procedure-head"><span class="platform-badge win-badge">Windows</span><span>준비 중</span></div>
-            <p>Windows 설치기는 준비 중입니다.</p>
+            <div class="procedure-head"><span class="platform-badge win-badge">Windows</span><span>SmartScreen</span></div>
             <ol>
-              <li>현재 공개 릴리스에는 Windows 설치 자산이 없습니다.</li>
-              <li>Windows 설치기와 검증 절차가 준비되면 이 페이지와 릴리스 자산을 함께 갱신합니다.</li>
-              <li>현재는 지원되는 macOS 설치 절차를 이용해 주세요.</li>
+              <li>공식 Release에서 받은 <code>.exe</code>의 SHA256SUMS·minisign 검증부터 확인합니다.</li>
+              <li>백신이 경고하면 예외를 등록하지 말고 백신 이름·대상 파일·조치를 사진으로 남겨 전달해 주세요.</li>
+              <li>실행 시 <strong>Windows Defender SmartScreen</strong> 창이 뜨면 <strong>추가 정보</strong>를 클릭한 뒤 <strong>실행</strong>을 선택합니다.</li>
+              <li>Claude 로그인 승인 화면이 뜨면 브라우저에서 유료 계정으로 승인합니다.</li>
+              <li>설치가 끝나면 안내된 화면을 그대로 두고, PowerShell 창이 강제로 닫혀도 같은 한 줄 명령을 다시 실행하면 끝난 단계는 건너뛰고 이어집니다.</li>
             </ol>
-            <p class="procedure-stop"><strong>Windows 설치 자산이 준비되기 전에는 설치를 진행하지 마세요.</strong></p>
+            <p class="procedure-stop"><strong>이 설치기는 Authenticode 코드서명이 없습니다(minisign으로 대체 검증). 해시가 다르거나 출처를 확인할 수 없으면 실행하지 마세요.</strong> 막히면 화면의 오류 코드(J-*)를 그대로 전달해 주세요.</p>
           </article>
         </div>
       </section>

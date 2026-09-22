@@ -47,7 +47,7 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-selected", String(isActive));
     });
-    copyStatus.textContent = "전체 설치팩 폴더에서 실행하세요. v0.1.1 전체 설치 검증은 진행 중입니다.";
+    copyStatus.textContent = "전체 설치팩 폴더에서 실행하세요. v0.1.2 전체 설치 검증은 진행 중입니다.";
   }
 
   async function copyCommand() {
@@ -55,7 +55,7 @@
     try {
       await navigator.clipboard.writeText(command);
       copyButton.textContent = "복사됨";
-      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 전체 설치팩 폴더에서 실행하세요. v0.1.1 전체 설치 검증은 진행 중입니다.";
+      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 전체 설치팩 폴더에서 실행하세요. v0.1.2 전체 설치 검증은 진행 중입니다.";
     } catch (error) {
       copyStatus.textContent = "자동 복사에 실패했습니다. 명령을 직접 선택해 복사하세요.";
     }

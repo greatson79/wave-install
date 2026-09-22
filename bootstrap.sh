@@ -80,7 +80,22 @@ PY
 }
 
 step_error_id() {
-  json_value "$STEPS_FILE" "steps.$1.on_fail.error_id"
+  python3 - "$STEPS_FILE" "$1" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        config = json.load(handle)
+    steps = config.get("steps") if isinstance(config, dict) else None
+    matches = [step for step in steps if isinstance(step, dict) and step.get("id") == sys.argv[2]] if isinstance(steps, list) else []
+    on_fail = matches[0].get("on_fail") if len(matches) == 1 else None
+    error_id = on_fail.get("error_id") if isinstance(on_fail, dict) else None
+    if not isinstance(error_id, str) or not error_id.strip():
+        raise ValueError("missing error id")
+except (OSError, ValueError):
+    print(f"단계 오류 ID 설정을 확인할 수 없음: {sys.argv[2]}", file=sys.stderr)
+    sys.exit(1)
+print(error_id)
+PY
 }
 
 state_patch() {
@@ -272,6 +287,7 @@ PY
 step_s04() {
   require_command hdiutil || return 1
   require_command ditto || return 1
+  require_command cmp || return 1
   set_release_context || return 1
   [[ -f "$ARTIFACT_PATH" ]] || fail_message "검증된 artifact 없음" || return 1
   local mountpoint app_dest app cys_target cysd_target hook
@@ -283,12 +299,19 @@ step_s04() {
   app_dest="$WAVE_HOME/apps/Wave Terminal.app"
   rm -rf -- "$app_dest"
   ditto "$app" "$app_dest" || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; return 1; }
+  # 검증된 DMG의 원본과 복사본을 대조한다. cysd는 S04에서 실행하지 않는다.
+  cmp -s "$app/Contents/MacOS/cysd" "$app_dest/Contents/MacOS/cysd" || {
+    hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
+    fail_message "cysd 복사본 무결성 불일치"
+    return 1
+  }
   hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
   cys_target="$app_dest/Contents/MacOS/cys"
   cysd_target="$app_dest/Contents/MacOS/cysd"
-  [[ -x "$cys_target" && -x "$cysd_target" ]] || fail_message "cys/cysd 실행 파일 없음" || return 1
-  ln -sfn "$cys_target" "$WAVE_HOME/bin/cys"
-  ln -sfn "$cysd_target" "$WAVE_HOME/bin/cysd"
+  [[ -f "$cys_target" && -x "$cys_target" && -f "$cysd_target" && -x "$cysd_target" ]] || fail_message "cys/cysd 실행 파일 없음" || return 1
+  ln -sfn "$cys_target" "$WAVE_HOME/bin/cys" || return 1
+  ln -sfn "$cysd_target" "$WAVE_HOME/bin/cysd" || return 1
+  [[ -L "$WAVE_HOME/bin/cysd" && "$(readlink "$WAVE_HOME/bin/cysd")" == "$cysd_target" && -f "$WAVE_HOME/bin/cysd" && -x "$WAVE_HOME/bin/cysd" ]] || fail_message "cysd 심링크 검증 실패" || return 1
   hook="$WAVE_HOME/shell/wave-terminal.zsh"
   printf 'export PATH="%s:$PATH"\n' "$WAVE_HOME/bin" > "$hook"
   touch "$HOME/.zprofile"
@@ -296,9 +319,8 @@ step_s04() {
     printf '\n# Wave Terminal S3\n[ -f %q ] && source %q\n' "$hook" "$hook" >> "$HOME/.zprofile"
   fi
   "$WAVE_HOME/bin/cys" --version >/dev/null || return 1
-  "$WAVE_HOME/bin/cysd" --version >/dev/null || return 1
   zsh -f -c "source '$hook'; command -v cys" | grep -Fq "$WAVE_HOME/bin/cys" || return 1
-  STEP_OBSERVED='{"cys":true,"cysd":true,"shell_link":true,"admin_required":false}'
+  STEP_OBSERVED='{"cys":true,"cysd":true,"cysd_check":"file+executable+symlink+copy-match","shell_link":true,"admin_required":false}'
 }
 
 step_s05() {

@@ -1,7 +1,7 @@
 {
   "schema": "wave-install.steps.v1",
   "product": "Wave Terminal",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",
@@ -60,7 +60,7 @@
       "id": "S01_CLAUDE_INSTALL",
       "index": 1,
       "total": 10,
-      "title": "고정 버전 Claude Code 설치",
+      "title": "Claude Code 최소 버전 확인",
       "command": {
         "macos": "claude --version",
         "windows": "claude --version"
@@ -185,7 +185,7 @@
       "id": "S07_INITIAL_FLEET",
       "index": 7,
       "total": 10,
-      "title": "초기 편성 기동(마스터 1+부서 1)",
+      "title": "초기 편성 정의 확인(마스터 1+부서 1 · 기동 미검증)",
       "command": {
         "macos": "~/.wave/bin/wave fleet bootstrap --roles-file ~/.cys/pack/roles.json",
         "windows": "$env:USERPROFILE\\.wave\\bin\\wave.ps1 fleet bootstrap --roles-file $env:USERPROFILE\\.cys\\pack\\roles.json"
@@ -193,7 +193,7 @@
       "pass": [
         {"kind": "exit_code", "equals": 0},
         {"kind": "file_exists", "path": "~/.wave/fleet/initial-fleet.ok"},
-        {"kind": "count", "path": "~/.wave/fleet/status.json", "json_path": "seats", "equals": 2}
+        {"kind": "count", "path": "~/.wave/fleet/status.json", "json_path": "seats", "equals": 2, "message": "좌석 수 2 확인 · roles.json 기준, 실제 기동 미검증"}
       ],
       "on_fail": {
         "error_id": "WT-S07-FLEET",
@@ -206,7 +206,7 @@
       "id": "S08_VERIFY",
       "index": 8,
       "total": 10,
-      "title": "identify·좌석 2·지침 주입량 검증",
+      "title": "identify·좌석 수 2 확인 · 주입량 미측정(후속)",
       "command": {
         "macos": "~/.wave/bin/cys identify && ~/.wave/bin/wave doctor --json",
         "windows": "$env:USERPROFILE\\.wave\\bin\\cys.exe identify; $env:USERPROFILE\\.wave\\bin\\wave.ps1 doctor --json"
@@ -215,11 +215,11 @@
         {"kind": "exit_code", "equals": 0},
         {"kind": "json_path", "path": "~/.wave/verify/doctor.json", "json_path": "identify_exit", "equals": 0},
         {"kind": "count", "path": "~/.wave/verify/doctor.json", "json_path": "seats", "equals": 2},
-        {"kind": "bytes_lte", "path": "~/.wave/verify/doctor.json", "json_path": "max_injected_bytes", "max": 20480}
+        {"kind": "bytes_lte", "path": "~/.wave/verify/doctor.json", "json_path": "max_injected_bytes", "max": 20480, "message": "주입량 — 미측정(후속) · 측정 시 기준 20KB 이하"}
       ],
       "on_fail": {
         "error_id": "WT-S08-VERIFY",
-        "message": "cys identify·좌석 수·지침 주입량(좌석당 20KB 이하)을 모두 실측하지 못했습니다.",
+        "message": "identify·좌석 수 확인 실패 또는 실측 주입량 초과 시 중단합니다. 주입량 미측정은 예외에 기록하고 진행합니다.",
         "next": "stop"
       },
       "optional": false
@@ -228,7 +228,7 @@
       "id": "S09_COMPLETE",
       "index": 9,
       "total": 10,
-      "title": "완료 화면·START-HERE 안내",
+      "title": "절차 종료·예외 요약·START-HERE 안내",
       "command": {
         "macos": "test -f ~/.wave/START-HERE.md && cat ~/.wave/START-HERE.md",
         "windows": "Test-Path $env:USERPROFILE\\.wave\\START-HERE.md; Get-Content $env:USERPROFILE\\.wave\\START-HERE.md"
@@ -236,11 +236,11 @@
       "pass": [
         {"kind": "exit_code", "equals": 0},
         {"kind": "file_exists", "path": "~/.wave/START-HERE.md"},
-        {"kind": "json_path", "path": "~/.wave/install-state.json", "json_path": "required_steps_passed", "equals": true}
+        {"kind": "json_path", "path": "~/.wave/install-state.json", "json_path": "required_steps_passed", "equals": true, "message": "전체 검증 시 true · 예외·미측정이 있으면 false와 exceptions 기록"}
       ],
       "on_fail": {
         "error_id": "WT-S09-COMPLETE",
-        "message": "필수 단계 모두 통과·상태 저장·START-HERE 안내 생성을 확인하지 못했습니다.",
+        "message": "상태 저장 또는 START-HERE 안내 생성에 실패했습니다. 미측정·건너뜀은 complete_with_exceptions로 기록합니다.",
         "next": "stop"
       },
       "optional": false

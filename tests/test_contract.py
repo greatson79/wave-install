@@ -68,7 +68,7 @@ def assert_contract(require_resolved_release: bool) -> None:
     steps = load_json(STEPS_PATH)
     assert steps.get("schema") == "wave-install.steps.v1"
     assert steps.get("product") == "Wave Terminal"
-    assert steps.get("version") == "0.1.2"
+    assert steps.get("version") == "0.1.3"
     assert isinstance(steps.get("steps"), list)
     actual_ids = [step.get("id") for step in steps["steps"]]
     assert actual_ids == EXPECTED_IDS, actual_ids

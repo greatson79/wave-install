@@ -15,10 +15,10 @@ roles_path = Path(sys.argv[1])
 roles = json.loads(roles_path.read_text(encoding="utf-8")).get("roles", [])
 print(json.dumps({
     "seats": [
-        {"role": item.get("role"), "kind": item.get("kind"), "injected_bytes": 0}
+        {"role": item.get("role"), "kind": item.get("kind"), "injected_bytes": None}
         for item in roles
     ],
-    "injected_bytes": 0,
+    "injected_bytes": None,
 }, ensure_ascii=False))
 PY
 }
@@ -55,7 +55,7 @@ roles = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("roles", [
 print(json.dumps({
     "identify_exit": int(sys.argv[2]),
     "seats": [
-        {"role": item.get("role"), "injected_bytes": 0}
+        {"role": item.get("role"), "injected_bytes": None}
         for item in roles
     ],
 }, ensure_ascii=False))

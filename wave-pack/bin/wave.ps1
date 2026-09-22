@@ -3,7 +3,8 @@ param(
   [Parameter(Position=1)][string]$Action,
   [Parameter(Position=2)][string]$Format,
   [Parameter(Position=3)][string]$RolesArgument,
-  [Parameter(Position=4)][string]$RolesPath
+  [Parameter(Position=4)][string]$RolesPath,
+  [Alias("-json")][switch]$Json
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,16 +22,16 @@ if ($Command -eq "fleet" -and $Action -eq "bootstrap") {
 
 if ($Command -eq "fleet" -and $Action -eq "status") {
   $roles = (Get-Content -Raw -LiteralPath $RolesFile | ConvertFrom-Json).roles
-  [ordered]@{ seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; kind = $_.kind; injected_bytes = 0 } }); injected_bytes = 0 } | ConvertTo-Json -Compress
+  [ordered]@{ seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; kind = $_.kind; injected_bytes = $null } }); injected_bytes = $null } | ConvertTo-Json -Compress
   exit 0
 }
 
-if ($Command -eq "doctor" -and $Action -eq "--json") {
+if ($Command -eq "doctor" -and ($Action -eq "--json" -or $Json)) {
   $roles = (Get-Content -Raw -LiteralPath $RolesFile | ConvertFrom-Json).roles
   $identifyExit = 1
   $cys = Join-Path $WaveHome "bin\cys.exe"
   if (Test-Path -LiteralPath $cys) { & $cys identify *> $null; $identifyExit = $LASTEXITCODE }
-  [ordered]@{ identify_exit = $identifyExit; seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; injected_bytes = 0 } }) } | ConvertTo-Json -Compress
+  [ordered]@{ identify_exit = $identifyExit; seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; injected_bytes = $null } }) } | ConvertTo-Json -Compress
   exit 0
 }
 

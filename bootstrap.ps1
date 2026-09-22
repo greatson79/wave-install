@@ -79,6 +79,7 @@ function Save-State {
 }
 
 function Update-Step([string]$Id, [string]$Status, [int]$ExitCode, [string]$ErrorId, [object]$Observed) {
+  if ($Status -eq "passed" -and $ErrorId) { throw "passed와 error_id를 함께 기록할 수 없음" }
   $entry = $State.steps.$Id
   $now = Now-Utc
   if ($Status -eq "running" -and -not $entry.started_at) { $entry.started_at = $now }
@@ -252,7 +253,19 @@ function Run-S07 {
   $status = Get-Content -LiteralPath (Join-Path $fleet "status.json") -Raw | ConvertFrom-Json
   if (@($status.seats).Count -ne 2) { throw "초기 편성 좌석 수가 2가 아님" }
   New-Item -ItemType File -Force -Path (Join-Path $fleet "initial-fleet.ok") | Out-Null
-  $script:StepObserved = [ordered]@{ seats = 2; roles = "master+dept" }
+  $script:StepObserved = [ordered]@{ seats = 2; roles = "master+dept"; fleet_started = $null }
+}
+
+function Get-StateField([object]$Object, [string]$Name) {
+  if ($null -eq $Object) { return $null }
+  if ($Object -is [Collections.IDictionary]) { return $Object[$Name] }
+  $property = $Object.PSObject.Properties[$Name]
+  if ($null -ne $property) { return $property.Value }
+  return $null
+}
+
+function Test-ByteCount([object]$Value) {
+  return (($Value -is [int] -or $Value -is [long]) -and $Value -ge 0)
 }
 
 function Run-S08 {
@@ -265,28 +278,89 @@ function Run-S08 {
   & powershell -NoProfile -ExecutionPolicy Bypass -File $wave doctor --json | Set-Content -LiteralPath (Join-Path $verify "doctor.json") -Encoding UTF8
   if ($LASTEXITCODE -ne 0) { throw "wave doctor 실패" }
   $doctor = Get-Content -LiteralPath (Join-Path $verify "doctor.json") -Raw | ConvertFrom-Json
-  if ([int]$doctor.identify_exit -ne 0 -or @($doctor.seats).Count -ne 2) { throw "identify·좌석 수 계약 불일치" }
+  if ($doctor.identify_exit -ne 0 -or @($doctor.seats).Count -ne 2) { throw "identify·좌석 수 계약 불일치" }
   $limit = [int64](Get-ConfigValue "tooling.max_injected_bytes_per_seat")
-  $max = (@($doctor.seats) | ForEach-Object { [int64]$_.injected_bytes } | Measure-Object -Maximum).Maximum
-  if ($max -gt $limit) { throw "좌석당 지침 주입량 초과" }
-  $script:StepObserved = [ordered]@{ identify_exit = 0; seats = 2; max_injected_bytes = $max }
+  $measured = $true
+  $max = 0
+  foreach ($seat in $doctor.seats) {
+    $value = Get-StateField $seat "injected_bytes"
+    if (-not (Test-ByteCount $value)) { $measured = $false; continue }
+    if ($value -gt $limit) { throw "좌석당 지침 주입량 초과" }
+    if ($value -gt $max) { $max = $value }
+  }
+  $script:StepObserved = [ordered]@{ identify_exit = 0; seats = 2; injection_measured = $measured; max_injected_bytes = $(if ($measured) { $max } else { $null }) }
 }
 
-function Mark-RequiredComplete {
-  foreach ($step in $Config.steps | Where-Object { $_.index -lt 9 }) {
-    $status = [string]$State.steps.($step.id).status
-    if ($status -notin @("passed", "skipped")) { throw "필수 단계 미통과: $($step.id)" }
+function Test-SyntheticBypass([object]$Value) {
+  if ($null -eq $Value) { return $false }
+  if ($Value -is [string]) { return $Value -ceq "TEST_SYNTHETIC_BYPASS" }
+  if ($Value -is [Collections.IDictionary]) {
+    if ($Value["TEST_SYNTHETIC_BYPASS"]) { return $true }
+    foreach ($item in $Value.Values) { if (Test-SyntheticBypass $item) { return $true } }
+  } elseif ($Value -is [System.Management.Automation.PSCustomObject]) {
+    if (Get-StateField $Value "TEST_SYNTHETIC_BYPASS") { return $true }
+    foreach ($property in $Value.PSObject.Properties) { if (Test-SyntheticBypass $property.Value) { return $true } }
+  } elseif ($Value -is [Collections.IEnumerable]) {
+    foreach ($item in $Value) { if (Test-SyntheticBypass $item) { return $true } }
   }
-  $State.required_steps_passed = $true
+  return $false
+}
+
+function Summarize-State([bool]$Final) {
+  $exceptions = @()
+  foreach ($property in $State.PSObject.Properties) {
+    if ($property.Name -in @("steps", "exceptions")) { continue }
+    if (($property.Name -eq "TEST_SYNTHETIC_BYPASS" -and $property.Value) -or (Test-SyntheticBypass $property.Value)) {
+      $exceptions += [ordered]@{ step_id = $null; reason = "TEST_SYNTHETIC_BYPASS" }
+      break
+    }
+  }
+  foreach ($step in $Config.steps) {
+    if (-not $Final -and $step.index -ge 9) { continue }
+    $entry = Get-StateField $State.steps $step.id
+    $reasons = @()
+    if ($null -eq $entry) { $reasons += "missing_step" } else {
+      if (Get-StateField $entry "error_id") {
+        $reasons += "error_id"
+        if ((Get-StateField $entry "status") -eq "passed") { $entry.status = "failed" }
+      }
+      $status = Get-StateField $entry "status"
+      if ($status -ne "passed") { $reasons += "status:$status" }
+      $exitCode = Get-StateField $entry "exit_code"
+      if (-not (Test-ByteCount $exitCode) -or $exitCode -ne 0) { $reasons += "exit_code" }
+      if (Test-SyntheticBypass $entry) { $reasons += "TEST_SYNTHETIC_BYPASS" }
+      $observed = Get-StateField $entry "observed"
+      $fleet = Get-StateField $observed "fleet_started"
+      if ($step.id -eq "S07_INITIAL_FLEET" -and ($fleet -isnot [bool] -or -not $fleet)) { $reasons += "fleet_unmeasured" }
+      if ($step.id -eq "S08_VERIFY") {
+        $measured = Get-StateField $observed "injection_measured"
+        $value = Get-StateField $observed "max_injected_bytes"
+        if ($measured -isnot [bool] -or -not $measured -or -not (Test-ByteCount $value)) { $reasons += "injection_unmeasured" }
+        elseif ($value -gt $Config.tooling.max_injected_bytes_per_seat) { $reasons += "injection_limit_exceeded" }
+      }
+    }
+    foreach ($reason in $reasons) { $exceptions += [ordered]@{ step_id = $step.id; reason = $reason } }
+  }
+  $State.required_steps_passed = $exceptions.Count -eq 0
+  $State | Add-Member -NotePropertyName exceptions -NotePropertyValue @($exceptions) -Force
+  $State.updated_at = Now-Utc
+  if ($Final) {
+    $State.status = if ($exceptions.Count) { "complete_with_exceptions" } else { "complete" }
+    $State.current_step = $null
+  }
   Save-State
 }
 
+function Mark-RequiredComplete {
+  Summarize-State $false
+}
+
 function Run-S09 {
-  if (-not [bool]$State.required_steps_passed) { throw "필수 단계 통과 상태가 아님" }
   $start = Join-Path $WaveHome "START-HERE.md"
-  @("# Wave Terminal 시작하기", "", "설치기 실측 단계 S00–S09를 통과했습니다.", "", "문제가 있으면 ~/.wave/install.log와 install-state.json을 확인하세요. 토큰·계정값은 기록하지 않습니다.") | Set-Content -LiteralPath $start -Encoding UTF8
+  $message = if ($State.required_steps_passed) { "필수 단계 검증을 통과했습니다." } else { "설치 절차를 마무리했습니다. 예외·미검증 항목이 있으므로 전체 검증 완료가 아닙니다." }
+  @("# Wave Terminal 시작하기", "", $message, "", "install-state.json의 required_steps_passed·exceptions와 install.log를 확인하세요. 주입량 미측정은 0바이트 통과를 뜻하지 않습니다.") | Set-Content -LiteralPath $start -Encoding UTF8
   if (-not (Test-Path -LiteralPath $start)) { throw "START-HERE 없음" }
-  $script:StepObserved = [ordered]@{ required_steps_passed = $true; start_here = $true; silent_completion = $false }
+  $script:StepObserved = [ordered]@{ required_steps_passed = $State.required_steps_passed; start_here = $true; silent_completion = $false }
 }
 
 function Invoke-Step([string]$Id, [scriptblock]$Action) {
@@ -304,9 +378,7 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
 }
 
 function Complete-State {
-  $State.status = "complete"
-  $State.current_step = $null
-  Save-State
+  Summarize-State $true
 }
 
 Load-Config
@@ -330,10 +402,10 @@ $actions = @{
 foreach ($step in $Config.steps) {
   $id = [string]$step.id
   $current = [string]$State.steps.$id.status
-  if ($Resume -and $current -in @("passed", "skipped")) { Write-Log "[$id] resume: 이미 $current — 건너뜀"; continue }
+  if ($Resume -and $id -ne "S09_COMPLETE" -and $current -in @("passed", "skipped")) { Write-Log "[$id] resume: 이미 $current — 건너뜀"; continue }
   if ($id -eq "S09_COMPLETE") { Mark-RequiredComplete }
   Write-Log "[$id] 시작"
   Invoke-Step $id $actions[$id]
 }
 Complete-State
-Write-Log "[10/10] Wave Terminal 설치 상태 complete — START-HERE를 확인하세요."
+Write-Log "[10/10] Wave Terminal 설치 상태 $($State.status) — START-HERE와 exceptions를 확인하세요."

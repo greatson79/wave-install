@@ -14,9 +14,9 @@
       { id: 4, title: "설치·cys 셸 연결", command: "사용자 폴더 설치", pass_conditions: ["cys 실행", "셸 연결"], failure_guidance: "SHELL_NOT_CONNECTED" },
       { id: 5, title: "데몬 등록", command: "선택 · 기본 on", pass_conditions: ["데몬 상태 확인"], failure_guidance: "DAEMON_START_FAILED" },
       { id: 6, title: "wave-pack 배치", command: "~/.cys/pack에 배치", pass_conditions: ["팩 파일 존재", "SHA256 확인"], failure_guidance: "PACK_DEPLOY_FAILED" },
-      { id: 7, title: "초기 편성 기동", command: "마스터 + 부서 1", pass_conditions: ["좌석 2개 기동"], failure_guidance: "ROSTER_START_FAILED" },
-      { id: 8, title: "검증", command: "cys identify", pass_conditions: ["지침 주입 실측", "주입량 ≤ 20KB"], failure_guidance: "VERIFY_FALSE_GREEN" },
-      { id: 9, title: "완료 화면", command: "START-HERE로 이동", pass_conditions: ["단계별 exit·시각·버전 저장"], failure_guidance: "INSTALL_STATE_INCOMPLETE" }
+      { id: 7, title: "초기 편성 정의 확인", command: "마스터 + 부서 1", pass_conditions: ["좌석 수 2 확인 · roles.json 기준", "실제 기동 미검증"], failure_guidance: "ROSTER_START_FAILED" },
+      { id: 8, title: "확인 · 주입량 미측정(후속)", command: "cys identify", pass_conditions: ["cys identify 성공", "좌석 수 2 확인", "주입량 — 미측정(후속)"], failure_guidance: "VERIFY_FALSE_GREEN" },
+      { id: 9, title: "완료 화면", command: "START-HERE로 이동", pass_conditions: ["단계별 exit·시각·버전·예외 저장"], failure_guidance: "INSTALL_STATE_INCOMPLETE" }
     ]
   };
 
@@ -47,7 +47,7 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-selected", String(isActive));
     });
-    copyStatus.textContent = "전체 설치팩 폴더에서 실행하세요. v0.1.2 전체 설치 검증은 진행 중입니다.";
+    copyStatus.textContent = "전체 설치팩 폴더에서 실행하세요. v0.1.3 전체 설치 검증은 진행 중입니다.";
   }
 
   async function copyCommand() {
@@ -55,7 +55,7 @@
     try {
       await navigator.clipboard.writeText(command);
       copyButton.textContent = "복사됨";
-      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 전체 설치팩 폴더에서 실행하세요. v0.1.2 전체 설치 검증은 진행 중입니다.";
+      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 전체 설치팩 폴더에서 실행하세요. v0.1.3 전체 설치 검증은 진행 중입니다.";
     } catch (error) {
       copyStatus.textContent = "자동 복사에 실패했습니다. 명령을 직접 선택해 복사하세요.";
     }
@@ -121,7 +121,7 @@
       addText(content, "p", step.command);
       const meta = document.createElement("div");
       meta.className = "step-meta";
-      step.pass_conditions.forEach((condition) => addText(meta, "span", condition, "pass"));
+      step.pass_conditions.forEach((condition) => addText(meta, "span", condition, /미측정|미검증|예외/.test(condition) ? "" : "pass"));
       addText(meta, "span", `실패 시 · ${step.failure_guidance}`);
       content.appendChild(meta);
       item.appendChild(content);

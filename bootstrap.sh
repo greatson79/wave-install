@@ -103,7 +103,8 @@ state_patch() {
   local status="$2"
   local exit_code="$3"
   local error_id="$4"
-  local observed="${5:-{}}"
+  local observed="${5-}"
+  [[ -n "$observed" ]] || observed='{}'
   local now
   now="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   python3 - "$STATE_FILE" "$STEPS_FILE" "$step_id" "$status" "$exit_code" "$error_id" "$observed" "$now" <<'PY'
@@ -111,6 +112,8 @@ import json
 import sys
 
 state_path, steps_path, step_id, status, exit_code, error_id, observed_raw, now = sys.argv[1:]
+if status == "passed" and error_id:
+    raise SystemExit("passed와 error_id를 함께 기록할 수 없음")
 with open(state_path, encoding="utf-8") as handle:
     state = json.load(handle)
 with open(steps_path, encoding="utf-8") as handle:
@@ -383,7 +386,7 @@ if len(data.get("seats", [])) != 2:
     raise SystemExit("초기 편성 좌석 수가 2가 아님")
 PY
   : > "$WAVE_HOME/fleet/initial-fleet.ok"
-  STEP_OBSERVED='{"seats":2,"roles":"master+dept"}'
+  STEP_OBSERVED='{"seats":2,"roles":"master+dept","fleet_started":null}'
 }
 
 step_s08() {
@@ -392,74 +395,111 @@ step_s08() {
   mkdir -p "$WAVE_HOME/verify"
   "$WAVE_HOME/bin/cys" identify >/dev/null || return 1
   "$wave" doctor --json > "$WAVE_HOME/verify/doctor.json" || return 1
-  python3 - "$WAVE_HOME/verify/doctor.json" "$(json_value "$STEPS_FILE" 'tooling.max_injected_bytes_per_seat')" <<'PY'
+  STEP_OBSERVED="$(python3 - "$WAVE_HOME/verify/doctor.json" "$(json_value "$STEPS_FILE" 'tooling.max_injected_bytes_per_seat')" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     data = json.load(handle)
 limit = int(sys.argv[2])
-if int(data.get("identify_exit", 1)) != 0:
-    raise SystemExit("identify exit가 0이 아님")
-if len(data.get("seats", [])) != 2:
-    raise SystemExit("좌석 수가 2가 아님")
-injected = [int(seat.get("injected_bytes", -1)) for seat in data["seats"]]
-if min(injected) < 0 or max(injected) > limit:
-    raise SystemExit("좌석당 지침 주입량 20KB 초과 또는 미측정")
-print(json.dumps({"identify_exit": 0, "seats": 2, "max_injected_bytes": max(injected)}))
+if data.get("identify_exit") != 0 or len(data.get("seats", [])) != 2:
+    raise SystemExit("identify·좌석 수 계약 불일치")
+injected = [seat.get("injected_bytes") for seat in data["seats"]]
+known = [value for value in injected if type(value) is int and value >= 0]
+if any(value > limit for value in known):
+    raise SystemExit("좌석당 지침 주입량 20KB 초과")
+measured = len(known) == len(injected)
+print(json.dumps({"identify_exit": 0, "seats": 2,
+                  "injection_measured": measured,
+                  "max_injected_bytes": max(known) if measured else None}))
 PY
-  STEP_OBSERVED="$(python3 - "$WAVE_HOME/verify/doctor.json" <<'PY'
+)" || return 1
+}
+
+summarize_state() {
+  python3 - "$STATE_FILE" "$STEPS_FILE" "$1" <<'PY'
 import json, sys
-with open(sys.argv[1], encoding="utf-8") as handle:
-    data = json.load(handle)
-injected = [int(seat.get("injected_bytes", -1)) for seat in data.get("seats", [])]
-print(json.dumps({"identify_exit": int(data.get("identify_exit", 1)), "seats": len(data.get("seats", [])), "max_injected_bytes": max(injected)}))
+from datetime import datetime, timezone
+path, steps_path, phase = sys.argv[1:]
+with open(path, encoding="utf-8") as handle:
+    state = json.load(handle)
+with open(steps_path, encoding="utf-8") as handle:
+    config = json.load(handle)
+
+def bypass(value):
+    if isinstance(value, dict):
+        return bool(value.get("TEST_SYNTHETIC_BYPASS")) or any(bypass(v) for v in value.values())
+    if isinstance(value, list):
+        return any(bypass(v) for v in value)
+    return value == "TEST_SYNTHETIC_BYPASS"
+
+exceptions = []
+if bypass({k: v for k, v in state.items() if k not in {"steps", "exceptions"}}):
+    exceptions.append({"step_id": None, "reason": "TEST_SYNTHETIC_BYPASS"})
+for step in config["steps"]:
+    if phase != "final" and step["index"] >= 9:
+        continue
+    step_id = step["id"]
+    entry = state["steps"].get(step_id)
+    reasons = []
+    if not isinstance(entry, dict):
+        reasons.append("missing_step")
+    else:
+        if entry.get("error_id"):
+            reasons.append("error_id")
+            # 이전 판본/수동 상태의 모순을 보존 근거와 함께 정정한다.
+            if entry.get("status") == "passed":
+                entry["status"] = "failed"
+        if entry.get("status") != "passed":
+            reasons.append("status:" + str(entry.get("status")))
+        if type(entry.get("exit_code")) is not int or entry["exit_code"] != 0:
+            reasons.append("exit_code")
+        if bypass(entry):
+            reasons.append("TEST_SYNTHETIC_BYPASS")
+        observed = entry.get("observed")
+        observed = observed if isinstance(observed, dict) else {}
+        if step_id == "S07_INITIAL_FLEET" and observed.get("fleet_started") is not True:
+            reasons.append("fleet_unmeasured")
+        if step_id == "S08_VERIFY":
+            value = observed.get("max_injected_bytes")
+            if observed.get("injection_measured") is not True or type(value) is not int or value < 0:
+                reasons.append("injection_unmeasured")
+            elif value > config["tooling"]["max_injected_bytes_per_seat"]:
+                reasons.append("injection_limit_exceeded")
+    for reason in reasons:
+        exceptions.append({"step_id": step_id, "reason": reason})
+state["required_steps_passed"] = not exceptions
+state["exceptions"] = exceptions
+state["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+if phase == "final":
+    state["status"] = "complete_with_exceptions" if exceptions else "complete"
+    state["current_step"] = None
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(state, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
 PY
-)"
 }
 
 mark_required_complete() {
-  python3 - "$STATE_FILE" <<'PY'
-import json, sys
-path = sys.argv[1]
-with open(path, encoding="utf-8") as handle:
-    state = json.load(handle)
-required = [f"S{i:02d}_" for i in range(9)]
-statuses = [entry["status"] for key, entry in state["steps"].items() if any(key.startswith(prefix) for prefix in required)]
-if len(statuses) != 9 or not all(status in {"passed", "skipped"} for status in statuses):
-    raise SystemExit("필수 단계가 모두 통과하지 않음")
-state["required_steps_passed"] = True
-with open(path, "w", encoding="utf-8") as handle:
-    json.dump(state, handle, ensure_ascii=False, indent=2)
-    handle.write("\n")
-PY
+  summarize_state required
 }
 
 step_s09() {
-  local required
-  required="$(json_value "$STATE_FILE" 'required_steps_passed')"
-  [[ "$required" == "True" || "$required" == "true" ]] || return 1
-  cat > "$WAVE_HOME/START-HERE.md" <<'EOF'
-# Wave Terminal 시작하기
-
-설치기 실측 단계 S00–S09를 통과했습니다. 다음 단계는 `wave-pack/START-HERE.md`와 강좌 안내를 확인하는 것입니다.
-
-문제가 있으면 `~/.wave/install.log`와 `~/.wave/install-state.json`에서 단계별 exit·시각·검증 결과를 확인하세요. 토큰·계정값은 설치기가 기록하지 않습니다.
-EOF
-  [[ -s "$WAVE_HOME/START-HERE.md" ]] || return 1
-  STEP_OBSERVED='{"required_steps_passed":true,"start_here":true,"silent_completion":false}'
+  STEP_OBSERVED="$(python3 - "$STATE_FILE" "$WAVE_HOME/START-HERE.md" <<'PY'
+import json, sys
+from pathlib import Path
+state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+message = ("필수 단계 검증을 통과했습니다." if state["required_steps_passed"] else
+           "설치 절차를 마무리했습니다. 예외·미검증 항목이 있으므로 전체 검증 완료가 아닙니다.")
+Path(sys.argv[2]).write_text("# Wave Terminal 시작하기\n\n" + message +
+    "\n\ninstall-state.json의 required_steps_passed·exceptions와 install.log를 확인하세요. "
+    "주입량 미측정은 0바이트 통과를 뜻하지 않습니다.\n", encoding="utf-8")
+print(json.dumps({"required_steps_passed": state["required_steps_passed"],
+                  "start_here": True, "silent_completion": False}))
+PY
+)" || return 1
 }
 
 mark_install_complete() {
-  python3 - "$STATE_FILE" <<'PY'
-import json, sys
-path = sys.argv[1]
-with open(path, encoding="utf-8") as handle:
-    state = json.load(handle)
-state["status"] = "complete"
-state["current_step"] = None
-with open(path, "w", encoding="utf-8") as handle:
-    json.dump(state, handle, ensure_ascii=False, indent=2)
-    handle.write("\n")
-PY
+  summarize_state final
 }
 
 run_step() {
@@ -515,7 +555,7 @@ main() {
   local id status
   while IFS= read -r id; do
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
-    if [[ "$RESUME" == 1 && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
+    if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
       log "[$id] resume: 이미 $status — 건너뜀"
       continue
     fi
@@ -532,7 +572,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 PY
 )
   mark_install_complete
-  log "[10/10] Wave Terminal 설치 상태 complete — START-HERE를 확인하세요."
+  log "[10/10] Wave Terminal 설치 상태 $(json_value "$STATE_FILE" 'status') — START-HERE와 exceptions를 확인하세요."
 }
 
 main "$@"

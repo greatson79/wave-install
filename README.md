@@ -30,9 +30,9 @@ Windows 설치 자산이 준비되기 전에는 설치를 진행하지 않습니
 
 공식 도메인은 별도 결재 후 연결하며, 그 전까지는 배포된 임시 URL만 검증 대상으로 삼습니다.
 
-## 설치팩 v0.1.2 사용
+## 설치팩 v0.1.3 사용
 
-[전체 설치팩 v0.1.2](https://github.com/greatson79/wave-install/archive/refs/tags/v0.1.2.zip)을
+[전체 설치팩 v0.1.3](https://github.com/greatson79/wave-install/archive/refs/tags/v0.1.3.zip)을
 내려받아 압축을 풀고 터미널에서 그 폴더로 이동합니다. `steps.json`, `install-state.json`,
 `wave-pack/`이 함께 있어야 하므로 설치기 한 파일만 내려받아 실행할 수는 없습니다.
 
@@ -70,14 +70,14 @@ SHA256·minisign 검증은 배포 파일의 무결성 확인이며 Apple 공증�
    계속 차단되면 중단하고 오류를 전달하세요.
 
 GUI 다이얼로그와 위 절차의 실행 성공은 아직 검증하지 않았습니다. DMG 재빌드·재서명·공증은
-이번 설치팩 수정에 포함하지 않았습니다. **v0.1.2 전체 설치 검증 대기 / macOS 공증 미완**이며,
+이번 설치팩 수정에 포함하지 않았습니다. **v0.1.3 독립 설치 검증 대기 / macOS 공증 없음**이며,
 전체 설치 완료나 파일럿 준비 완료로 표기하지 않습니다.
 
 ## 판본 보존과 검증
 
-기존 설치팩 `v0.1.0`·`v0.1.1` 태그·커밋은 보존하고, 이번 수정은 `v0.1.2`에만 추가합니다.
-Wave Terminal DMG의 버전과 다운로드 해시, wave-pack은 기존 값을 유지합니다.
-로컬 코드 비교는 `git diff v0.1.0..v0.1.2`로 확인할 수 있습니다.
+기존 설치팩 `v0.1.0`·`v0.1.1`·`v0.1.2` 태그·커밋은 보존하고, 이번 수정은 `v0.1.3`에만 추가합니다.
+Wave Terminal DMG의 버전과 다운로드 해시는 유지합니다. wave-pack의 미측정 출력과 해시 목록은 갱신합니다.
+로컬 코드 비교는 `git diff v0.1.2..v0.1.3`로 확인할 수 있습니다.
 
 ```bash
 python3 tests/test_contract.py --require-resolved-release
@@ -97,10 +97,35 @@ Bash 설치기는 단계 목록에서 ID가 일치하는 항목의 on_fail.error
 S04는 cysd를 실행하지 않습니다. DMG 안 원본과 복사본의 바이트 일치, 실행 파일 존재·실행권한,
 설치 경로 심링크를 확인합니다. 데몬의 실제 기동은 기존 S05 등록 단계의 책임입니다.
 cysd 자체의 --version 동작은 별건이며 이번 설치팩에서 수정하지 않았습니다.
-PowerShell 설치기는 v0.1.1 파일을 그대로 유지합니다. Windows는 계속 준비 중입니다.
+v0.1.2에서는 PowerShell 설치기를 v0.1.1 그대로 유지했습니다. v0.1.3에서는 아래 공통 상태 계약을 양쪽에 적용합니다. Windows는 계속 준비 중입니다.
 
 ```bash
 python3 tests/test_failure_and_daemon_gate.py
 ```
 
 위 회귀는 가짜 앱·명령과 임시 HOME만 사용하며 Task 3a 전체 실설치 판정을 대신하지 않습니다.
+
+## v0.1.3 공통 상태 기록 계약
+
+Bash와 PowerShell은 `install-state.json`을 같은 의미로 기록합니다.
+
+- `passed`와 비어 있지 않은 `error_id`를 함께 쓰려 하면 쓰기 전에 거부합니다.
+- `required_steps_passed`는 단계 목록 전체를 대조해 계산합니다. 오류 ID, 0이 아닌/미기록 exit,
+  합성 시험 표식 `TEST_SYNTHETIC_BYPASS`, 건너뜀, 누락, 좌석 기동·주입 미측정이 있으면 `false`입니다.
+- 절차를 마무리할 수 있는 예외는 `complete_with_exceptions`와 `exceptions[]`의 단계 ID·사유로 남깁니다.
+  기존 상태에 `passed`와 오류 ID가 공존하면 요약 시 그 단계를 `failed`로 정정하고 오류 ID를 보존합니다.
+  실제 명령 실패는 기존대로 중단합니다. 이 상태는 전체 실설치 검증 통과를 뜻하지 않습니다.
+- `wave doctor`와 `fleet status`의 주입량은 현재 `null`입니다. S08은 미측정을 0으로 바꾸지 않고
+  `injection_measured:false`, `max_injected_bytes:null`로 기록하며 이 이유만으로 설치를 막지 않습니다.
+  `bytes_lte`의 20480바이트 기준은 유지하며, 실제 수치가 기준을 넘으면 실패합니다.
+- S07의 좌석 수 2는 `roles.json` 정의를 센 값입니다. 실제 두 좌석 기동은 구현·검증하지 않았으며
+  `fleet_started:null`로 남깁니다. 실제 주입 측정, S08 폴백 데몬, cysd 자체 변경은 포함하지 않습니다.
+- START-HERE와 안내 페이지도 미측정·예외를 표시합니다. Windows 자산·실설치는 계속 준비 중입니다.
+
+```bash
+PWSH=/path/to/pwsh python3 tests/test_state_contract.py
+```
+
+공통 회귀는 임시 HOME·가짜 외부 명령에서 설치기 함수와 상태 기록을 검사합니다.
+PowerShell 테스트는 호스트의 PowerShell 실행체로 수행하며 Windows 운영체제 실설치 판정은 아닙니다.
+독립 전체 설치 판정과 자격증명·데몬 등록 실검증은 별도로 남습니다.

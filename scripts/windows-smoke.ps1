@@ -27,10 +27,11 @@ $config | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $configPath -Encod
 & pwsh -NoProfile -NonInteractive -File (Join-Path $run 'bootstrap.ps1') -DryRun
 if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $env:WAVE_HOME)) { throw 'W-DRYRUN-SIDE-EFFECT: DryRun 실패 또는 설치 상태 생성' }
 # 원본 함수만 로드하며 S02 인증을 합성 성공으로 대체하지 않는다.
-$text = Get-Content -LiteralPath (Join-Path $run 'bootstrap.ps1') -Raw
+$text = Get-Content -LiteralPath (Join-Path $run 'bootstrap.ps1') -Raw -Encoding utf8
 $marker = "`nLoad-Config`nif (`$DryRun)"
-$parts = [regex]::Split($text, [regex]::Escape($marker))
-if ($parts.Count -ne 2) { throw '설치기 함수 경계 불일치' }
+$idx = $text.IndexOf($marker, [StringComparison]::Ordinal)
+if ($idx -lt 0) { throw '설치기 함수 경계 불일치' }
+$parts = @($text.Substring(0, $idx), $text.Substring($idx + $marker.Length))
 $harness = Join-Path $run 'signed-install-smoke.ps1'
 $tail = @'
 Load-Config

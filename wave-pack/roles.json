@@ -1,0 +1,32 @@
+{
+  "schema": "wave-pack.roles.v1",
+  "_doc": "초기 편성 = master 1 + dept 1. S07_INITIAL_FLEET이 이 파일 순서대로 기동한다. CSO·외부 리뷰어는 `wave add`로 접어 둔 확장(기본 없음). 초안 — S0 steps.json 계약과 충돌 시 steps.json이 이긴다.",
+  "roles": [
+    {
+      "role": "master",
+      "kind": "master",
+      "title": "마스터 비서",
+      "engine": "claude",
+      "cwd": "${WAVE_HOME}/hq",
+      "directive": "directives/MASTER_DIRECTIVE.md",
+      "budget_kb": 12
+    },
+    {
+      "role": "worker-dept-1",
+      "kind": "dept",
+      "title": "부서 1",
+      "engine": "claude",
+      "cwd": "${WAVE_DEPT_DIR}",
+      "directive": "directives/WORKER_DIRECTIVE.md",
+      "seed": {
+        "kit": "starter/my-ai-hq-starter-v1.zip",
+        "unpack_to": "${WAVE_DEPT_DIR}",
+        "if_exists": "keep_all_never_overwrite",
+        "imports": ["CLAUDE.md", "system/department.md"]
+      },
+      "budget_kb": 16
+    }
+  ],
+  "review": {"mode": "headless", "tool": "bin/review-headless", "engine": "claude -p", "rule": "author_ne_reviewer"},
+  "defaults": {"WAVE_HOME": "~/wave", "WAVE_DEPT_DIR": "~/wave/my-ai-hq"}
+}

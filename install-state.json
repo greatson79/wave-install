@@ -1,0 +1,42 @@
+{
+  "schema": "wave-install.state.v1",
+  "product": "Wave Terminal",
+  "installer_version": "0.1.0-s3",
+  "status": "not_started",
+  "created_at": null,
+  "updated_at": null,
+  "current_step": null,
+  "required_steps_passed": false,
+  "paths": {
+    "state": "~/.wave/install-state.json",
+    "log": "~/.wave/install.log",
+    "wave_home": "~/.wave",
+    "pack": "~/.cys/pack"
+  },
+  "options": {
+    "daemon": true,
+    "codex": false,
+    "antigravity": false
+  },
+  "release": {
+    "repository": "greatson79/wave-terminal",
+    "version": "0.1.0",
+    "asset": null,
+    "asset_sha256": null,
+    "minisig": null,
+    "verified_at": null,
+    "s2_release_resolved": false
+  },
+  "steps": {
+    "S00_PREFLIGHT": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S01_CLAUDE_INSTALL": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S02_CLAUDE_LOGIN": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S03_DOWNLOAD_VERIFY": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S04_INSTALL_LINK": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S05_DAEMON_REGISTER": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S06_PACK_INSTALL": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S07_INITIAL_FLEET": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S08_VERIFY": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null},
+    "S09_COMPLETE": {"status": "pending", "exit_code": null, "started_at": null, "completed_at": null, "version": null, "checks": [], "observed": {}, "error_id": null}
+  }
+}

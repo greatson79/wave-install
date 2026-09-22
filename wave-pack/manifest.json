@@ -1,0 +1,13 @@
+{
+  "schema": "wave-pack.manifest.v1",
+  "product": "Wave Terminal",
+  "version": "0.1.0",
+  "roles": "roles.json",
+  "directives": [
+    "directives/MASTER_DIRECTIVE.md",
+    "directives/WORKER_DIRECTIVE.md",
+    "directives/REVIEWER_DIRECTIVE.md"
+  ],
+  "integrity": "SHA256SUMS",
+  "initial_fleet": ["master", "worker-dept-1"]
+}

@@ -1,0 +1,248 @@
+{
+  "schema": "wave-install.steps.v1",
+  "product": "Wave Terminal",
+  "version": "0.1.0",
+  "platforms": ["macos", "windows"],
+  "release": {
+    "repository": "greatson79/wave-terminal",
+    "version": "0.1.0",
+    "asset_name": {
+      "macos_arm64": "wave-terminal-0.1.0-macos-arm64.dmg",
+      "macos_x64": "wave-terminal-0.1.0-macos-x64.dmg",
+      "windows_x64": null
+    },
+    "asset_url": {
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-arm64.dmg",
+      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-x64.dmg",
+      "windows_x64": null
+    },
+    "sha256": {
+      "macos_arm64": "d014f51fbcd50c02fe8f083a2f6d62eb3729738d40b6cd6809313906e6c7dbfd",
+      "macos_x64": "90ac641169120156c34d65b722a84601dba2519d32daafbcde79631c26ae2b7f",
+      "windows_x64": null
+    },
+    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/SHA256SUMS",
+    "minisig_url": {
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-arm64.dmg.minisig",
+      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-x64.dmg.minisig",
+      "windows_x64": null
+    },
+    "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI"
+  },
+  "tooling": {
+    "claude_code_version": "__CLAUDE_CODE_VERSION_PIN__",
+    "min_free_bytes": 5368709120,
+    "max_injected_bytes_per_seat": 20480
+  },
+  "steps": [
+    {
+      "id": "S00_PREFLIGHT",
+      "index": 0,
+      "total": 10,
+      "title": "OS·셸·디스크·권한 검사",
+      "command": {
+        "macos": "uname -s; command -v zsh; df -Pk \"$HOME\"; test -w \"$HOME\"",
+        "windows": "[Environment]::OSVersion; $PSVersionTable.PSVersion; Get-PSDrive -Name C; Test-Path -PathType Container $env:USERPROFILE"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S00-PREFLIGHT",
+        "message": "관리자 권한 없이 사용자 폴더·필수 셸·디스크 여유 공간을 확인하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S01_CLAUDE_INSTALL",
+      "index": 1,
+      "total": 10,
+      "title": "고정 버전 Claude Code 설치",
+      "command": {
+        "macos": "claude --version",
+        "windows": "claude --version"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/tooling/claude.version"},
+        {"kind": "non_placeholder", "path": "~/.wave/tooling/claude.version"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S01-CLAUDE",
+        "message": "고정 버전 Claude Code가 설치·확인되지 않았습니다. 버전 핀과 설치 안내를 확인하세요.",
+        "next": "retry"
+      },
+      "optional": false
+    },
+    {
+      "id": "S02_CLAUDE_LOGIN",
+      "index": 2,
+      "total": 10,
+      "title": "Claude 로그인 상태 확인",
+      "command": {
+        "macos": "claude auth status",
+        "windows": "claude auth status"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/auth/claude-authenticated"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S02-AUTH",
+        "message": "Claude 로그인 상태를 확인하지 못했습니다. 토큰·계정값은 기록하지 않고 로그인 절차만 다시 안내합니다.",
+        "next": "retry"
+      },
+      "optional": false
+    },
+    {
+      "id": "S03_DOWNLOAD_VERIFY",
+      "index": 3,
+      "total": 10,
+      "title": "Wave Terminal 내려받기·SHA256·minisig 검증",
+      "command": {
+        "macos": "curl -fL <asset-url> -o <artifact> && shasum -a 256 -c SHA256SUMS && minisign -Vm <artifact> -P <public-key> -x <artifact>.minisig",
+        "windows": "Invoke-WebRequest <asset-url> -OutFile <artifact>; Get-FileHash <artifact> -Algorithm SHA256; minisign -Vm <artifact> -P <public-key> -x <artifact>.minisig"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/downloads/wave-terminal-artifact"},
+        {"kind": "sha256", "path": "~/.wave/downloads/wave-terminal-artifact", "source": "SHA256SUMS"},
+        {"kind": "file_exists", "path": "~/.wave/downloads/wave-terminal-artifact.minisig"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S03-VERIFY",
+        "message": "S2 릴리스 URL·해시·minisig가 확정되지 않았거나 무결성 검증에 실패했습니다. 설치를 중단합니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S04_INSTALL_LINK",
+      "index": 4,
+      "total": 10,
+      "title": "사용자 폴더 설치·cys/cysd 셸 연결",
+      "command": {
+        "macos": "~/.wave/bin/cys --version && ~/.wave/bin/cysd --version && zsh -lc 'command -v cys'",
+        "windows": "$env:USERPROFILE\\.wave\\bin\\cys.exe --version; $env:USERPROFILE\\.wave\\bin\\cysd.exe --version"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/bin/cys"},
+        {"kind": "file_exists", "path": "~/.wave/bin/cysd"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S04-LINK",
+        "message": "사용자 폴더 설치 또는 cys/cysd 셸 연결을 실측하지 못했습니다.",
+        "next": "retry"
+      },
+      "optional": false
+    },
+    {
+      "id": "S05_DAEMON_REGISTER",
+      "index": 5,
+      "total": 10,
+      "title": "데몬 등록(선택·기본 on)",
+      "command": {
+        "macos": "launchctl bootstrap gui/$(id -u) ~/.wave/daemon/com.waveainetworks.cysd.plist && launchctl print gui/$(id -u)/com.waveainetworks.cysd",
+        "windows": "schtasks /Create /TN WaveTerminal-cysd /SC ONLOGON /TR <cysd> /F && schtasks /Query /TN WaveTerminal-cysd"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/daemon/register-result"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S05-DAEMON",
+        "message": "데몬 등록 결과를 확인하지 못했습니다. 선택을 해제했는지 또는 사용자 권한 오류인지 확인하세요.",
+        "next": "retry"
+      },
+      "optional": true
+    },
+    {
+      "id": "S06_PACK_INSTALL",
+      "index": 6,
+      "total": 10,
+      "title": "wave-pack 배치·manifest/SHA256 검증",
+      "command": {
+        "macos": "cp -R wave-pack/. ~/.cys/pack/ && (cd ~/.cys/pack && shasum -a 256 -c SHA256SUMS)",
+        "windows": "Copy-Item wave-pack\\* $env:USERPROFILE\\.cys\\pack -Recurse -Force; Get-FileHash .\\manifest.json -Algorithm SHA256"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.cys/pack/manifest.json"},
+        {"kind": "file_exists", "path": "~/.cys/pack/SHA256SUMS"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S06-PACK",
+        "message": "wave-pack이 없거나 manifest/SHA256 검증을 통과하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S07_INITIAL_FLEET",
+      "index": 7,
+      "total": 10,
+      "title": "초기 편성 기동(마스터 1+부서 1)",
+      "command": {
+        "macos": "~/.wave/bin/wave fleet bootstrap --roles-file ~/.cys/pack/roles.json",
+        "windows": "$env:USERPROFILE\\.wave\\bin\\wave.ps1 fleet bootstrap --roles-file $env:USERPROFILE\\.cys\\pack\\roles.json"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/fleet/initial-fleet.ok"},
+        {"kind": "count", "path": "~/.wave/fleet/status.json", "json_path": "seats", "equals": 2}
+      ],
+      "on_fail": {
+        "error_id": "WT-S07-FLEET",
+        "message": "roles.json 기준 마스터 1+부서 1 편성을 2석으로 확인하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S08_VERIFY",
+      "index": 8,
+      "total": 10,
+      "title": "identify·좌석 2·지침 주입량 검증",
+      "command": {
+        "macos": "~/.wave/bin/cys identify && ~/.wave/bin/wave doctor --json",
+        "windows": "$env:USERPROFILE\\.wave\\bin\\cys.exe identify; $env:USERPROFILE\\.wave\\bin\\wave.ps1 doctor --json"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "json_path", "path": "~/.wave/verify/doctor.json", "json_path": "identify_exit", "equals": 0},
+        {"kind": "count", "path": "~/.wave/verify/doctor.json", "json_path": "seats", "equals": 2},
+        {"kind": "bytes_lte", "path": "~/.wave/verify/doctor.json", "json_path": "max_injected_bytes", "max": 20480}
+      ],
+      "on_fail": {
+        "error_id": "WT-S08-VERIFY",
+        "message": "cys identify·좌석 수·지침 주입량(좌석당 20KB 이하)을 모두 실측하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S09_COMPLETE",
+      "index": 9,
+      "total": 10,
+      "title": "완료 화면·START-HERE 안내",
+      "command": {
+        "macos": "test -f ~/.wave/START-HERE.md && cat ~/.wave/START-HERE.md",
+        "windows": "Test-Path $env:USERPROFILE\\.wave\\START-HERE.md; Get-Content $env:USERPROFILE\\.wave\\START-HERE.md"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.wave/START-HERE.md"},
+        {"kind": "json_path", "path": "~/.wave/install-state.json", "json_path": "required_steps_passed", "equals": true}
+      ],
+      "on_fail": {
+        "error_id": "WT-S09-COMPLETE",
+        "message": "필수 단계 모두 통과·상태 저장·START-HERE 안내 생성을 확인하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    }
+  ]
+}

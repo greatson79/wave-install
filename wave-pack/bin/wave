@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+WAVE_HOME="${WAVE_HOME:-${HOME}/.wave}"
+PACK_HOME="${HOME}/.cys/pack"
+ROLES_FILE="${PACK_HOME}/roles.json"
+
+json_status() {
+  python3 - "$ROLES_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+roles_path = Path(sys.argv[1])
+roles = json.loads(roles_path.read_text(encoding="utf-8")).get("roles", [])
+print(json.dumps({
+    "seats": [
+        {"role": item.get("role"), "kind": item.get("kind"), "injected_bytes": 0}
+        for item in roles
+    ],
+    "injected_bytes": 0,
+}, ensure_ascii=False))
+PY
+}
+
+case "${1:-}" in
+  fleet)
+    case "${2:-}" in
+      bootstrap)
+        mkdir -p "${WAVE_HOME}/fleet"
+        printf '%s\n' "initial_fleet=master+worker-dept-1" > "${WAVE_HOME}/fleet/bootstrap-result"
+        : > "${WAVE_HOME}/fleet/initial-fleet.ok"
+        ;;
+      status)
+        json_status
+        ;;
+      *)
+        echo "사용법: wave fleet {bootstrap|status [--json]}" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  doctor)
+    [[ "${2:-}" == "--json" ]] || { echo "사용법: wave doctor --json" >&2; exit 2; }
+    identify_exit=1
+    if [[ -x "${WAVE_HOME}/bin/cys" ]]; then
+      "${WAVE_HOME}/bin/cys" identify >/dev/null 2>&1 && identify_exit=0 || true
+    fi
+    python3 - "$ROLES_FILE" "$identify_exit" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+roles = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("roles", [])
+print(json.dumps({
+    "identify_exit": int(sys.argv[2]),
+    "seats": [
+        {"role": item.get("role"), "injected_bytes": 0}
+        for item in roles
+    ],
+}, ensure_ascii=False))
+PY
+    ;;
+  *)
+    echo "사용법: wave fleet bootstrap|status 또는 wave doctor --json" >&2
+    exit 2
+    ;;
+esac

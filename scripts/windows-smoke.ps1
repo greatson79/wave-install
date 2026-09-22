@@ -10,6 +10,9 @@ $source = Split-Path -Parent $PSScriptRoot
 $run = Join-Path $env:USERPROFILE ('wave-runner-smoke-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $run | Out-Null
 Copy-Item (Join-Path $source 'bootstrap.ps1'), (Join-Path $source 'steps.json'), (Join-Path $source 'install-state.json') -Destination $run
+$srcLen = (Get-Item (Join-Path $source 'bootstrap.ps1')).Length
+$dstLen = (Get-Item (Join-Path $run 'bootstrap.ps1')).Length
+Write-Host "DIAG: bootstrap.ps1 source bytes=$srcLen copy bytes=$dstLen"
 $env:WAVE_HOME = Join-Path $run 'wave'
 $version = $TerminalTag.Substring(1)
 $asset = "wave-terminal-$version-windows-x64-setup.exe"
@@ -30,7 +33,15 @@ if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $env:WAVE_HOME)) { throw 'W-
 $text = Get-Content -LiteralPath (Join-Path $run 'bootstrap.ps1') -Raw -Encoding utf8
 $marker = "`nLoad-Config`nif (`$DryRun)"
 $idx = $text.IndexOf($marker, [StringComparison]::Ordinal)
-if ($idx -lt 0) { throw '설치기 함수 경계 불일치' }
+if ($idx -lt 0) {
+  $lcIdx = $text.IndexOf('Load-Config', [StringComparison]::Ordinal)
+  Write-Host "DIAG: text length=$($text.Length) Load-Config at=$lcIdx"
+  if ($lcIdx -ge 0) {
+    $ctx = $text.Substring([Math]::Max(0, $lcIdx - 5), [Math]::Min(60, $text.Length - [Math]::Max(0, $lcIdx - 5)))
+    Write-Host ("DIAG: context bytes=" + (($ctx.ToCharArray() | ForEach-Object { [int]$_ }) -join ','))
+  }
+  throw '설치기 함수 경계 불일치'
+}
 $parts = @($text.Substring(0, $idx), $text.Substring($idx + $marker.Length))
 $harness = Join-Path $run 'signed-install-smoke.ps1'
 $tail = @'

@@ -51,7 +51,8 @@ function Get-JCode([string]$Message) {
 }
 
 function Write-JCode([string]$Code) {
-  $rule = $HelpRules | Where-Object { $_.code -eq $Code } | Select-Object -First 1
+  $matches5 = [object[]]($HelpRules | Where-Object { $_.code -eq $Code })
+  $rule = if ($matches5.Count -gt 0) { $matches5[0] } else { $null }
   if ($null -eq $rule) { $Code = 'J-UNK-00'; $rule = $HelpRules[-1] }
   $script:DiagnosticWritten = $true
   # Reporting must still run when local logging fails (disk/permission errors).
@@ -381,7 +382,10 @@ $HelpRulesJson = @'
   }
 ]
 '@
-$HelpRules = @($HelpRulesJson | ConvertFrom-Json)
+# Windows PowerShell 5.1's ConvertFrom-Json can hand back an object that member-enumerates
+# instead of a real element array; a bare @() wrap does not always force true array-ness on
+# 5.1 the way it does on 7+. [object[]] is a type-level cast that does.
+$HelpRules = [object[]]($HelpRulesJson | ConvertFrom-Json)
 
 function Now-Utc {
   return [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")

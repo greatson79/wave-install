@@ -9,6 +9,18 @@ import sys
 
 PAIRS = {')': '(', '}': '{', ']': '['}
 
+UTF8_BOM = b'\xef\xbb\xbf'
+
+
+def check_bom(path):
+    """Native Windows PowerShell 5.1 reads BOM-less files as system ANSI,
+    corrupting non-ASCII (e.g. Korean) string literals and breaking the
+    parser. Every .ps1 shipped to users must carry a UTF-8 BOM."""
+    head = Path(path).read_bytes()[:3]
+    if head != UTF8_BOM:
+        return [f'{path}: missing UTF-8 BOM (PowerShell 5.1 will misread non-ASCII literals as ANSI)']
+    return []
+
 
 def check(path):
     text = Path(path).read_text(encoding='utf-8-sig')
@@ -89,12 +101,12 @@ def main():
     errors = []
     for path in sys.argv[1:]:
         try:
-            problems = check(path)
+            problems = check_bom(path) + check(path)
         except (OSError, UnicodeError) as exc:
             problems = [f'{path}: {exc}']
         errors.extend(problems)
         if not problems:
-            print(f'PASS: {path} delimiter balance (native parsing still required)')
+            print(f'PASS: {path} BOM + delimiter balance (native parsing still required)')
     for message in errors:
         print(message, file=sys.stderr)
     return int(bool(errors))

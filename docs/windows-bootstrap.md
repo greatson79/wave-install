@@ -18,7 +18,8 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 2. `steps.json`과 `site/steps.json`의 release 버전·Windows 이름·URL·SHA256·minisig URL을 맞춥니다.
    Mac 릴리스 매핑도 함께 검사합니다. 공개키와 minisign 검증은 유지합니다.
 3. `bash tests/win-pin-release.sh`로 해당 공개 릴리스의 실제 파일 바이트·지문·체크섬 정확한 1행을 대조합니다.
-4. Windows workflow_dispatch에 같은 태그와 독립 SHA256을 넣습니다. 공개 핀 대조 실패 시 NSIS 스모크로 가지 않습니다.
+4. Windows workflow_dispatch에서 `release_smoke=true`를 선택하고 같은 태그와 독립 SHA256을 넣습니다.
+   공개 핀 대조 또는 OS 매트릭스 실패 시 NSIS 스모크로 가지 않습니다.
 
 `--release-dir <폴더>`는 로컬 후보/픽스처 대조 옵션입니다. 폴더에는 `SHA256SUMS`와
 `wave-terminal-<버전>-windows-x64-setup.exe`가 있어야 합니다. 없는 파일·중복 선언·중복 체크섬 행·
@@ -68,7 +69,10 @@ PWSH=/path/to/pwsh python3 tests/test_windows_install.py
 
 PowerShell 괄호 검사는 문자열·주석을 제외하며 실제 파서는 아닙니다. 문자열 보간 안의 식은 검사하지 않습니다.
 Windows job은 체크아웃 직후 이 검사를 먼저 하고 PowerShell 5.1/7 네이티브 파싱·함수 검증을 합니다.
-일반 push/PR은 로컬 검체 검증, workflow_dispatch는 공개 릴리스 핀 검증과 실제 서명 NSIS 스모크를 추가합니다.
+Windows·macOS 매트릭스에서 일반 push/PR과 기본 workflow_dispatch는 핀과 무관한 로컬 검체를 검증합니다.
+`release_smoke` 기본값은 false입니다. true로 명시한 수동 실행만 공개 릴리스 핀 검증과 실제 서명 NSIS 스모크를 추가합니다.
+s746의 draft 릴리스가 나온 것만으로 공개 자산 다운로드가 가능하다고 간주하지 않습니다.
+확정 핀과 검증 가능한 자산 경로가 준비될 때까지 릴리스 스모크는 실행하지 않습니다.
 Windows 전용 NTFS ADS 검증은 Windows에서만 실행합니다. macOS의 S04 회귀는 NSIS 프로세스를 대역으로 실행합니다.
 실제 Windows 작업·V3·GUI/SmartScreen·한글/공백 계정명·실제 로그인과 전체 설치 성공은 별도 검증 대상입니다.
 
@@ -84,3 +88,29 @@ macOS 호스트의 PowerShell 7에서 unittest 39건 중 38건 통과, 실제 Wi
 네이티브 파싱, Bash 문법, 워크플로 YAML, S3/S2/S5 계약 검사도 통과했습니다.
 `win-pin-release.sh`는 미확정 `WaveVersion`을 거부하여 종료값 1을 반환했습니다.
 Windows CI는 파일로 구성했으며 실행하지 않았습니다. push·배포·실제 로그인·실제 설치는 하지 않았습니다.
+
+
+## 핀 대기 중 워크플로 정합성 검사
+
+`python3 -m pip install -r tests/requirements-ci.txt`로 YAML 검사 의존성만 준비합니다.
+설치기 자체에 추가되는 의존성은 없습니다.
+
+```bash
+python3 tests/workflow-check.py
+python3 tests/test_workflow_contract.py
+```
+
+검사기는 실제 YAML을 읽어 중복 키, Windows/macOS 매트릭스, 플랫폼별 첫 괄호 검사,
+PowerShell 5.1/7 파싱, 릴리스 스모크의 명시적 선택과 선행 검증 의존성을 확인합니다.
+정상 구성 외에 9개 변형(매트릭스 제거·조기 PowerShell 실행·기본 릴리스 실행·필수 핀 입력·
+PR 실설치·선행 검증 제거·실패 무시·쓰기 토큰·무조건 공개 다운로드)을 거부합니다.
+`actionlint`는 GitHub Actions 문법·표현식을 별도로 검사하는 용도이며,
+이 프로젝트 계약 검사는 actionlint나 실제 러너 실행을 대체하지 않습니다.
+
+후속 로컬 검증(2026-09-22, e741246 이후): actionlint 1.7.7의 워크플로 문법·표현식 검사 통과.
+공식 릴리스의 체크섬을 확인한 검사기를 워크트리 안 임시 폴더에서 실행한 뒤 제거했습니다.
+shellcheck는 설치되어 있지 않아 actionlint에서 비활성화했으며 Bash 3개 실행 블록은 `bash -n`으로 검사했습니다.
+PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니다.
+전체 unittest 42건 중 41건 통과, Windows NTFS ADS 1건은 macOS이므로 건너뛰었습니다.
+괄호·도움말·핀 변조 13검체·S3/S2/S5 계약도 통과했습니다.
+핀·설치기 본문은 수정하지 않았으며 실제 GitHub 러너 실행, 공개 릴리스 다운로드, push는 하지 않았습니다.

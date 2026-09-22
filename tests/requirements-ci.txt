@@ -1,0 +1,2 @@
+# YAML parsing only; installer/runtime has no new dependency.
+PyYAML==6.0.3

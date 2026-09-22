@@ -1,62 +1,107 @@
-name: Windows signed installer smoke
+name: Installer contract matrix and optional Windows release smoke
 on:
   push:
   pull_request:
   workflow_dispatch:
     inputs:
+      release_smoke:
+        description: 확정 핀과 공개 자산이 준비된 뒤 실제 Windows 설치까지 검증
+        default: false
+        required: false
+        type: boolean
       terminal_tag:
-        description: wave-terminal의 서명된 공개 Release 태그 (wave-install 태그 아님)
-        default: v0.1.1
-        required: true
+        description: release_smoke=true일 때 필수인 wave-terminal Release 태그
+        required: false
         type: string
       expected_installer_sha256:
-        description: 독립 검수한 Windows setup.exe SHA256
-        required: true
+        description: release_smoke=true일 때 필수인 독립 검수 Windows setup.exe SHA256
+        required: false
         type: string
 permissions:
   contents: read
 jobs:
   bootstrap-contract:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      WAVE_NO_PROGRESS: '1'
+      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
       # 2026-09-10 upstream missing-brace incident: precheck before ANY PS execution.
-      - name: PowerShell delimiter precheck (first check)
+      # Use preinstalled Python so the syntax precheck also precedes tool setup.
+      - name: Windows delimiter precheck (first executable check)
+        if: runner.os == 'Windows'
         shell: cmd
         run: python tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 scripts/windows-smoke.ps1
-      - name: Native Windows PowerShell 5.1 and PowerShell 7 parsing
-        shell: powershell
+      - name: macOS delimiter precheck (first executable check)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: python3 tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 scripts/windows-smoke.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare workflow checker
+        shell: pwsh
         run: |
-          $files = @('bootstrap.ps1', 'reinstall.ps1', 'reset.ps1', 'scripts/windows-smoke.ps1')
-          foreach ($file in $files) {
+          python -m pip install -r tests/requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'workflow checker dependency failed' }
+      - name: Native PowerShell 7 parsing
+        shell: pwsh
+        run: |
+          foreach ($file in @('bootstrap.ps1', 'reinstall.ps1', 'reset.ps1', 'scripts/windows-smoke.ps1')) {
             $tokens = $null; $errors = $null
             $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
           }
-          pwsh -NoProfile -Command '$t=$null; $e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD "bootstrap.ps1"),[ref]$t,[ref]$e); if($e.Count){throw ($e | Out-String)}'
-          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 parse failed' }
-      - name: Canonical help, mutation tests, and helper behavior
-        shell: pwsh
-        env:
-          WAVE_NO_PROGRESS: '1'
+      - name: Native Windows PowerShell 5.1 parsing and helper behavior
+        if: runner.os == 'Windows'
+        shell: powershell
         run: |
+          foreach ($file in @('bootstrap.ps1', 'reinstall.ps1', 'reset.ps1', 'scripts/windows-smoke.ps1')) {
+            $tokens = $null; $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw ($errors | Out-String) }
+          }
+          $env:PWSH = (Get-Command powershell).Source
+          python tests/test_windows_bootstrap.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 helper tests failed' }
+      - name: Workflow, canonical help, mutants, and helper behavior
+        shell: pwsh
+        run: |
+          python tests/workflow-check.py
+          if ($LASTEXITCODE -ne 0) { throw 'workflow contract failed' }
+          python tests/test_workflow_contract.py
+          if ($LASTEXITCODE -ne 0) { throw 'workflow mutants failed' }
           python tests/help-rules-check.py
           if ($LASTEXITCODE -ne 0) { throw 'help rules failed' }
           python tests/test_windows_checks.py
           if ($LASTEXITCODE -ne 0) { throw 'checker mutants failed' }
           python tests/win-pin-mutate.py
           if ($LASTEXITCODE -ne 0) { throw 'pin mutants failed' }
-          foreach ($engine in @('powershell', 'pwsh')) {
-            $env:PWSH = (Get-Command $engine).Source
-            python tests/test_windows_bootstrap.py
-            if ($LASTEXITCODE -ne 0) { throw "helper tests failed: $engine" }
-          }
-      - name: Published release pin (mandatory on release smoke)
-        if: github.event_name == 'workflow_dispatch'
+          $env:PWSH = (Get-Command pwsh).Source
+          python tests/test_windows_bootstrap.py
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell 7 helper tests failed' }
+      - name: macOS parity regressions (isolated fixtures)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          export PWSH="$(command -v pwsh)"
+          bash -n bootstrap.sh reinstall.sh reset.sh tests/win-pin-release.sh tests/win-pin-mutate.sh
+          python tests/test_state_contract.py
+          python tests/test_version_gate.py
+          python tests/test_failure_and_daemon_gate.py
+          python tests/test_windows_install.py
+      - name: Published release pin (only on explicit release smoke)
+        if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
         shell: bash
         run: bash tests/win-pin-release.sh
   signed-install:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
     needs: bootstrap-contract
     runs-on: windows-latest
     timeout-minutes: 20

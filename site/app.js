@@ -27,7 +27,7 @@
     },
     windows: {
       label: "Windows · PowerShell 설치",
-      command: 'irm https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.ps1 -OutFile bootstrap.ps1; .\\bootstrap.ps1'
+      command: 'irm https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.ps1 -OutFile bootstrap.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File .\\bootstrap.ps1'
     }
   };
 

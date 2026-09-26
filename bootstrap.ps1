@@ -414,7 +414,7 @@ function Get-ConfigValue([string]$Path) {
 
 function Load-Config {
   if (-not (Test-Path -LiteralPath $StepsFile)) {
-    $url = if ($env:WAVE_INSTALL_STEPS_URL) { $env:WAVE_INSTALL_STEPS_URL } else { "__S3_STEPS_URL__" }
+    $url = if ($env:WAVE_INSTALL_STEPS_URL) { $env:WAVE_INSTALL_STEPS_URL } else { "https://raw.githubusercontent.com/greatson79/wave-install/main/steps.json" }
     if ($url -like "__*__") { throw "steps.json URL이 S5 전 배포 자리표시자 상태임" }
     if (-not ($url -like "https://*")) { throw "steps.json은 HTTPS URL이어야 함" }
     New-Item -ItemType Directory -Force -Path (Join-Path $WaveHome "config") | Out-Null

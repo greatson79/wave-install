@@ -50,7 +50,7 @@ load_config() {
   if [[ -f "$STEPS_FILE" ]]; then
     return 0
   fi
-  local config_url="${WAVE_INSTALL_STEPS_URL:-__S3_STEPS_URL__}"
+  local config_url="${WAVE_INSTALL_STEPS_URL:-https://raw.githubusercontent.com/greatson79/wave-install/main/steps.json}"
   [[ "$config_url" == __*__ ]] && fail_message "steps.json URL이 S5 전 배포 자리표시자 상태임" && return 1
   require_command curl || return 1
   [[ "$config_url" == https://* ]] || fail_message "steps.json은 HTTPS URL이어야 함" || return 1

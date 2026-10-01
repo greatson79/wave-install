@@ -216,3 +216,35 @@ details > p { margin: -4px 28px 18px 4px; color: var(--muted); font-size: 12px; 
   .site-footer { display: block; }
   .site-footer > div + div { margin-top: 12px; }
 }
+
+/* /get 쉬운 말 개정(2026-10-01): 준비물·할 일 목록·뜨는 창 표·고급 접힘 */
+.quick-steps { display: grid; gap: 14px; padding: 0; margin: 22px 0 0; list-style: none; }
+.quick-steps li { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(255,255,255,.72); color: var(--navy); font-size: 15px; font-weight: 700; }
+.quick-steps strong { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--cyan); color: var(--navy); font-size: 14px; }
+.need-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0; margin: 0; list-style: none; }
+.need-grid li { display: grid; gap: 6px; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.6); }
+.need-grid strong { color: var(--navy); font-size: 17px; letter-spacing: -.03em; }
+.need-grid span { color: var(--muted); font-size: 14px; line-height: 1.6; word-break: keep-all; }
+.do-list { display: grid; gap: 10px; padding: 0; margin: 22px 0 0; list-style: none; counter-reset: dolist; }
+.do-list[hidden] { display: none; }
+.do-list li { counter-increment: dolist; padding: 16px 18px 16px 58px; position: relative; border-radius: var(--radius-sm); background: var(--white); border: 1px solid var(--line); color: #4f5d72; font-size: 15px; line-height: 1.65; word-break: keep-all; }
+.do-list li::before { content: counter(dolist); position: absolute; left: 16px; top: 15px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--navy); color: var(--white); font-size: 13px; font-weight: 800; }
+.do-list strong { color: var(--navy); }
+kbd { padding: 2px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--white); color: var(--navy); font: 700 .86em/1.4 ui-monospace, monospace; }
+.popup-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; align-items: start; }
+.popup-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.6; color: #4f5d72; }
+.popup-table th, .popup-table td { padding: 12px 10px; border-top: 1px solid rgba(17,35,55,.12); text-align: left; vertical-align: top; word-break: keep-all; }
+.popup-table thead th { border-top: 0; color: var(--muted); font-size: 12px; }
+.popup-table tbody th { width: 46%; color: var(--navy); font-weight: 700; }
+.popup-table strong { color: var(--navy); }
+.advanced-fold { border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.5); padding: 4px 22px; }
+.advanced-fold > summary { padding: 18px 0; font-size: 14px; }
+.advanced-body { padding: 4px 0 22px; color: #4f5d72; font-size: 14px; line-height: 1.75; word-break: keep-all; }
+.advanced-body h3 { margin: 26px 0 8px; color: var(--navy); font-size: 16px; letter-spacing: -.03em; }
+.advanced-body .steps-list { margin-top: 12px; }
+.reset-card .button { margin-top: 18px; width: 100%; font-size: 12px; }
+@media (max-width: 860px) { .popup-grid, .need-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) {
+  .hero h1, .section-heading h2 { font-size: clamp(26px, 8.4vw, 34px); overflow-wrap: anywhere; word-break: keep-all; }
+  .do-list li { font-size: 14px; }
+}

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Wave Terminal 설치 안내 — 출처와 파일 무결성, macOS 공증 상태를 확인하세요." />
+    <meta name="description" content="Wave Terminal 설치 안내 — 명령 한 줄, 뜨는 창에서 누를 버튼, 막혔을 때 문의 방법까지." />
     <title>Wave Terminal — 설치 안내</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2312263b'/%3E%3Cpath d='M9 21h4V11H9zm6 0h4V7h-4zm6 0h4V4h-4z' fill='%2338d9cb'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
@@ -17,167 +17,211 @@
         <span>WAVE <em>TERMINAL</em></span>
       </a>
       <nav class="top-nav" aria-label="페이지 탐색">
+        <a href="#ready">준비물</a>
         <a href="#install">설치</a>
-        <a href="#steps">10단계</a>
-        <a href="#unsigned">첫 실행</a>
-        <a href="#help">문제 해결</a>
+        <a href="#windows-popups">뜨는 창</a>
+        <a href="#first-run">첫 실행</a>
+        <a href="#help">문의</a>
       </nav>
-      <span class="header-tag">LIGHT / v0.1.3</span>
+      <span class="header-tag">LIGHT / v0.2.0</span>
     </header>
 
     <main id="main">
       <section class="hero" id="top" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">INSTALL GUIDE <span>·</span> 준비된 시작점</p>
-          <h1 id="hero-title">내 컴퓨터에<br /><span>Wave Terminal</span>을 설치하세요.</h1>
-          <p class="hero-lede">마스터 비서와 부서 1명으로 구성된 설치팩입니다. 현재 좌석 수는 역할 정의에서 확인하며, 실제 기동과 주입량은 미검증입니다. 출처와 무결성을 확인한 뒤 진행하세요.</p>
+          <p class="eyebrow">설치 안내</p>
+          <h1 id="hero-title">명령 한 줄로<br /><span>Wave Terminal</span>을 설치합니다.</h1>
+          <p class="hero-lede">아래 한 줄을 붙여넣고, 중간에 뜨는 창에서 이 페이지가 알려 주는 버튼만 누르면 됩니다. 관리자 비밀번호는 필요 없습니다.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="#install">설치 명령 보기 <span aria-hidden="true">↓</span></a>
-            <a class="button button-quiet" href="#unsigned">첫 실행 안내 <span aria-hidden="true">↗</span></a>
-          </div>
-          <p class="origin-line"><strong>원개발자</strong> idoforgod · CYSJavis <span>·</span> <strong>라이선스</strong> MIT</p>
-        </div>
-        <div class="hero-card" aria-label="Wave Terminal 구성 요약">
-          <div class="hero-card-top"><span class="live-dot"></span> WAVE / LIGHT SETUP</div>
-          <div class="terminal-window">
-            <div class="terminal-top"><span></span><span></span><span></span><b>first-run</b></div>
-            <div class="terminal-body">
-              <p><span class="prompt">$</span> cys identify</p>
-              <p class="muted">seat 01 / master</p>
-              <p class="muted">seat 02 / dept</p>
-              <p class="success">wave-pack / 편성 정의</p>
-            </div>
-          </div>
-          <div class="hero-card-footer">
-            <span><strong>2</strong> 역할 정의</span>
-            <span><strong>10</strong> 설치 단계</span>
-            <span><strong>0</strong> 관리자 권한</span>
+            <a class="button button-quiet" href="#ready">먼저 준비물 확인 <span aria-hidden="true">↓</span></a>
           </div>
         </div>
+        <div class="hero-card" aria-label="설치 순서 요약">
+          <div class="hero-card-top"><span class="live-dot"></span> 설치는 3단계</div>
+          <ol class="quick-steps">
+            <li><strong>1</strong><span>준비물을 확인합니다.</span></li>
+            <li><strong>2</strong><span>한 줄을 복사해 붙여넣습니다.</span></li>
+            <li><strong>3</strong><span>뜨는 창에서 안내된 버튼을 누릅니다.</span></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section" id="ready" aria-labelledby="ready-title">
+        <div class="section-heading">
+          <p class="eyebrow">01 · 준비물</p>
+          <h2 id="ready-title">시작하기 전에 4가지만 확인하세요.</h2>
+        </div>
+        <ul class="need-grid">
+          <li><strong>유료 Claude 계정</strong><span>설치 중 로그인합니다. 무료 계정으로는 사용할 수 없습니다.</span></li>
+          <li><strong>Mac 또는 Windows 컴퓨터</strong><span>Mac은 터미널, Windows는 PowerShell 창을 씁니다. 아래에서 열기 방법을 알려 드립니다.</span></li>
+          <li><strong>인터넷 연결</strong><span>설치 중 필요한 파일을 내려받습니다.</span></li>
+          <li><strong>저장 공간 약 5GB</strong><span>빈 공간이 부족하면 설치가 처음에 멈추고 이유를 알려 줍니다.</span></li>
+        </ul>
       </section>
 
       <section class="section install-section" id="install" aria-labelledby="install-title">
         <div class="section-heading">
-          <p class="eyebrow">01 / INSTALL</p>
-          <h2 id="install-title">명령 한 줄만 터미널에 붙여넣으세요.</h2>
-          <p>설치기가 설치팩을 스스로 받아 검증하고, Claude Code 설치·업데이트와 로그인 안내까지 진행합니다. 로그인 승인과 맥 권한 허용만 직접 해 주세요.</p>
+          <p class="eyebrow">02 · 설치</p>
+          <h2 id="install-title">내 컴퓨터를 고르고, 한 줄을 붙여넣으세요.</h2>
         </div>
         <div class="install-layout">
           <div class="command-card">
             <div class="command-card-head">
               <div class="os-switcher" role="tablist" aria-label="운영체제 선택">
-                <button class="os-tab is-active" type="button" role="tab" aria-selected="true" data-os="mac">macOS</button>
+                <button class="os-tab is-active" type="button" role="tab" aria-selected="true" data-os="mac">Mac</button>
                 <button class="os-tab" type="button" role="tab" aria-selected="false" data-os="windows">Windows</button>
               </div>
-              <span class="command-label" id="command-label">macOS · 사용자 폴더 설치</span>
+              <span class="command-label" id="command-label">Mac · 터미널에 붙여넣기</span>
             </div>
             <div class="command-line">
               <code id="install-command">curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.sh -o "$HOME/install-wave.sh" &amp;&amp; bash "$HOME/install-wave.sh"</code>
               <button class="copy-button" type="button" id="copy-command" aria-describedby="copy-status">복사</button>
             </div>
-            <p class="copy-status" id="copy-status" role="status" aria-live="polite">터미널에 붙여넣고 Return. 설치팩 내려받기·Claude Code 설치·로그인 안내까지 설치기가 진행합니다.</p>
-            <details class="advanced"><summary>고급: 설치팩 zip을 직접 받은 경우</summary><p><a href="https://github.com/greatson79/wave-install/archive/refs/tags/v0.2.0.zip">wave-install-0.2.0.zip</a>을 내려받아 압축을 풀면 <code>wave-install-0.2.0</code> 폴더가 생깁니다. 터미널에서 <code>cd ~/Downloads/wave-install-0.2.0 &amp;&amp; bash bootstrap.sh</code> 한 줄만 실행하세요(위 명령은 칠 필요 없음).</p></details>
+            <p class="copy-status" id="copy-status" role="status" aria-live="polite">복사한 뒤 아래 순서대로 하세요.</p>
           </div>
-          <aside class="release-card" aria-label="다운로드 확인 기준">
-            <p class="eyebrow">DOWNLOAD GATE</p>
-            <h3>실행보다 먼저<br />확인합니다.</h3>
+          <aside class="release-card" aria-label="설치가 하는 일">
+            <p class="eyebrow">자동으로 해 주는 일</p>
+            <h3>직접 할 일은<br />로그인과 허용뿐.</h3>
             <ol class="mini-checklist">
-              <li><span>01</span> 공식 Release 주소인지</li>
-              <li><span>02</span> 고정 SHA256이 일치하는지</li>
-              <li><span>03</span> 앱 codesign 검증이 통과하는지</li>
+              <li><span>01</span> 설치 파일 받기·확인</li>
+              <li><span>02</span> Claude Code 설치·업데이트</li>
+              <li><span>03</span> Wave Terminal 설치</li>
             </ol>
-            <a href="#downloads" class="text-link">검증 방법 읽기 <span aria-hidden="true">→</span></a>
           </aside>
         </div>
-        <div class="guard-grid" aria-label="설치 확인 원칙">
-          <article class="guard-card"><span class="card-number">A</span><h3>로컬 범위</h3><p>설치 파일과 상태 파일은 사용자 폴더 안에서만 다룹니다.</p></article>
-          <article class="guard-card"><span class="card-number">B</span><h3>검증 우선</h3><p>설치 전에 Release·고정 SHA256·codesign을 확인합니다.</p></article>
-          <article class="guard-card"><span class="card-number">C</span><h3>실패를 숨기지 않음</h3><p>단계별 오류와 건너뜀·미측정을 기록합니다. 예외가 있으면 complete_with_exceptions로 마무리하고, 전체 검증 완료로 표시하지 않습니다.</p></article>
+
+        <ol class="do-list os-panel" data-os-panel="mac">
+          <li><strong>터미널을 엽니다.</strong> <kbd>Command</kbd>+<kbd>Space</kbd>를 누르고 <b>터미널</b>을 입력한 뒤 <kbd>Return</kbd>.</li>
+          <li><strong>위의 한 줄을 붙여넣습니다.</strong> <kbd>Command</kbd>+<kbd>V</kbd>.</li>
+          <li><strong><kbd>Return</kbd>을 누릅니다.</strong> 이후 화면에 뜨는 안내를 <a href="#mac-popups">아래 표</a>와 맞춰 보며 진행하세요.</li>
+        </ol>
+        <!-- PLACEHOLDER-WIN: Windows 한 줄 명령·릴리스 URL 은 s925(feat/v0.2-windows) 확정 전 자리표시자. 배포 전 app.js 의 windows.command 와 함께 확정값으로 교체. -->
+        <ol class="do-list os-panel" data-os-panel="windows" hidden>
+          <li><strong>PowerShell을 엽니다.</strong> 시작 메뉴를 열고 <b>PowerShell</b>을 입력한 뒤 <b>Windows PowerShell</b>을 선택합니다. 관리자 권한으로 열 필요는 없습니다.</li>
+          <li><strong>위의 한 줄을 붙여넣습니다.</strong> 창 안에서 마우스 오른쪽 버튼을 누르면 붙여넣어집니다.</li>
+          <li><strong><kbd>Enter</kbd>를 누릅니다.</strong> 이후 화면에 뜨는 안내를 <a href="#windows-popups">아래 표</a>와 맞춰 보며 진행하세요.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="popups" aria-labelledby="popups-title">
+        <div class="section-heading">
+          <p class="eyebrow">03 · 중간에 뜨는 창</p>
+          <h2 id="popups-title">이런 창이 뜨면, 이 버튼을 누르세요.</h2>
+        </div>
+        <div class="popup-grid">
+          <article class="procedure-card" id="mac-popups">
+            <div class="procedure-head"><span class="platform-badge mac-badge">공통 · Mac</span></div>
+            <table class="popup-table">
+              <thead><tr><th scope="col">이런 화면이 뜨면</th><th scope="col">이렇게 하세요</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">브라우저가 열리며 Claude 로그인 화면</th><td>유료 계정으로 로그인하고 <strong>승인</strong>을 누르세요.</td></tr>
+                <tr><th scope="row">터미널이 코드를 붙여넣으라고 함</th><td>브라우저에 나온 코드를 복사해 터미널에 붙여넣고 <kbd>Return</kbd>.</td></tr>
+                <tr><th scope="row">Mac이 허용 여부를 묻는 창 (2번 뜰 수 있음)</th><td>두 번 모두 <strong>허용</strong>을 누르세요.</td></tr>
+              </tbody>
+            </table>
+          </article>
+          <article class="procedure-card" id="windows-popups">
+            <div class="procedure-head"><span class="platform-badge win-badge">공통 · Windows</span></div>
+            <table class="popup-table">
+              <thead><tr><th scope="col">이런 화면이 뜨면</th><th scope="col">이렇게 하세요</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">브라우저가 열리며 Claude 로그인 화면</th><td>유료 계정으로 로그인하고 <strong>승인</strong>을 누르세요.</td></tr>
+                <tr><th scope="row">PowerShell이 코드를 붙여넣으라고 함</th><td>브라우저에 나온 코드를 복사해 붙여넣고 <kbd>Enter</kbd>.</td></tr>
+                <tr><th scope="row">파란색 <b>Windows의 PC 보호</b> (SmartScreen)</th><td><strong>추가 정보</strong>를 누르고, 이어서 <strong>실행</strong>.</td></tr>
+                <tr><th scope="row">백신(V3·알약·Defender 등)이 경고하거나 파일을 막음</th><td>예외로 등록하지 마세요. 경고 창을 사진으로 찍어 <a href="#help">문의</a>로 보내 주세요.</td></tr>
+              </tbody>
+            </table>
+            <p class="procedure-stop">PowerShell 창이 갑자기 닫혀도 같은 한 줄을 다시 붙여넣으면 끝난 단계는 건너뛰고 이어서 진행합니다.</p>
+          </article>
         </div>
       </section>
 
-      <section class="section steps-section" id="steps" aria-labelledby="steps-title">
-        <div class="section-heading split-heading">
-          <div>
-            <p class="eyebrow">02 / FLOW</p>
-            <h2 id="steps-title">설치 과정을 한눈에.</h2>
-          </div>
-          <p class="steps-source" id="steps-source-status" role="status" aria-live="polite">steps.json을 불러오는 중…</p>
-        </div>
-        <ol class="steps-list" id="steps-list" aria-label="Wave Terminal 설치 단계"></ol>
-        <noscript><p class="noscript-note">단계 목록을 보려면 브라우저에서 JavaScript를 활성화하세요. 설치 정본은 steps.json입니다.</p></noscript>
-      </section>
-
-      <section class="section unsigned-section" id="unsigned" aria-labelledby="unsigned-title">
+      <section class="section unsigned-section" id="first-run" aria-labelledby="first-title">
         <div class="warning-heading">
           <div class="warning-icon" aria-hidden="true">!</div>
           <div>
-            <p class="eyebrow">03 / FIRST RUN</p>
-            <h2 id="unsigned-title">macOS 공증 미완: 실행 전에 현재 상태를 확인하세요.</h2>
-            <p>두 DMG 모두 Apple 공증 없음 · spctl 거부됨. arm64 앱은 리소스 봉인 검증에 실패했고, x64 앱은 미서명입니다. SHA256·codesign 검증은 배포 파일의 무결성 확인이며 Apple 공증을 대신하지 않습니다.</p>
+            <p class="eyebrow">04 · 설치 후 첫 실행</p>
+            <h2 id="first-title">처음 열 때 한 번, 경고가 뜹니다.</h2>
+            <p>Wave Terminal은 아직 Apple·Microsoft의 정식 인증을 받지 않은 앱입니다. 그래서 처음 열 때 운영체제가 경고를 보여 줍니다. 앱이 변조되지 않았는지는 설치 프로그램이 파일 지문(SHA256)으로 이미 확인했습니다.</p>
           </div>
         </div>
         <div class="unsigned-grid">
           <article class="procedure-card">
-            <div class="procedure-head"><span class="platform-badge mac-badge">macOS</span><span>Gatekeeper</span></div>
+            <div class="procedure-head"><span class="platform-badge mac-badge">Mac</span><span>처음 열기</span></div>
             <ol>
-              <li>설치기가 DMG의 고정 SHA256·codesign 검증을 통과시킨 것부터 확인합니다.</li>
-              <li>DMG에서 사용자 폴더로 복사한 앱의 위치를 확인합니다.</li>
-              <li>앱을 Control-클릭(또는 우클릭)하고 <strong>열기</strong>를 선택합니다.</li>
-              <li>출처와 무결성을 확인하고 격리속성 해제를 직접 선택한 경우에만, 설치된 해당 앱에 한해 <code>xattr -dr com.apple.quarantine "$HOME/.wave/apps/Wave Terminal.app"</code>을 실행합니다. 다른 위치에 복사했다면 실제 앱 경로로 바꾸세요.</li>
-              <li>격리속성 해제는 서명 결함을 고치거나 공증을 추가하지 않습니다. 실행 성공은 확인되지 않았으며, 계속 차단되면 중단하고 오류를 전달하세요.</li>
+              <li>Finder에서 설치된 <strong>Wave Terminal</strong> 앱을 찾습니다. 설치 마지막 화면이 위치를 알려 줍니다.</li>
+              <li>앱을 <kbd>Control</kbd>을 누른 채 클릭(또는 오른쪽 클릭)하고 <strong>열기</strong>를 고릅니다.</li>
+              <li>경고 창에서 다시 <strong>열기</strong>를 누릅니다.</li>
+              <li>창(좌석) 2개가 보이면 설치가 끝난 것입니다.</li>
             </ol>
-            <p class="procedure-stop"><strong>해시가 다르거나 출처를 확인할 수 없으면 실행하지 마세요.</strong></p>
+            <p class="procedure-stop">계속 열리지 않으면 더 시도하지 말고 화면 사진과 함께 <a href="#help">문의</a>해 주세요.</p>
           </article>
           <article class="procedure-card">
-            <div class="procedure-head"><span class="platform-badge win-badge">Windows</span><span>SmartScreen</span></div>
+            <div class="procedure-head"><span class="platform-badge win-badge">Windows</span><span>처음 열기</span></div>
             <ol>
-              <li>공식 Release에서 받은 <code>.exe</code>의 SHA256SUMS·minisign 검증부터 확인합니다.</li>
-              <li>백신이 경고하면 예외를 등록하지 말고 백신 이름·대상 파일·조치를 사진으로 남겨 전달해 주세요.</li>
-              <li>실행 시 <strong>Windows Defender SmartScreen</strong> 창이 뜨면 <strong>추가 정보</strong>를 클릭한 뒤 <strong>실행</strong>을 선택합니다.</li>
-              <li>Claude 로그인 승인 화면이 뜨면 브라우저에서 유료 계정으로 승인합니다.</li>
-              <li>설치가 끝나면 안내된 화면을 그대로 두고, PowerShell 창이 강제로 닫혀도 같은 한 줄 명령을 다시 실행하면 끝난 단계는 건너뛰고 이어집니다.</li>
+              <li>시작 메뉴를 열고 <strong>Wave Terminal</strong>을 입력해 앱을 선택합니다.</li>
+              <li>파란 SmartScreen 창이 뜨면 <strong>추가 정보</strong> → <strong>실행</strong>을 누릅니다.</li>
+              <li>창(좌석) 2개가 보이면 설치가 끝난 것입니다.</li>
             </ol>
-            <p class="procedure-stop"><strong>이 설치기는 Authenticode 코드서명이 없습니다(minisign으로 대체 검증). 해시가 다르거나 출처를 확인할 수 없으면 실행하지 마세요.</strong> 막히면 화면의 오류 코드(J-*)를 그대로 전달해 주세요.</p>
+            <p class="procedure-stop">시작 메뉴에 앱이 보이지 않으면 <a href="#help">문의</a>해 주세요.</p>
           </article>
         </div>
-      </section>
-
-      <section class="section downloads-section" id="downloads" aria-labelledby="downloads-title">
-        <div class="section-heading">
-          <p class="eyebrow">04 / TRUSTED DOWNLOAD</p>
-          <h2 id="downloads-title">다운로드는 세 줄로 검증합니다.</h2>
-          <p>공개 릴리스에서 아래 기준을 모두 만족하는 파일만 사용하세요. 버전과 파일명은 Release의 고정 URL과 대조합니다.</p>
-        </div>
-        <div class="download-grid">
-          <article class="download-step"><span>01</span><h3>공식 출처</h3><p><a href="https://github.com/greatson79/wave-terminal" target="_blank" rel="noreferrer">greatson79/wave-terminal</a>의 Release인지 확인합니다.</p></article>
-          <article class="download-step"><span>02</span><h3>SHA256</h3><p>다운로드한 파일의 SHA256을 설치기에 고정된 값(Release의 <code>SHA256SUMS</code>와 동일)과 비교합니다.</p></article>
-          <article class="download-step"><span>03</span><h3>서명 검증</h3><p>macOS는 앱 <code>codesign</code> 검증, Windows는 공개된 서명 파일과 Wave 공개키로 minisign 검증을 통과시킵니다.</p></article>
-        </div>
-        <div class="release-note"><span class="note-mark">i</span><p>설치팩 v0.2.0은 Wave Terminal v0.1.0 DMG를 사용합니다. 전체 설치 실측과 macOS 공증은 미완입니다. 공식 도메인은 아직 연결하지 않았습니다.</p></div>
       </section>
 
       <section class="section help-section" id="help" aria-labelledby="help-title">
-        <div class="section-heading split-heading">
-          <div><p class="eyebrow">05 / HELP</p><h2 id="help-title">막힌 단계에서 다시 시작하세요.</h2></div>
-          <p>오류 ID는 설치기의 <code>troubleshooting/</code> 키와 맞춥니다.</p>
+        <div class="section-heading">
+          <p class="eyebrow">05 · 막혔을 때</p>
+          <h2 id="help-title">혼자 고민하지 말고 보내 주세요.</h2>
         </div>
         <div class="help-layout">
           <div class="troubleshooting-list">
-            <details><summary><span class="error-id">OS_UNSUPPORTED</span> 운영체제 또는 셸이 지원 대상이 아닌가요?</summary><p>macOS·Windows의 최신 지원 범위와 셸 조건을 확인한 뒤, 조건이 맞지 않으면 문의해 주세요.</p></details>
-            <details><summary><span class="error-id">CHECKSUM_MISMATCH</span> SHA256이 일치하지 않나요?</summary><p>파일을 실행하거나 재사용하지 말고 삭제한 뒤, 공식 Release에서 다시 받아 비교하세요. 계속 다르면 다운로드를 중단합니다.</p></details>
-            <details><summary><span class="error-id">MINISIGN_INVALID</span> minisign 검증이 실패했나요?</summary><p>공개키·서명 파일·릴리스 태그가 같은 버전인지 확인하세요. 확인할 수 없다면 실행하지 말고 지원 주소로 알려 주세요.</p></details>
-            <details><summary><span class="error-id">CLAUDE_LOGIN_REQUIRED</span> Claude 로그인이 멈췄나요?</summary><p>브라우저에서 유료 Claude 계정 로그인을 완료한 뒤 설치기의 해당 단계로 돌아옵니다. 인증 코드는 공개 채널에 남기지 마세요.</p></details>
-            <details><summary><span class="error-id">DAEMON_START_FAILED</span> 데몬 등록에 실패했나요?</summary><p>기본값은 켜짐이지만 선택 단계입니다. 로그 한 파일을 보존하고, 재설치 전에 오류 ID와 운영체제를 기록하세요.</p></details>
+            <details><summary>Claude 로그인에서 멈췄어요.</summary><p>브라우저에서 유료 Claude 계정 로그인을 끝낸 뒤 설치 창으로 돌아와 안내대로 이어 가세요. 로그인 코드는 다른 사람에게 보내지 마세요.</p></details>
+            <details><summary>"파일 지문이 다릅니다" 같은 안내가 나왔어요.</summary><p>그 파일은 실행하지 말고 삭제하세요. 한 줄을 처음부터 다시 실행해도 같으면 설치를 멈추고 문의해 주세요.</p></details>
+            <details><summary>설치가 중간에 멈췄어요.</summary><p>같은 한 줄을 다시 붙여넣으세요. 이미 끝난 단계는 건너뜁니다. 그래도 멈추면 아래 내용을 보내 주세요.</p></details>
           </div>
           <aside class="reset-card">
-            <p class="eyebrow">RECOVERY</p>
-            <h3>재설치 / 초기화</h3>
-            <p>상태 파일과 로그를 확인한 뒤 필요한 작업만 선택하세요. 초기화 전에는 보존할 로그를 먼저 복사합니다.</p>
-            <div class="recovery-line"><code>reinstall.sh</code><span>설치 파일 재적용</span></div>
-            <div class="recovery-line"><code>reset.sh --list</code><span>삭제 대상 미리 보기</span></div>
+            <p class="eyebrow">문의</p>
+            <h3>이메일로 보내 주세요.</h3>
+            <p>아래 3가지를 함께 보내면 가장 빨리 해결됩니다.</p>
+            <div class="recovery-line"><span>1. 컴퓨터 종류</span><span>Mac / Windows</span></div>
+            <div class="recovery-line"><span>2. 화면 사진</span><span>경고·오류 창 전체</span></div>
+            <div class="recovery-line"><span>3. 오류 코드</span><span>화면에 보이는 그대로</span></div>
+            <p><a class="button button-primary" href="mailto:waveacademy@waveainetworks.com">waveacademy@waveainetworks.com</a></p>
           </aside>
         </div>
+      </section>
+
+      <section class="section advanced-section" id="advanced" aria-labelledby="advanced-title">
+        <details class="advanced-fold">
+          <summary id="advanced-title">고급 · 설치팩을 직접 받았거나, 검증·단계를 자세히 보고 싶은 경우</summary>
+          <div class="advanced-body">
+            <h3>설치팩 zip을 직접 받은 경우</h3>
+            <p><a href="https://github.com/greatson79/wave-install/archive/refs/tags/v0.2.0.zip">wave-install-0.2.0.zip</a>을 내려받아 압축을 풀면 <code>wave-install-0.2.0</code> 폴더가 생깁니다. 터미널에서 <code>cd ~/Downloads/wave-install-0.2.0 &amp;&amp; bash bootstrap.sh</code> 한 줄만 실행하세요(위의 설치 명령은 칠 필요 없음).</p>
+
+            <h3>설치기가 확인하는 것</h3>
+            <p>공식 저장소 <a href="https://github.com/greatson79/wave-terminal" target="_blank" rel="noreferrer">greatson79/wave-terminal</a>의 Release에서 받은 파일인지, 설치기에 고정된 SHA256 지문과 일치하는지를 확인합니다. macOS는 앱 <code>codesign</code> 검증을 추가로 합니다. 이 검증은 파일이 변조되지 않았다는 확인이며 Apple 공증을 대신하지 않습니다. 현재 macOS 공증은 받지 않았고(<code>spctl</code> 거부), Windows는 Authenticode 코드서명이 없습니다. 전체 설치 실측은 진행 중입니다.</p>
+
+            <h3>Mac에서 격리 속성을 직접 풀어야 할 때</h3>
+            <p>출처와 지문을 확인했고, 위의 <strong>열기</strong> 방법으로도 열리지 않을 때만 사용하세요. 설치된 Wave Terminal 앱에 한해 <code>xattr -dr com.apple.quarantine "$HOME/.wave/apps/Wave Terminal.app"</code>을 실행합니다. 다른 위치에 복사했다면 실제 앱 경로로 바꾸세요. 서명 문제를 고치지는 않습니다.</p>
+
+            <h3>설치 10단계</h3>
+            <p class="steps-source" id="steps-source-status" role="status" aria-live="polite">steps.json을 불러오는 중…</p>
+            <ol class="steps-list" id="steps-list" aria-label="Wave Terminal 설치 단계"></ol>
+            <noscript><p class="noscript-note">단계 목록을 보려면 브라우저에서 JavaScript를 활성화하세요. 설치 정본은 steps.json입니다.</p></noscript>
+
+            <h3>오류 ID별 안내</h3>
+            <div class="troubleshooting-list">
+              <details><summary><span class="error-id">OS_UNSUPPORTED</span> 운영체제 또는 셸이 지원 대상이 아닌가요?</summary><p>macOS·Windows의 최신 지원 범위와 셸 조건을 확인한 뒤, 조건이 맞지 않으면 문의해 주세요.</p></details>
+              <details><summary><span class="error-id">CHECKSUM_MISMATCH</span> SHA256이 일치하지 않나요?</summary><p>파일을 실행하거나 재사용하지 말고 삭제한 뒤, 공식 Release에서 다시 받아 비교하세요. 계속 다르면 다운로드를 중단합니다.</p></details>
+              <details><summary><span class="error-id">CLAUDE_LOGIN_REQUIRED</span> Claude 로그인이 멈췄나요?</summary><p>브라우저에서 유료 Claude 계정 로그인을 완료한 뒤 설치기의 해당 단계로 돌아옵니다. 인증 코드는 공개 채널에 남기지 마세요.</p></details>
+              <details><summary><span class="error-id">DAEMON_START_FAILED</span> 데몬 등록에 실패했나요?</summary><p>기본값은 켜짐이지만 선택 단계입니다. 로그 한 파일을 보존하고, 재설치 전에 오류 ID와 운영체제를 기록하세요.</p></details>
+            </div>
+
+            <h3>재설치 / 초기화</h3>
+            <p>상태 파일과 로그를 확인한 뒤 필요한 작업만 선택하세요. 초기화 전에는 보존할 로그를 먼저 복사합니다. <code>reinstall.sh</code>는 설치 파일을 다시 적용하고, <code>reset.sh --list</code>는 삭제 대상을 미리 보여 줍니다.</p>
+          </div>
+        </details>
       </section>
 
       <section class="section attribution-section" id="about" aria-labelledby="about-title">
@@ -191,7 +235,7 @@
     </main>
 
     <footer class="site-footer">
-      <div><strong>WAVE AI NETWORKS</strong><span>Wave Terminal · 라이트 설치 안내</span></div>
+      <div><strong>WAVE AI NETWORKS</strong><span>Wave Terminal · 설치 안내</span></div>
       <div><a href="mailto:waveacademy@waveainetworks.com">waveacademy@waveainetworks.com</a><span>© 2026 Wave AI Networks</span></div>
     </footer>
   </body>

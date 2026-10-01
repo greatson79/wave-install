@@ -201,6 +201,7 @@ class DownloadVerify(unittest.TestCase):
         steps = json.loads((ROOT / "steps.json").read_text())
         for plat in ("macos_arm64", "macos_x64"):
             steps["release"]["sha256"][plat] = pinned or sha(dmg)
+        steps["release"]["cdhash"] = {"macos_arm64": None, "macos_x64": None}  # 기본은 CDHash 미대조
         sb.steps = sb.tmp / "steps.json"
         sb.steps.write_text(json.dumps(steps))
         sb.stub("curl", 'out=""; while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done\ncp "$FAKE/asset.dmg" "$out"\n')

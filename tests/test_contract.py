@@ -112,7 +112,8 @@ def assert_contract(require_resolved_release: bool) -> None:
         for platform in ("macos_arm64", "macos_x64", "windows_x64"):
             assert re.fullmatch(r"[0-9a-f]{64}", release["sha256"][platform])
             assert release["asset_url"][platform].endswith(release["asset_name"][platform])
-            assert release["minisig_url"][platform].endswith(release["asset_name"][platform] + ".minisig")
+        # macOS는 v0.2부터 minisig 대신 codesign — minisig는 Windows만 현행
+        assert release["minisig_url"]["windows_x64"].endswith(release["asset_name"]["windows_x64"] + ".minisig")
         assert release["minisign_public_key"].startswith("RW")
     else:
         assert "__S2_" in serialized, "초기 S3에는 S2 자리표시자가 있어야 함"

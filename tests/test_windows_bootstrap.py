@@ -370,6 +370,52 @@ if (-not $result.timed_out -or $null -ne $result.exit_code -or $result.kill_erro
 if ($watch.ElapsedMilliseconds -gt 5000) { throw 'timeout did not bound process wait' }
 ''')
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows file sharing semantics required')
+    def test_shared_check_log_reads_while_writer_is_open(self):
+        self.run_ps(r'''
+New-Item -ItemType Directory -Force $WaveHome | Out-Null
+$path = Join-Path $WaveHome 'held.stdout.log'
+$writer = [IO.File]::Open($path, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+try {
+  $bytes = [Text.Encoding]::UTF8.GetBytes('writer still open')
+  $writer.Write($bytes, 0, $bytes.Length)
+  $writer.Flush()
+  $oldFailed = $false
+  try { $null = [IO.File]::ReadAllText($path) } catch { $oldFailed = $true }
+  if (-not $oldFailed) { throw 'old exclusive reader control did not reproduce' }
+  if ((Read-SharedCheckLog $path) -cne 'writer still open') { throw 'shared reader lost output' }
+} finally { $writer.Dispose() }
+''')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows exclusive file lock required')
+    def test_s08_locked_log_read_failure_is_unmeasured_and_reaches_s09(self):
+        self.run_ps(r'''
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+$StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
+Load-Config
+Init-State
+$script:lockedPath = Join-Path $WaveHome 'locked.stdout.log'
+$writer = [IO.File]::Open($lockedPath, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+function Invoke-BoundedCheck {
+  param($FilePath, $Arguments, $Name, $TimeoutMs)
+  if ($Name -eq $script:lockedName) { $null = Read-SharedCheckLog $script:lockedPath }
+  return [pscustomobject]@{ timed_out = $false; timeout_ms = $TimeoutMs; exit_code = 0; stdout = ''; stderr = ''; kill_error = $null }
+}
+try {
+  foreach ($name in @('identify', 'doctor')) {
+    $script:lockedName = $name
+    Invoke-Step 'S08_VERIFY' { Run-S08 }
+    $entry = $State.steps.S08_VERIFY
+    if ($entry.status -ne 'unmeasured' -or $entry.observed.reason -ne 'call_failed' -or $null -ne $entry.observed.max_injected_bytes) { throw 'locked log falsely measured' }
+    if ($entry.observed.detail -notmatch 'Diagnostic log read failed' -or $entry.observed.detail -notmatch 'locked.stdout.log') { throw 'read failure reason or path missing' }
+    Mark-RequiredComplete
+    Invoke-Step 'S09_COMPLETE' { Run-S09 }
+    Complete-State
+    if ($State.steps.S09_COMPLETE.status -ne 'passed' -or $State.status -ne 'complete_with_exceptions' -or $State.required_steps_passed) { throw 'read failure blocked S09 or falsely passed' }
+  }
+} finally { $writer.Dispose() }
+''')
+
     def test_s08_timeout_and_call_failure_allow_s09_without_false_measurements(self):
         self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'

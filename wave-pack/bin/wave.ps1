@@ -12,6 +12,22 @@ $WaveHome = if ($env:WAVE_HOME) { $env:WAVE_HOME } else { Join-Path $env:USERPRO
 $PackHome = Join-Path $env:USERPROFILE ".cys\pack"
 $RolesFile = if ($RolesPath) { $RolesPath } else { Join-Path $PackHome "roles.json" }
 
+function Read-SharedCheckLog([string]$Path) {
+  $stream = $null
+  $reader = $null
+  try {
+    # A daemon descendant may still own the redirected writer after its client exits.
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    $reader = [IO.StreamReader]::new($stream)
+    return $reader.ReadToEnd()
+  } catch {
+    throw "Diagnostic log read failed ($Path): $($_.Exception.Message)"
+  } finally {
+    if ($null -ne $reader) { $reader.Dispose() }
+    elseif ($null -ne $stream) { $stream.Dispose() }
+  }
+}
+
 if ($Command -eq "fleet" -and $Action -eq "bootstrap") {
   $fleet = Join-Path $WaveHome "fleet"
   New-Item -ItemType Directory -Force -Path $fleet | Out-Null
@@ -48,15 +64,17 @@ if ($Command -eq "doctor" -and ($Action -eq "--json" -or $Json)) {
         $identifyTimedOut = $true
         # Stop only the client launched here; an autostarted daemon keeps its lifecycle.
         try {
-          if (-not $process.HasExited) { $process.Kill(); $null = $process.WaitForExit(1000) }
+          if (-not $process.HasExited) { $process.Kill() }
         } catch {
           if (-not $process.HasExited) { $identifyKillError = $_.Exception.Message }
         }
       }
+      # Do not wait indefinitely on handles inherited by a daemon descendant.
+      if (-not $process.WaitForExit(1000) -and -not $identifyKillError) { $identifyKillError = 'Client exit was not confirmed within 1000ms' }
     } finally { $process.Dispose() }
     $identifyOutput = @(
-      if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout -Raw }
-      if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr -Raw }
+      Read-SharedCheckLog $stdout
+      Read-SharedCheckLog $stderr
       if ($identifyTimedOut) { "cys identify timed out after $identifyTimeoutMs ms; exit code is unmeasured." }
     ) -join "`n"
     Set-Content -LiteralPath (Join-Path $verify 'identify-doctor.log') -Value $identifyOutput -Encoding UTF8

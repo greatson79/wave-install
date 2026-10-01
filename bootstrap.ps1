@@ -768,25 +768,45 @@ function Test-ByteCount([object]$Value) {
   return (($Value -is [int] -or $Value -is [long]) -and $Value -ge 0)
 }
 
+function Read-SharedCheckLog([string]$Path) {
+  $stream = $null
+  $reader = $null
+  try {
+    # A daemon descendant may still own the redirected writer after its client exits.
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    $reader = [IO.StreamReader]::new($stream)
+    return $reader.ReadToEnd()
+  } catch {
+    throw "Diagnostic log read failed ($Path): $($_.Exception.Message)"
+  } finally {
+    if ($null -ne $reader) { $reader.Dispose() }
+    elseif ($null -ne $stream) { $stream.Dispose() }
+  }
+}
+
 function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$Name, [int]$TimeoutMs = 30000) {
   $verify = Join-Path $WaveHome 'verify'
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
   $stdoutPath = Join-Path $verify ($Name + '.stdout.log')
   $stderrPath = Join-Path $verify ($Name + '.stderr.log')
   $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-  $null = $process.Handle
-  $finished = $process.WaitForExit($TimeoutMs)
   $exitCode = $null
   $killError = $null
-  if ($finished) {
-    $exitCode = $process.ExitCode
-  } else {
-    try { $process.Kill(); $null = $process.WaitForExit(1000) }
-    catch { $killError = $_.Exception.Message }
-  }
-  $process.Dispose()
-  $stdout = if (Test-Path $stdoutPath) { [IO.File]::ReadAllText($stdoutPath) } else { '' }
-  $stderr = if (Test-Path $stderrPath) { [IO.File]::ReadAllText($stderrPath) } else { '' }
+  try {
+    $null = $process.Handle
+    $finished = $process.WaitForExit($TimeoutMs)
+    if ($finished) {
+      $exitCode = $process.ExitCode
+    } else {
+      try { if (-not $process.HasExited) { $process.Kill() } }
+      catch { if (-not $process.HasExited) { $killError = $_.Exception.Message } }
+    }
+    # Keep the final wait bounded: descendants may retain redirected handles.
+    if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
+  } finally { $process.Dispose() }
+  # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
+  $stdout = Read-SharedCheckLog $stdoutPath
+  $stderr = Read-SharedCheckLog $stderrPath
   return [pscustomobject]@{ timed_out = (-not $finished); timeout_ms = $TimeoutMs; exit_code = $exitCode; stdout = $stdout; stderr = $stderr; kill_error = $killError }
 }
 

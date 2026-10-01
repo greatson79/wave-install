@@ -14,7 +14,7 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(PWSH, 'PWSH is required')
         with tempfile.TemporaryDirectory(dir=ROOT, prefix='.win-test-') as tmp:
             home = Path(tmp)
-            source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig').split('\nLoad-Config\nif ($DryRun)')[0]
+            source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig').split('\nEnsure-Pack\nLoad-Config\nif ($DryRun)')[0]
             source = source.replace('$ErrorActionPreference = "Stop"', '$ErrorActionPreference = "Stop"\n[Console]::OutputEncoding = [Text.UTF8Encoding]::new()')
             script = home / 'harness.ps1'
             script.write_text(source + '\n' + body, encoding='utf-8-sig')
@@ -33,6 +33,7 @@ class BootstrapTests(unittest.TestCase):
             source = source.replace('$ErrorActionPreference = "Stop"', '$ErrorActionPreference = "Stop"\n[Console]::OutputEncoding = [Text.UTF8Encoding]::new()')
             overrides = r'''
 function Run-S00 { Say 'ACTION-S00' }
+function Ensure-Pack { }
 function Run-S01 { Say 'ACTION-S01' }
 function Run-S02 { Say 'ACTION-S02' }
 function Run-S03 { Say 'ACTION-S03' }
@@ -43,7 +44,7 @@ function Run-S07 { $script:StepObserved = @{ fleet_started = $true } }
 function Run-S08 { $script:StepObserved = @{ injection_measured = $true; max_injected_bytes = 1 } }
 '''
             script = home/'bootstrap.ps1'
-            script.write_text(source.replace('\nLoad-Config\nif ($DryRun)', overrides+'\nLoad-Config\nif ($DryRun)'), encoding='utf-8-sig')
+            script.write_text(source.replace('\nEnsure-Pack\nLoad-Config\nif ($DryRun)', overrides+'\nEnsure-Pack\nLoad-Config\nif ($DryRun)'), encoding='utf-8-sig')
             env = dict(os.environ, USERPROFILE=str(home), WAVE_HOME=str(home/'wave'), WAVE_NO_PROGRESS='1')
             def run(*args):
                 result = subprocess.run([PWSH, '-NoProfile', '-File', str(script), *args], env=env, capture_output=True, text=True, encoding='utf-8')
@@ -74,6 +75,27 @@ if ((Get-JCode 'W-DOWNLOAD-NET: HTTP 404 Not Found') -ne 'J-DL-05') { throw '404
 if ((Get-JCode 'an unclassified failure') -ne 'J-UNK-00') { throw 'fallback' }
 ''')
 
+    def test_one_line_zip_rejects_hash_and_parent_path_before_relaunch(self):
+        self.run_ps(r'''
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$script:ScriptDir = $null
+$script:WaveHome = Join-Path $env:USERPROFILE 'wave'
+$script:BundleUrl = 'https://example.test/wave-install.zip'
+$bad = Join-Path $env:USERPROFILE 'bad.zip'
+$archive = [IO.Compression.ZipFile]::Open($bad, [IO.Compression.ZipArchiveMode]::Create)
+$null = $archive.CreateEntry('../escape.txt')
+$archive.Dispose()
+function Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing, $ErrorAction) Copy-Item -LiteralPath $bad -Destination $OutFile }
+$script:BundleSha256 = '0' * 64
+$rejected = $false
+try { Ensure-Pack } catch { $rejected = $_.Exception.Message -match 'SHA256 불일치' }
+if (-not $rejected) { throw 'wrong zip hash accepted' }
+$script:BundleSha256 = (Get-FileHash -LiteralPath $bad -Algorithm SHA256).Hash.ToLowerInvariant()
+$rejected = $false
+try { Ensure-Pack } catch { $rejected = $_.Exception.Message -match '위험 경로' }
+if (-not $rejected -or (Test-Path (Join-Path $env:USERPROFILE 'escape.txt'))) { throw 'zip parent path accepted' }
+''')
+
     def test_release_pins_and_signed_download_gate(self):
         self.run_ps(r'''
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'
@@ -94,7 +116,8 @@ $Config.release.version = $WaveVersion
 $Config.release.asset_name.windows_x64 = $WaveWinFile
 $Config.release.asset_url.windows_x64 = 'https://example.test/setup.exe'
 $Config.release.sha256.windows_x64 = $WaveWinSha256
-$Config.release.minisig_url.windows_x64 = 'https://example.test/setup.exe.minisig'
+$Config.release.windows_sha256sums_url = 'https://example.test/SHA256SUMS'
+$Config.release.windows_publisher_subject = 'CN=Wave Test'
 $script:mode = 'valid'
 $script:verified = 0
 function Invoke-WebRequest {
@@ -103,8 +126,6 @@ function Invoke-WebRequest {
     [IO.File]::WriteAllBytes($OutFile, $data)
     if ($mode -eq 'tamper') { [IO.File]::WriteAllBytes($OutFile, [byte[]]::new($data.Length)) }
     if ($mode -eq 'bytes') { [IO.File]::WriteAllText($OutFile, 'short') }
-  } elseif ($OutFile -like '*.minisig') {
-    Set-Content -LiteralPath $OutFile -Value 'fixture signature'
   } else {
     $row = "$WaveWinSha256  $WaveWinFile"
     if ($mode -eq 'duplicate') { $row += "`n$row" }
@@ -112,10 +133,19 @@ function Invoke-WebRequest {
     Set-Content -LiteralPath $OutFile -Value $row
   }
 }
-function minisign { $script:verified++; $global:LASTEXITCODE = $(if ($mode -eq 'signature') { 1 } else { 0 }) }
+function Get-AuthenticodeSignature {
+  $script:verified++
+  if ($mode -eq 'signature') { return @{ Status = 'HashMismatch'; SignerCertificate = $null } }
+  if ($mode -eq 'publisher') { return @{ Status = 'Valid'; SignerCertificate = @{ Subject = 'CN=Other Publisher' } } }
+  if ($mode -eq 'signed') { return @{ Status = 'Valid'; SignerCertificate = @{ Subject = 'CN=Wave Test' } } }
+  return @{ Status = 'NotSigned'; SignerCertificate = $null }
+}
 Run-S03
-if ($verified -ne 1 -or -not $StepObserved.minisig_verified) { throw 'signed gate not exercised' }
-foreach ($script:mode in @('tamper', 'bytes', 'duplicate', 'prefix', 'signature')) {
+if ($verified -ne 1 -or -not $StepObserved.authenticode_checked) { throw 'Authenticode gate not exercised' }
+$script:mode = 'signed'
+Run-S03
+if ($StepObserved.signature_status -ne 'Valid') { throw 'signed publisher rejected' }
+foreach ($script:mode in @('tamper', 'bytes', 'duplicate', 'prefix', 'signature', 'publisher')) {
   $rejected = $false
   try { Run-S03 } catch { $rejected = $true }
   if (-not $rejected) { throw "download mutant accepted: $mode" }

@@ -8,11 +8,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = if ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { $null }
+$BundleUrl = if ($env:WAVE_INSTALL_ZIP_URL) { $env:WAVE_INSTALL_ZIP_URL } else { '__WAVE_INSTALL_ZIP_URL__' }
+$BundleSha256 = if ($env:WAVE_INSTALL_ZIP_SHA256) { $env:WAVE_INSTALL_ZIP_SHA256 } else { '__WAVE_INSTALL_ZIP_SHA256__' }
 $WaveHome = if ($env:WAVE_HOME) { $env:WAVE_HOME } else { Join-Path $env:USERPROFILE ".wave" }
 $PackHome = Join-Path $env:USERPROFILE ".cys\pack"
-$StepsFile = Join-Path $ScriptDir "steps.json"
-$StateTemplate = Join-Path $ScriptDir "install-state.json"
+$StepsFile = if ($ScriptDir) { Join-Path $ScriptDir "steps.json" } else { '' }
+$StateTemplate = if ($ScriptDir) { Join-Path $ScriptDir "install-state.json" } else { '' }
 $StateFile = Join-Path $WaveHome "install-state.json"
 $LogFile = Join-Path $WaveHome "install.log"
 $Config = $null
@@ -109,6 +111,44 @@ function Get-ArtifactHash([string]$Path) {
   catch { throw 'W-HASH-READ: 지문을 잴 수 없습니다' }
 }
 
+function Ensure-Pack {
+  if ($ScriptDir -and (Test-Path -LiteralPath $StepsFile -PathType Leaf) -and
+      (Test-Path -LiteralPath $StateTemplate -PathType Leaf) -and
+      (Test-Path -LiteralPath (Join-Path $ScriptDir 'wave-pack') -PathType Container)) { return }
+  if ($BundleUrl -notmatch '^https://' -or $BundleSha256 -notmatch '^[a-fA-F0-9]{64}$') {
+    throw '설치팩 ZIP URL·고정 SHA256 미확정'
+  }
+  $source = Join-Path $WaveHome 'src'
+  Assert-UserPath $source
+  New-Item -ItemType Directory -Force -Path $source | Out-Null
+  $zipPath = Join-Path $source ('wave-install-' + [guid]::NewGuid().ToString('N') + '.zip')
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri $BundleUrl -OutFile $zipPath -ErrorAction Stop
+    if ((Get-ArtifactHash $zipPath) -ne $BundleSha256.ToLowerInvariant()) { throw '설치팩 ZIP SHA256 불일치' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+      $roots = @{}
+      foreach ($entry in $archive.Entries) {
+        $name = $entry.FullName.Replace('\', '/')
+        if (-not $name -or $name.StartsWith('/') -or $name -match '(^|/)\.\.(/|$)|(^|/)\.(/|$)|:|//') { throw '설치팩 ZIP 위험 경로' }
+        $roots[$name.Split('/')[0]] = $true
+        if (($entry.ExternalAttributes -shr 16 -band 0xF000) -eq 0xA000) { throw '설치팩 ZIP symlink 거부' }
+      }
+      if ($roots.Count -ne 1) { throw '설치팩 ZIP 최상위 폴더는 하나여야 함' }
+      $destination = Join-Path $source ('pack-' + [guid]::NewGuid().ToString('N'))
+      [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $destination)
+    } finally { $archive.Dispose() }
+    $pack = Join-Path $destination (@($roots.Keys)[0])
+    foreach ($required in @('bootstrap.ps1', 'steps.json', 'install-state.json')) {
+      if (-not (Test-Path -LiteralPath (Join-Path $pack $required) -PathType Leaf)) { throw "설치팩 구성 누락: $required" }
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $pack 'wave-pack') -PathType Container)) { throw '설치팩 wave-pack 누락' }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pack 'bootstrap.ps1') -Reinstall:$Reinstall -Resume:$Resume -DryRun:$DryRun
+    exit $LASTEXITCODE
+  } finally { Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue }
+}
+
 function Test-WebMark([string]$Path) {
   # Non-NTFS downloads have no ADS. No global SmartScreen/antivirus settings change.
   if (-not (Get-Command Get-Item).Parameters.ContainsKey('Stream')) { return $false }
@@ -144,7 +184,7 @@ function Test-StepComplete([string]$Id) {
       return ((Test-Path -LiteralPath $ArtifactPath -PathType Leaf) -and
         (Get-Item -LiteralPath $ArtifactPath).Length -eq $WaveWinBytes -and
         (Get-ArtifactHash $ArtifactPath) -eq $WaveWinSha256 -and
-        (Get-StateField $entry.observed 'minisig_verified') -eq $true)
+        (Get-StateField $entry.observed 'authenticode_checked') -eq $true)
     } catch { return $false }
   }
   if ($Id -eq 'S04_INSTALL_LINK') {
@@ -193,7 +233,7 @@ $HelpRulesJson = @'
   {
     "code": "J-AV-01",
     "symptom": "보안 제품이 실행을 차단함",
-    "pattern": "(?i)virus|malware|바이러스|악성.*차단",
+    "pattern": "(?i)virus|malware|바이러스|악성.*차단|defender|v3|알약|alyac|보안.*차단|격리",
     "action1": "백신 알림의 이름·대상 파일·조치를 확인하세요.",
     "action2": "해당 화면과 install.log를 담당자에게 전달하세요. 예외를 자동 등록하지 않습니다.",
     "case": "우리 오류 분류 회귀(보안 오류 주입); 실기 미관측",
@@ -353,7 +393,7 @@ $HelpRulesJson = @'
   {
     "code": "J-DL-04",
     "symptom": "릴리스 핀·크기·지문·서명 불일치",
-    "pattern": "SHA256 불일치|바이트 불일치|핀 불일치|minisign 검증 실패|W-NSIS-ASSET",
+    "pattern": "SHA256 불일치|바이트 불일치|핀 불일치|Authenticode 검증 실패|W-NSIS-ASSET",
     "action1": "검증되지 않은 파일은 실행하지 말고 같은 명령으로 다시 받으세요.",
     "action2": "반복되면 배포 담당자에게 핀과 릴리스 대조를 요청하세요.",
     "case": "우리 S04 변조 회귀·win-pin-mutate 검체",
@@ -475,16 +515,15 @@ function Release-Context {
   $script:ReleaseAssetName = [string](Get-ConfigValue "release.asset_name.$platform")
   $script:ReleaseAssetUrl = [string](Get-ConfigValue "release.asset_url.$platform")
   $script:ReleaseExpectedSha256 = [string](Get-ConfigValue "release.sha256.$platform")
-  $script:ReleaseSumsUrl = [string](Get-ConfigValue "release.sha256sums_url")
-  $script:ReleaseMinisigUrl = [string](Get-ConfigValue "release.minisig_url.$platform")
-  $script:ReleasePublicKey = [string](Get-ConfigValue "release.minisign_public_key")
-  foreach ($value in @($ReleaseVersion, $ReleaseAssetName, $ReleaseAssetUrl, $ReleaseExpectedSha256, $ReleaseSumsUrl, $ReleaseMinisigUrl, $ReleasePublicKey)) {
+  $script:ReleaseSumsUrl = [string](Get-ConfigValue "release.windows_sha256sums_url")
+  $script:ReleasePublisherSubject = [string](Get-ConfigValue 'release.windows_publisher_subject')
+  foreach ($value in @($ReleaseVersion, $ReleaseAssetName, $ReleaseAssetUrl, $ReleaseExpectedSha256, $ReleaseSumsUrl)) {
     if ($value -like "__*__") { throw "S2 릴리스 자리표시자 잔존" }
   }
   if (-not ($ReleaseAssetUrl -like "https://*")) { throw "릴리스 asset URL은 HTTPS여야 함" }
   if ($ReleaseExpectedSha256 -notmatch "^[0-9a-f]{64}$") { throw "S2 SHA256 값이 유효하지 않음" }
   if ($ReleaseVersion -cne $WaveVersion -or $ReleaseAssetName -cne $WaveWinFile -or $ReleaseExpectedSha256 -cne $WaveWinSha256) { throw 'Windows 릴리스 핀 불일치' }
-  foreach ($url in @($ReleaseSumsUrl, $ReleaseMinisigUrl)) {
+  foreach ($url in @($ReleaseSumsUrl)) {
     if ($url -notlike 'https://*') { throw '릴리스 검증 URL은 HTTPS여야 함' }
   }
   $script:ArtifactPath = Join-Path (Join-Path $WaveHome "downloads") $ReleaseAssetName
@@ -504,7 +543,15 @@ function Run-S00 {
 }
 
 function Run-S01 {
-  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw "claude 명령 없음" }
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+    $installer = Join-Path $WaveHome 'src\claude-install.ps1'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installer) | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri 'https://claude.ai/install.ps1' -OutFile $installer -ErrorAction Stop
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+    if ($LASTEXITCODE -ne 0) { throw 'Claude Code 공식 설치 실패' }
+    $env:PATH = (Join-Path $env:USERPROFILE '.local\bin') + [IO.Path]::PathSeparator + $env:PATH
+    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'Claude Code 설치 후 명령 없음' }
+  }
   $pin = [string](Get-ConfigValue "tooling.claude_code_version")
   if ($pin -like "__*__") { throw "Claude Code 버전 핀이 아직 정해지지 않음" }
   $minimum = [string](Get-ConfigValue "tooling.claude_code_min_version")
@@ -532,14 +579,26 @@ function Run-S01 {
     if ($comparison -ne 0) { break }
   }
   if ($comparison -lt 0 -or ($comparison -eq 0 -and $pre)) {
-    throw "중단: Claude Code $minimum 이상 필요. claude update로 업그레이드한 뒤 다시 실행하세요."
+    & claude update
+    if ($LASTEXITCODE -ne 0) { throw 'Claude Code 업데이트 실패' }
+    $version = (& claude --version 2>$null | Out-String).Trim()
+    $actual = [regex]::Match($version, '\A' + $core + '(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?: \(Claude Code\))?\z')
+    if (-not $actual.Success -or [version]($actual.Groups[1].Value + '.' + $actual.Groups[2].Value + '.' + $actual.Groups[3].Value) -lt [version]$minimum -or $actual.Groups[4].Value) {
+      throw "Claude Code $minimum 이상 필요: 업데이트 후 재확인 실패"
+    }
+    Set-Content -LiteralPath (Join-Path $tooling 'claude.version') -Value $version -Encoding UTF8
   }
   $script:StepObserved = [ordered]@{ claude_version = $version }
 }
 
 function Run-S02 {
   & claude auth status *> $null
-  if ($LASTEXITCODE -ne 0) { throw "Claude 로그인 상태 확인 실패" }
+  if ($LASTEXITCODE -ne 0) {
+    & claude auth login
+    if ($LASTEXITCODE -ne 0) { throw 'Claude 로그인 실패' }
+    & claude auth status *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Claude 로그인 재확인 실패' }
+  }
   $auth = Join-Path $WaveHome "auth"
   New-Item -ItemType Directory -Force -Path $auth | Out-Null
   New-Item -ItemType File -Force -Path (Join-Path $auth "claude-authenticated") | Out-Null
@@ -547,26 +606,33 @@ function Run-S02 {
 }
 
 function Run-S03 {
-  if (-not (Get-Command minisign -ErrorAction SilentlyContinue)) { throw "minisign 명령 없음" }
   Release-Context
   $downloads = Join-Path $WaveHome "downloads"
   New-Item -ItemType Directory -Force -Path $downloads | Out-Null
   $sums = Join-Path $downloads "SHA256SUMS"
-  $sig = $ArtifactPath + ".minisig"
   try {
     Invoke-WebRequest -UseBasicParsing -Uri $ReleaseAssetUrl -OutFile $ArtifactPath
     Invoke-WebRequest -UseBasicParsing -Uri $ReleaseSumsUrl -OutFile $sums
-    Invoke-WebRequest -UseBasicParsing -Uri $ReleaseMinisigUrl -OutFile $sig
-  } catch { throw "W-DOWNLOAD-NET: $($_.Exception.Message)" }
+  } catch {
+    if ($_.Exception.Message -match '(?i)virus|malware|defender|v3|알약|alyac|격리|보안.*차단') {
+      throw "백신 차단 감지: Defender·V3·알약 알림의 파일명과 격리 조치를 확인하세요. $($_.Exception.Message)"
+    }
+    throw "W-DOWNLOAD-NET: $($_.Exception.Message)"
+  }
   $lines = @(Get-Content -LiteralPath $sums | Where-Object { $_ -cmatch ('^[a-fA-F0-9]{64} [ *]' + [Regex]::Escape($ReleaseAssetName) + '$') })
   if ($lines.Count -ne 1) { throw 'SHA256 불일치: 자산의 정확한 행이 하나여야 합니다' }
   $expected = ($lines[0] -split '\s+')[0]
   $actual = Get-ArtifactHash $ArtifactPath
   if ((Get-Item -LiteralPath $ArtifactPath).Length -ne $WaveWinBytes) { throw 'Windows 설치 파일 바이트 불일치' }
   if ($expected.ToLowerInvariant() -ne $actual -or $WaveWinSha256 -ne $actual) { throw "SHA256 불일치" }
-  & minisign -Vm $ArtifactPath -P $ReleasePublicKey -x $sig *> $null
-  if ($LASTEXITCODE -ne 0) { throw "minisign 검증 실패" }
-  $script:StepObserved = [ordered]@{ platform = $ReleasePlatform; asset = $ReleaseAssetName; sha256 = $actual; minisig_verified = $true }
+  $signature = Get-AuthenticodeSignature -LiteralPath $ArtifactPath
+  if ($signature.Status -eq 'NotSigned') {
+    Say 'SmartScreen에서 미서명 앱 경고가 나오면 게시자·파일명을 확인하세요. SHA256 검증은 통과했습니다.'
+  } elseif ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or
+      -not $ReleasePublisherSubject -or $signature.SignerCertificate.Subject -cne $ReleasePublisherSubject) {
+    throw 'Authenticode 검증 실패: 서명 상태 또는 발급자 불일치'
+  }
+  $script:StepObserved = [ordered]@{ platform = $ReleasePlatform; asset = $ReleaseAssetName; sha256 = $actual; authenticode_checked = $true; signature_status = [string]$signature.Status }
 }
 
 function Run-S04 {
@@ -796,6 +862,7 @@ trap {
   exit 1
 }
 
+Ensure-Pack
 Load-Config
 if ($DryRun) {
   Write-Host "dry-run: $StepsFile / $StateFile / $LogFile"

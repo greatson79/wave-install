@@ -22,7 +22,7 @@ class WindowsInstallTests(unittest.TestCase):
             digest = hashlib.sha256(asset.read_bytes()).hexdigest()
             if tamper:
                 asset.write_bytes(b"tampered")
-            source = (ROOT / "bootstrap.ps1").read_text().split("\nLoad-Config\nif ($DryRun)")[0]
+            source = (ROOT / "bootstrap.ps1").read_text().split("\nEnsure-Pack\nLoad-Config\nif ($DryRun)")[0]
             harness = root / "harness.ps1"
             harness.write_text(source + r'''
 function Release-Context {

@@ -23,6 +23,8 @@
       "windows_x64": "733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3"
     },
     "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/SHA256SUMS",
+    "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-arm64.dmg.minisig",
       "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-x64.dmg.minisig",
@@ -68,7 +70,7 @@
       "title": "Claude Code 설치·최소 버전 확인(없으면 설치, 낮으면 claude update)",
       "command": {
         "macos": "command -v claude || curl -fsSL https://claude.ai/install.sh | bash; claude --version; claude update (낮을 때만)",
-        "windows": "claude --version"
+        "windows": "Get-Command claude -ErrorAction SilentlyContinue; if (-not $?) { Invoke-WebRequest https://claude.ai/install.ps1 }; claude --version; claude update (낮을 때만)"
       },
       "pass": [
         {"kind": "exit_code", "equals": 0},
@@ -89,7 +91,7 @@
       "title": "Claude 로그인(안 되어 있으면 설치 창에서 진행)",
       "command": {
         "macos": "claude auth status || claude auth login",
-        "windows": "claude auth status"
+        "windows": "claude auth status; claude auth login (미로그인 때만); claude auth status"
       },
       "pass": [
         {"kind": "exit_code", "equals": 0},
@@ -109,7 +111,7 @@
       "title": "Wave Terminal 내려받기·SHA256·codesign 검증(Windows는 minisig)",
       "command": {
         "macos": "curl -fL <asset-url> -o <artifact> && shasum -a 256 <artifact> (고정값 대조) && codesign --verify --deep --strict <앱>",
-        "windows": "Invoke-WebRequest <asset-url> -OutFile <artifact>; Get-FileHash <artifact> -Algorithm SHA256; minisign -Vm <artifact> -P <public-key> -x <artifact>.minisig"
+        "windows": "Invoke-WebRequest <asset-url> -OutFile <artifact>; Get-FileHash <artifact> -Algorithm SHA256; Get-AuthenticodeSignature <artifact>"
       },
       "pass": [
         {"kind": "exit_code", "equals": 0},

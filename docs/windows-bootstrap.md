@@ -15,14 +15,14 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 - 바이트: `128814816`
 - SHA256: `733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3`
 
-`steps.json`과 `site/steps.json`의 Windows 매핑도 기존 공개 `v0.1.0` 경로로 맞췄습니다.
+`steps.json`의 Windows 매핑은 공개 `v0.1.0` 경로를 유지합니다. Draft `v0.1.0-windows-draft-20260922`는 공개 설치 링크가 아니며 자산 지문 조사 기준입니다.
 공개 전 draft 대조와 공개 릴리스 대조는 별도로 기록하며, 픽스처 통과를 출하 증거로 쓰지 않습니다.
 
-배포 담당자는 실제 서명된 자산과 SHA256SUMS를 확보한 뒤 다음을 함께 갱신합니다.
+배포 담당자는 실제 게시 자산과 SHA256SUMS를 확보한 뒤 다음을 함께 갱신합니다.
 
 1. 핀 3값을 독립 측정한 값으로 교체합니다. 선언은 값 하나만 있는 한 줄을 유지합니다.
-2. `steps.json`과 `site/steps.json`의 release 버전·Windows 이름·URL·SHA256·minisig URL을 맞춥니다.
-   Mac 릴리스 매핑도 함께 검사합니다. 공개키와 minisign 검증은 유지합니다.
+2. `steps.json`의 Windows 이름·URL·SHA256·windows_sha256sums_url·windows_publisher_subject를 맞춥니다.
+   Mac 릴리스 매핑도 함께 검사합니다. Windows 실행 경로는 minisign을 사용하지 않습니다.
 3. `bash tests/win-pin-release.sh`로 해당 공개 릴리스의 실제 파일 바이트·지문·체크섬 정확한 1행을 대조합니다.
 4. Windows workflow_dispatch에서 `release_smoke=true`를 선택하고 같은 태그와 독립 SHA256을 넣습니다.
    공개 핀 대조 또는 OS 매트릭스 실패 시 NSIS 스모크로 가지 않습니다.
@@ -31,12 +31,23 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 `wave-terminal-<버전>-windows-x64-setup.exe`가 있어야 합니다. 없는 파일·중복 선언·중복 체크섬 행·
 측정 실패는 모두 실패입니다. 핀 변조 테스트에는 정상 측정 검체 1개와 거부해야 할 변형 12개가 있습니다.
 
+
+## v0.2 한 줄 설치 흐름
+
+배포 시 `bootstrap.ps1`의 `__WAVE_INSTALL_ZIP_URL__`과 `__WAVE_INSTALL_ZIP_SHA256__`을 실제 릴리스 ZIP URL·독립 측정 SHA256으로 채워야 합니다. 현재 자리표시자 상태는 실행을 거부합니다. 사용자 명령은 `irm <릴리스 bootstrap.ps1 URL> | iex` 한 줄입니다. 메모리에서 실행된 스크립트는 HTTPS ZIP을 받아 고정 SHA256을 검사하고, ZIP 안의 절대·상위 경로와 symlink를 거부한 뒤 `powershell.exe -ExecutionPolicy Bypass -File`로 검증된 팩의 설치기를 다시 실행합니다.
+
+S01은 Claude Code가 없으면 공식 `https://claude.ai/install.ps1`을 받아 설치하고, 버전이 낮으면 `claude update` 뒤 버전을 재확인합니다. S02는 인증되지 않았을 때 같은 창에서 `claude auth login`을 실행하고 상태를 다시 확인합니다.
+
+S03은 고정 바이트·SHA256·체크섬 행 대조 뒤 `Get-AuthenticodeSignature`를 실행합니다. 서명이 있으면 `Valid`와 설정된 발급자 Subject의 정확한 일치를 요구합니다. 미서명은 SHA256 검증 후 SmartScreen 안내를 출력합니다. Defender·V3·알약 차단 문구는 백신 알림의 파일명·격리 조치를 확인하도록 안내하며 자동 예외 등록은 하지 않습니다.
+
+2026-10-01 Draft 검체는 128814816바이트, SHA256 `733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3`이고 PE 보안 디렉터리의 인증서 테이블 offset/size가 둘 다 0이라 Authenticode 서명 부재 후보입니다. 실제 Windows의 `Get-AuthenticodeSignature`와 SmartScreen·백신 동작은 아직 검증하지 않았습니다.
+
 ## 사용자 동작과 상태
 
 - 화면은 `[1/10]`부터 `[10/10]`까지입니다. 기존 S00~S09 ID와 WT 오류 ID는 보존하며,
   분류한 J-코드는 `steps.<ID>.observed.j_code`에 추가합니다.
 - `Clear-WebMark`는 함수 내부에서 SHA256을 다시 확인한 뒤 그 파일의 `Zone.Identifier`만 제거합니다.
-  S04 호출 전에는 S03의 바이트·SHA256·minisign 검증을 거칩니다. 표식이 없으면 그대로 진행하며,
+  S04 호출 전에는 S03의 바이트·SHA256·Authenticode 상태 검사를 거칩니다. 표식이 없으면 그대로 진행하며,
   제거 실패는 로그로 구별합니다. 백신 예외나 시스템 SmartScreen 설정은 변경하지 않습니다.
 - 모든 필수 단계가 검증되어 `complete`인 경우에만 `install-done.txt`를 씁니다.
   `complete_with_exceptions`, 주입량·좌석 기동 미측정에는 성공 표지를 만들지 않습니다.

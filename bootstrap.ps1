@@ -112,9 +112,8 @@ function Get-ArtifactHash([string]$Path) {
 }
 
 function Ensure-Pack {
-  # 스크립트 파일로 실행 중이고 설정 파일 2개가 있으면(설치팩 안·테스트) 받지 않는다. irm|iex 는 $ScriptDir 이 없어 받는다.
-  if ($ScriptDir -and $StepsFile -and $StateTemplate -and (Test-Path -LiteralPath $StepsFile -PathType Leaf) -and
-      (Test-Path -LiteralPath $StateTemplate -PathType Leaf)) { return }
+  # 스크립트 파일로 실행 중이고 steps.json 이 있으면(설치팩 안·테스트) 받지 않는다. irm|iex 는 $ScriptDir 이 없어 받는다.
+  if ($ScriptDir -and $StepsFile -and (Test-Path -LiteralPath $StepsFile -PathType Leaf)) { return }
   if ($BundleUrl -notmatch '^https://' -or $BundleSha256 -notmatch '^[a-fA-F0-9]{64}$') {
     throw '설치팩 ZIP URL·고정 SHA256 미확정'
   }

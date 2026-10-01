@@ -4,6 +4,8 @@ name: Published one-line install (Windows, verbatim README command)
 # Claude 로그인은 러너에서 할 수 없으므로 시간 제한으로 끊고, 어디까지 갔는지는 install-state.json 으로 판정한다.
 on:
   workflow_dispatch:
+  push:
+    branches: ['e2e/**']
 
 permissions:
   contents: read

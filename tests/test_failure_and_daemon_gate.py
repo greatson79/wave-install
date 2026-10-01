@@ -80,6 +80,22 @@ class FailureAndDaemonGateTests(unittest.TestCase):
         self.assertIn("Access is denied", state["observed"]["reason"])
         self.assertIn("Access is denied", (wave / "install.log").read_text())
 
+    def test_s07_invalid_seat_count_is_required_failure(self):
+        wave = self.home / "wave"
+        (wave / "bin").mkdir(parents=True)
+        pack = self.home / ".cys/pack"
+        pack.mkdir(parents=True)
+        (pack / "roles.json").write_text('{}')
+        cli = wave / "bin/wave"
+        cli.write_text('#!/bin/sh\nif [ "$2" = status ]; then printf \'{"seats":[{}]}\\n\'; fi\n')
+        cli.chmod(0o755)
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        result = self.bash('run_step S07_INITIAL_FLEET')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((wave / "fleet/initial-fleet.ok").exists())
+        entry = json.loads((wave / "install-state.json").read_text())["steps"]["S07_INITIAL_FLEET"]
+        self.assertEqual(entry["status"], "failed")
+
     def s04(self, mode="ok"):
         app = self.home / "wave/mount/Fixture.app/Contents/MacOS"
         app.mkdir(parents=True)

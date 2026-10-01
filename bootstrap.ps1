@@ -696,7 +696,8 @@ function Run-S04 {
 }
 
 function Run-S05 {
-  $daemon = Join-Path $WaveHome "daemon"
+  # 데몬 런타임 경로와 설치기 기록을 분리한다(기존 daemon 파일/폴더와 충돌 금지).
+  $daemon = Join-Path $WaveHome "installer\daemon"
   New-Item -ItemType Directory -Force -Path $daemon | Out-Null
   $result = Join-Path $daemon "register-result"
   if ($env:WAVE_ENABLE_DAEMON -eq "0") {
@@ -875,10 +876,13 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     Send-Progress $CurrentStep 'end'
   } catch {
     $reason = $_.Exception.Message
+    $position = $_.InvocationInfo.PositionMessage
     $code = Get-JCode $reason
     $script:StepObserved['j_code'] = $code
     $script:StepObserved['reason'] = $reason
+    $script:StepObserved['position'] = $position
     Write-Log "[$Id] 실패 원문: $reason"
+    if ($position) { Write-Log $position }
     Write-JCode $code
     $step = $Config.steps | Where-Object { $_.id -eq $Id }
     $errorId = [string]$step.on_fail.error_id
@@ -898,8 +902,12 @@ function Complete-State {
 }
 
 trap {
-  if (-not $DiagnosticWritten) { Write-JCode (Get-JCode $_.Exception.Message) }
-  Write-Host $_.Exception.Message
+  $failure = $_
+  if (-not $DiagnosticWritten) { Write-JCode (Get-JCode $failure.Exception.Message) }
+  try {
+    Write-Log $failure.Exception.Message
+    if ($failure.InvocationInfo.PositionMessage) { Write-Log $failure.InvocationInfo.PositionMessage }
+  } catch { Write-Host $failure.Exception.Message; Write-Host $failure.InvocationInfo.PositionMessage }
   exit 1
 }
 

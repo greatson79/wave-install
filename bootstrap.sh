@@ -420,9 +420,9 @@ step_s04() {
 }
 
 step_s05() {
-  mkdir -p "$WAVE_HOME/daemon"
+  mkdir -p "$WAVE_HOME/installer/daemon"
   local result
-  result="$WAVE_HOME/daemon/register-result"
+  result="$WAVE_HOME/installer/daemon/register-result"
   if [[ "${WAVE_ENABLE_DAEMON:-1}" == "0" ]]; then
     printf '%s\n' 'skipped_by_user' > "$result"
     STEP_STATUS="skipped"
@@ -431,7 +431,7 @@ step_s05() {
   fi
   require_command launchctl || return 1
   local plist uid label
-  plist="$WAVE_HOME/daemon/com.waveainetworks.cysd.plist"
+  plist="$WAVE_HOME/installer/daemon/com.waveainetworks.cysd.plist"
   uid="$(id -u)"
   label="com.waveainetworks.cysd"
   cat > "$plist" <<EOF
@@ -471,7 +471,7 @@ step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
   "$wave" fleet bootstrap --roles-file "$roles" > "$WAVE_HOME/fleet/bootstrap.log" 2>&1 || return 1
   "$wave" fleet status --json > "$WAVE_HOME/fleet/status.json" || return 1
-  python3 - "$WAVE_HOME/fleet/status.json" <<'PY'
+  python3 - "$WAVE_HOME/fleet/status.json" <<'PY' || return 1
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     data = json.load(handle)

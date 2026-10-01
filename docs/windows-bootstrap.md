@@ -154,3 +154,5 @@ PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니�
 2. `post-login`: S00~S02에 `TEST_SYNTHETIC_BYPASS` 전제를 명시하고 checkout의 원본 S03~S09를 실행합니다. 실제 S02 로그인 성공을 주장하지 않으며 최종 전체 성공 상태를 거부합니다. 과거 S05의 schtasks 명령이 실제로 접근 거부되는 대조군도 요구합니다.
 
 `Start-Process -Wait`는 자식 데몬까지 기다릴 수 있으므로 `-Credential -LoadUserProfile -PassThru`와 15분 제한 `WaitForExit`를 사용합니다. 종료 뒤 해당 CI 사용자 프로세스를 정리합니다. 신원·상태·로그·대조군·소스 해시를 artifact로 보존합니다. Windows 실측 결과는 CI 실행 후에만 확정할 수 있습니다.
+
+S05 결과 파일은 `.wave/installer/daemon/register-result`에 둡니다. 데몬 런타임의 `.wave/daemon` 경로와 분리하며 기존 런타임 파일을 덮어쓰지 않습니다. 단계 실패와 최상위 실패 로그에는 `InvocationInfo.PositionMessage`로 파일·행 위치를 함께 남깁니다. Bash S07은 좌석 수 검증에 실패하면 필수 단계 실패를 반환합니다.

@@ -245,6 +245,7 @@ Invoke-Step 'S05_DAEMON_REGISTER' { throw '오류: 액세스가 거부되었습�
 $entry = $State.steps.S05_DAEMON_REGISTER
 if ($entry.status -ne 'skipped_with_reason' -or $entry.exit_code -eq 0 -or $entry.observed.j_code -ne 'J-PERM-02') { throw 'optional failure not preserved' }
 if ($entry.observed.reason -notmatch '액세스가 거부') { throw 'reason lost' }
+if (-not $entry.observed.position -or (Get-Content $LogFile -Raw) -notmatch 'harness.ps1') { throw 'failure source location lost' }
 if ((Get-Content $LogFile -Raw) -notmatch '액세스가 거부') { throw 'original error not logged' }
 $threw = $false
 try { Invoke-Step 'S06_PACK_INSTALL' { throw 'Access is denied' } } catch { $threw = $true }
@@ -257,6 +258,8 @@ if ((Get-JCode 'Access is denied') -ne 'J-PERM-02') { throw 'English permission 
 $bin = Join-Path $WaveHome 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 Set-Content (Join-Path $bin 'cysd.exe') 'fixture only'
+# Existing daemon runtime file must not collide with installer-owned records.
+Set-Content (Join-Path $WaveHome 'daemon') 'runtime-owned fixture'
 $script:saved = $null
 function New-Item {
   param($Path, $ItemType, [switch]$Force, $ErrorAction)
@@ -274,6 +277,8 @@ function Get-ItemProperty {
 }
 Run-S05
 if ($saved.value -cne ('"' + (Join-Path $bin 'cysd.exe') + '"')) { throw 'path not quoted' }
+if (-not (Test-Path (Join-Path $WaveHome 'installer/daemon/register-result'))) { throw 'installer marker absent' }
+if ((Get-Content (Join-Path $WaveHome 'daemon')) -ne 'runtime-owned fixture') { throw 'runtime file changed' }
 if (-not $StepObserved.registered -or $StepObserved.admin_required -or $StepObserved.registration -ne 'HKCU_Run') { throw 'registration evidence' }
 function Get-ItemProperty { param($LiteralPath, $Name, $ErrorAction); return @{ $Name = 'wrong.exe' } }
 $threw = $false

@@ -8,9 +8,9 @@
     total: 10,
     steps: [
       { id: 0, title: "OS·셸·디스크·권한 검사", command: "환경 검사", pass_conditions: ["지원 OS", "사용자 폴더 쓰기 가능"], failure_guidance: "OS_UNSUPPORTED 또는 PERMISSION_DENIED" },
-      { id: 1, title: "Claude Code 설치", command: "최소 버전 확인", pass_conditions: ["Claude Code 2.1.278 이상"], failure_guidance: "설치 로그의 오류 ID를 확인하세요." },
-      { id: 2, title: "Claude 로그인", command: "브라우저 로그인", pass_conditions: ["유료 계정 인증 완료"], failure_guidance: "CLAUDE_LOGIN_REQUIRED" },
-      { id: 3, title: "Wave Terminal 내려받기·검증", command: "Release + SHA256 + minisign", pass_conditions: ["해시 일치", "minisign 통과"], failure_guidance: "CHECKSUM_MISMATCH 또는 MINISIGN_INVALID" },
+      { id: 1, title: "Claude Code 설치", command: "없으면 설치 · 낮으면 claude update", pass_conditions: ["Claude Code 2.1.278 이상"], failure_guidance: "설치 로그의 오류 ID를 확인하세요." },
+      { id: 2, title: "Claude 로그인", command: "설치 창에서 claude auth login", pass_conditions: ["유료 계정 인증 완료"], failure_guidance: "CLAUDE_LOGIN_REQUIRED" },
+      { id: 3, title: "Wave Terminal 내려받기·검증", command: "Release + 고정 SHA256 + codesign", pass_conditions: ["해시 일치", "codesign 통과"], failure_guidance: "CHECKSUM_MISMATCH 또는 CODESIGN_INVALID" },
       { id: 4, title: "설치·cys 셸 연결", command: "사용자 폴더 설치", pass_conditions: ["cys 실행", "셸 연결"], failure_guidance: "SHELL_NOT_CONNECTED" },
       { id: 5, title: "데몬 등록", command: "선택 · 기본 on", pass_conditions: ["데몬 상태 확인"], failure_guidance: "DAEMON_START_FAILED" },
       { id: 6, title: "wave-pack 배치", command: "~/.cys/pack에 배치", pass_conditions: ["팩 파일 존재", "SHA256 확인"], failure_guidance: "PACK_DEPLOY_FAILED" },
@@ -23,7 +23,7 @@
   const commands = {
     mac: {
       label: "macOS · 사용자 폴더 설치",
-      command: 'curl -fsSL https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.sh -o bootstrap.sh && bash bootstrap.sh'
+      command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
     },
     windows: {
       label: "Windows · PowerShell 설치",
@@ -47,7 +47,7 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-selected", String(isActive));
     });
-    copyStatus.textContent = "전체 설치팩 폴더에서 실행하세요. v0.1.3 전체 설치 검증은 진행 중입니다.";
+    copyStatus.textContent = "터미널에 붙여넣고 Return. 설치팩 내려받기·Claude Code 설치·로그인 안내까지 설치기가 진행합니다.";
   }
 
   async function copyCommand() {
@@ -55,7 +55,7 @@
     try {
       await navigator.clipboard.writeText(command);
       copyButton.textContent = "복사됨";
-      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 전체 설치팩 폴더에서 실행하세요. v0.1.3 전체 설치 검증은 진행 중입니다.";
+      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 터미널에 붙여넣고 Return을 누르세요.";
     } catch (error) {
       copyStatus.textContent = "자동 복사에 실패했습니다. 명령을 직접 선택해 복사하세요.";
     }

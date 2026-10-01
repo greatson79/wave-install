@@ -6,7 +6,7 @@ Wave AI Networks의 Wave Terminal 라이트 설치 GitHub 배포와 설치 가�
 ## 구성
 
 - `bootstrap.sh`, `bootstrap.ps1`: macOS·Windows 설치기
-- `steps.json`: 릴리스 URL·SHA256·minisign 공개키·10단계 정본
+- `steps.json`: 릴리스 URL·SHA256·(Windows용) minisign 공개키·10단계 정본
 - `site/`: 설치 한 줄, 단계별 안내, 릴리스 무결성 안내
 - `wave-pack/`: 초기 master 1석 + 부서 1석 편성 팩
 
@@ -20,7 +20,7 @@ Wave Terminal은 원개발자 idoforgod의 [`cys-terminal`](https://github.com/i
 
 ## 무결성
 
-설치기는 공개 Wave Terminal Release의 SHA256SUMS와 minisign 서명을 확인합니다.
+macOS 설치기는 공개 Wave Terminal Release를 고정 SHA256과 앱 `codesign`으로 확인하고, Windows 설치기는 SHA256SUMS와 minisign 서명을 확인합니다.
 공개키만 `steps.json`에 기록하며, 비밀키는 `~/.config/waveai/minisign/`에 유지하고 저장소에는 넣지 않습니다.
 
 ## 운영체제 안내
@@ -30,23 +30,31 @@ Windows 설치 자산이 준비되기 전에는 설치를 진행하지 않습니
 
 공식 도메인은 별도 결재 후 연결하며, 그 전까지는 배포된 임시 URL만 검증 대상으로 삼습니다.
 
-## 설치팩 v0.1.3 사용
+## 설치 (macOS) — 명령 한 줄
 
-[전체 설치팩 v0.1.3](https://github.com/greatson79/wave-install/archive/refs/tags/v0.1.3.zip)을
-내려받아 압축을 풀고 터미널에서 그 폴더로 이동합니다. `steps.json`, `install-state.json`,
-`wave-pack/`이 함께 있어야 하므로 설치기 한 파일만 내려받아 실행할 수는 없습니다.
+터미널에 아래 한 줄만 붙여넣고 Return을 누릅니다. 설치기가 설치팩(`wave-install-0.2.0`)을
+스스로 내려받아 고정 SHA256으로 확인·압축 해제한 뒤 이어서 진행합니다.
+Claude Code가 없으면 공식 설치기로 설치하고, 낮으면 `claude update`를 대신 실행하며,
+로그인이 안 되어 있으면 같은 창에서 `claude auth login`을 진행합니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.sh -o bootstrap.sh && bash bootstrap.sh
+curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh"
 ```
 
-태그의 동일 판본을 그대로 사용하려면 위 재다운로드 없이 압축파일의 `bash bootstrap.sh`를 실행합니다.
+<details><summary>고급: 설치팩 zip을 직접 받은 경우</summary>
+
+[wave-install-0.2.0.zip](https://github.com/greatson79/wave-install/archive/refs/tags/v0.2.0.zip)을
+받아 압축을 풀면 `wave-install-0.2.0` 폴더가 생깁니다. 그 폴더에서 `bash bootstrap.sh` 한 줄만 실행하세요
+(위 curl 명령은 필요 없습니다).
+
+</details>
+
 Windows 준비 중: PowerShell 설치기는 제공하지만 Windows 설치 자산과 전체 실행 검증은 아직 없습니다.
 
 Claude Code 최소 버전은 `tooling.claude_code_min_version`의 `2.1.278`입니다.
 정식 X.Y.Z 최소값에 대해 [SemVer 2.0.0](https://semver.org/)의 숫자 우선순위로 비교하며,
 동일 버전의 사전 릴리스는 정식 버전보다 낮고 빌드 메타데이터는 비교에 쓰지 않습니다.
-낮은 버전이면 `claude update`로 업그레이드하라는 안내 후 중단합니다.
+낮은 버전이면 `claude update`를 실행하고 다시 확인하며, 그래도 낮을 때만 중단합니다.
 `tooling.claude_code_version`은 호환용 키로 유지하고, 미정 placeholder가 남으면 중단합니다.
 실측 문자열은 `~/.wave/tooling/claude.version`에 남기며 파일 내용 자체를 비교에 재사용하지 않습니다.
 
@@ -56,11 +64,11 @@ Claude Code 최소 버전은 `tooling.claude_code_min_version`의 `2.1.278`입�
 2026-09-22 v0.1.0 자산 검증에서 DMG 파일 자체에 대한 `spctl --assess`는 양쪽 모두
 `rejected`, `source=no usable signature`, exit 3이었습니다.
 arm64 앱은 리소스 봉인 검증에 실패했고, x64 앱은 미서명입니다.
-SHA256·minisign 검증은 배포 파일의 무결성 확인이며 Apple 공증을 대신하지 않습니다.
+SHA256·codesign(Windows는 minisign) 검증은 배포 파일의 무결성 확인이며 Apple 공증을 대신하지 않습니다.
 
 양쪽 아키텍처에 공통으로 적용하는 수동 안내입니다.
 
-1. 공식 Release에서 받은 DMG의 SHA256SUMS·minisign 검증부터 확인합니다.
+1. 설치기가 DMG의 고정 SHA256·codesign 검증을 통과시킨 것부터 확인합니다.
 2. DMG에서 사용자 폴더로 복사한 앱의 위치를 확인합니다.
 3. 앱을 Control-클릭(또는 우클릭)하고 **열기**를 선택합니다.
 4. 출처와 무결성을 확인하고 격리속성 해제를 직접 선택한 경우에만, 설치된 해당 앱에 한해

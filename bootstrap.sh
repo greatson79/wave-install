@@ -10,6 +10,12 @@ STEPS_FILE="${SCRIPT_DIR}/steps.json"
 STATE_TEMPLATE="${SCRIPT_DIR}/install-state.json"
 STATE_FILE="${WAVE_HOME}/install-state.json"
 LOG_FILE="${WAVE_HOME}/install.log"
+# 릴리스 때 채우는 값 — bootstrap.sh 한 파일만 받아도 설치팩(tarball)을 스스로 받아 푼다.
+# 테스트·시뮬레이션만 WAVE_INSTALL_TARBALL_URL/SHA256 으로 덮어쓴다(file:// 허용).
+WAVE_TARBALL_URL="${WAVE_INSTALL_TARBALL_URL:-__WAVE_TARBALL_URL__}"
+WAVE_TARBALL_SHA256="${WAVE_INSTALL_TARBALL_SHA256:-__WAVE_TARBALL_SHA256__}"
+CLAUDE_INSTALL_URL="${WAVE_CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
+CLAUDE_DIRECT_BASE_URL="${WAVE_CLAUDE_DIRECT_BASE_URL:-https://downloads.claude.ai/claude-code-releases}"
 REINSTALL=0
 RESUME=0
 DRY_RUN=0
@@ -44,6 +50,27 @@ assert_user_path() {
     "$HOME"|"$HOME"/*) ;;
     *) fail_message "사용자 폴더 밖 경로는 허용하지 않음: $1"; return 1 ;;
   esac
+}
+
+# steps.json·wave-pack 이 옆에 없으면(= curl 한 파일만 받은 경우) 고정 SHA256 tarball 을 받아 풀고 그 안에서 재실행한다.
+ensure_pack() {
+  [[ -f "$SCRIPT_DIR/steps.json" && -d "$SCRIPT_DIR/wave-pack" ]] && return 0
+  local url="$WAVE_TARBALL_URL" want="$WAVE_TARBALL_SHA256" src="$WAVE_HOME/src" tgz proto got
+  [[ "$url" == __*__ || "$want" == __*__ ]] && fail_message "설치팩 URL·SHA256 이 릴리스 때 채워지지 않음" && return 1
+  [[ "$want" =~ ^[0-9a-f]{64}$ ]] || fail_message "설치팩 SHA256 형식 오류" || return 1
+  case "$url" in https://*) proto='=https' ;; file://*) proto='=file' ;; *) fail_message "설치팩 URL은 https:// 여야 함"; return 1 ;; esac
+  require_command curl || return 1; require_command shasum || return 1; require_command tar || return 1
+  log "설치팩을 내려받습니다: $url"
+  rm -rf -- "$src"; mkdir -p "$src"; tgz="$src/wave-install.tar.gz"
+  curl --fail --silent --show-error --location --proto "$proto" --tlsv1.2 "$url" --output "$tgz" || return 1
+  got="$(shasum -a 256 "$tgz" | awk '{print $1}')"
+  [[ "$got" == "$want" ]] || fail_message "설치팩 SHA256 불일치" || return 1
+  if tar -tzf "$tgz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then fail_message "설치팩에 위험한 경로가 있음"; return 1; fi
+  mkdir -p "$src/pack"
+  tar -xzf "$tgz" -C "$src/pack" --strip-components=1 || return 1
+  [[ -f "$src/pack/bootstrap.sh" && -f "$src/pack/steps.json" && -d "$src/pack/wave-pack" ]] || fail_message "설치팩 구성이 올바르지 않음" || return 1
+  log "설치팩 확인 완료 — $src/pack 에서 다시 시작합니다."
+  exec bash "$src/pack/bootstrap.sh" "$@"
 }
 
 load_config() {
@@ -182,10 +209,7 @@ set_release_context() {
   RELEASE_ASSET_NAME="$(json_value "$STEPS_FILE" "release.asset_name.$RELEASE_PLATFORM")"
   RELEASE_ASSET_URL="$(json_value "$STEPS_FILE" "release.asset_url.$RELEASE_PLATFORM")"
   RELEASE_EXPECTED_SHA256="$(json_value "$STEPS_FILE" "release.sha256.$RELEASE_PLATFORM")"
-  RELEASE_SUMS_URL="$(json_value "$STEPS_FILE" 'release.sha256sums_url')"
-  RELEASE_MINISIG_URL="$(json_value "$STEPS_FILE" "release.minisig_url.$RELEASE_PLATFORM")"
-  RELEASE_PUBLIC_KEY="$(json_value "$STEPS_FILE" 'release.minisign_public_key')"
-  for value in "$RELEASE_VERSION" "$RELEASE_ASSET_NAME" "$RELEASE_ASSET_URL" "$RELEASE_EXPECTED_SHA256" "$RELEASE_SUMS_URL" "$RELEASE_MINISIG_URL" "$RELEASE_PUBLIC_KEY"; do
+  for value in "$RELEASE_VERSION" "$RELEASE_ASSET_NAME" "$RELEASE_ASSET_URL" "$RELEASE_EXPECTED_SHA256"; do
     [[ "$value" == __*__ ]] && fail_message "S2 릴리스 자리표시자 잔존" && return 1
   done
   [[ "$RELEASE_ASSET_URL" == https://* ]] || fail_message "릴리스 asset URL은 HTTPS여야 함" || return 1
@@ -214,24 +238,38 @@ PY
 )"
 }
 
-step_s01() {
-  require_command claude || return 1
-  local pin minimum version comparison
-  pin="$(json_value "$STEPS_FILE" 'tooling.claude_code_version')"
-  if [[ "$pin" == __*__ ]]; then
-    fail_message "Claude Code 버전 핀이 아직 정해지지 않음"
-    return 1
+# Claude Code 설치: 공식 install.sh → 안 되면 공식 배포 자리에서 직접 받기(manifest 해시 대조).
+install_claude_direct() {
+  local arch platform ver sum dl
+  case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; x86_64) arch=x64 ;; *) return 1 ;; esac
+  [[ "$arch" == x64 && "$(sysctl -n sysctl.proc_translated 2>/dev/null)" == 1 ]] && arch=arm64
+  platform="darwin-$arch"
+  ver="$(curl -fsSL --max-time 60 "$CLAUDE_DIRECT_BASE_URL/stable" | tr -d '[:space:]')" || return 1
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  sum="$(curl -fsSL --max-time 60 "$CLAUDE_DIRECT_BASE_URL/$ver/manifest.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["platforms"][sys.argv[1]]["checksum"])' "$platform")" || return 1
+  [[ "$sum" =~ ^[0-9a-f]{64}$ ]] || return 1
+  mkdir -p "$WAVE_HOME/downloads"
+  dl="$WAVE_HOME/downloads/claude-$ver-$platform"
+  curl -fsSL --max-time 900 -o "$dl" "$CLAUDE_DIRECT_BASE_URL/$ver/$platform/claude" || return 1
+  [[ "$(shasum -a 256 "$dl" | awk '{print $1}')" == "$sum" ]] || { rm -f "$dl"; fail_message "Claude Code 직접 받기 해시 불일치"; return 1; }
+  chmod +x "$dl"
+  "$dl" install stable </dev/null || return 1
+}
+
+install_claude() {
+  local script="$WAVE_HOME/downloads/claude-install.sh"
+  mkdir -p "$WAVE_HOME/downloads"
+  log "Claude Code가 없어 공식 설치기로 설치합니다."
+  if curl -fsSL --max-time 120 "$CLAUDE_INSTALL_URL" -o "$script" && bash "$script" </dev/null; then
+    return 0
   fi
-  minimum="$(json_value "$STEPS_FILE" 'tooling.claude_code_min_version')" || return 1
-  if [[ -z "$minimum" || "$minimum" == __*__ ]]; then
-    fail_message "Claude Code 최소 버전 미정"
-    return 1
-  fi
-  version="$(claude --version 2>/dev/null)" || return 1
-  mkdir -p "$WAVE_HOME/tooling"
-  printf '%s\n' "$version" > "$WAVE_HOME/tooling/claude.version"
-  # 최소값은 정식 X.Y.Z 릴리스. 빌드 메타데이터는 비교하지 않는다.
-  comparison="$(python3 - "$version" "$minimum" <<'PY'
+  log "공식 설치기가 막혀 공식 배포 자리에서 직접 받습니다."
+  install_claude_direct
+}
+
+# 출력: ok | upgrade (정식 X.Y.Z 최소값 대비 SemVer 비교, 빌드 메타데이터 무시)
+claude_version_gate() {
+  python3 - "$1" "$2" <<'PY'
 import re, sys
 core = r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
 actual = re.fullmatch(core + r'(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?: \(Claude Code\))?', sys.argv[1])
@@ -245,20 +283,59 @@ a = tuple(map(int, actual.group(1, 2, 3)))
 b = tuple(map(int, minimum.group(1, 2, 3)))
 print('ok' if a > b or (a == b and not pre) else 'upgrade')
 PY
-)" || { fail_message "Claude Code semver 형식 확인 불가"; return 1; }
-  if [[ "$comparison" == upgrade ]]; then
-    log "중단: Claude Code $minimum 이상 필요. claude update로 업그레이드한 뒤 다시 실행하세요."
+}
+
+step_s01() {
+  local pin minimum version comparison installed=0 updated=0
+  pin="$(json_value "$STEPS_FILE" 'tooling.claude_code_version')"
+  if [[ "$pin" == __*__ ]]; then
+    fail_message "Claude Code 버전 핀이 아직 정해지지 않음"
     return 1
   fi
-  STEP_OBSERVED="$(python3 - "$version" <<'PY'
+  minimum="$(json_value "$STEPS_FILE" 'tooling.claude_code_min_version')" || return 1
+  if [[ -z "$minimum" || "$minimum" == __*__ ]]; then
+    fail_message "Claude Code 최소 버전 미정"
+    return 1
+  fi
+  require_command curl || return 1
+  PATH="$PATH:$HOME/.local/bin"
+  if ! command -v claude >/dev/null 2>&1; then
+    install_claude || { fail_message "Claude Code 설치 실패 — https://claude.ai/install.sh 를 직접 실행한 뒤 다시 시도하세요."; return 1; }
+    hash -r
+    command -v claude >/dev/null 2>&1 || { fail_message "Claude Code 설치 후에도 claude 명령을 찾지 못함"; return 1; }
+    installed=1
+  fi
+  version="$(claude --version 2>/dev/null)" || return 1
+  comparison="$(claude_version_gate "$version" "$minimum")" || { fail_message "Claude Code semver 형식 확인 불가"; return 1; }
+  if [[ "$comparison" == upgrade ]]; then
+    log "Claude Code $minimum 이상이 필요해 claude update를 실행합니다."
+    claude update </dev/null || true
+    hash -r
+    version="$(claude --version 2>/dev/null)" || return 1
+    comparison="$(claude_version_gate "$version" "$minimum")" || { fail_message "Claude Code semver 형식 확인 불가"; return 1; }
+    [[ "$comparison" == ok ]] || { log "중단: claude update 후에도 $minimum 미만입니다($version). 터미널에서 claude update를 직접 실행한 뒤 다시 시도하세요."; return 1; }
+    updated=1
+  fi
+  mkdir -p "$WAVE_HOME/tooling"
+  printf '%s\n' "$version" > "$WAVE_HOME/tooling/claude.version"
+  STEP_OBSERVED="$(python3 - "$version" "$installed" "$updated" <<'PY'
 import json, sys
-print(json.dumps({"claude_version": sys.argv[1]}))
+print(json.dumps({"claude_version": sys.argv[1], "installed": sys.argv[2] == "1", "updated": sys.argv[3] == "1"}))
 PY
 )"
 }
 
 step_s02() {
-  claude auth status >/dev/null 2>&1 || return 1
+  PATH="$PATH:$HOME/.local/bin"
+  if ! claude auth status >/dev/null 2>&1; then
+    log "Claude 로그인이 필요합니다. 아래 안내대로 브라우저에서 승인하고, 코드가 나오면 이 창에 붙여넣으세요."
+    if { : </dev/tty; } 2>/dev/null; then
+      claude auth login </dev/tty >/dev/tty 2>&1 || true
+    else
+      claude auth login || true
+    fi
+    claude auth status >/dev/null 2>&1 || { log "로그인을 확인하지 못했습니다. 같은 명령을 다시 실행하면 이어서 진행합니다."; return 1; }
+  fi
   mkdir -p "$WAVE_HOME/auth"
   : > "$WAVE_HOME/auth/claude-authenticated"
   STEP_OBSERVED='{"authenticated":true,"account_recorded":false}'
@@ -267,22 +344,38 @@ step_s02() {
 step_s03() {
   require_command curl || return 1
   require_command shasum || return 1
-  require_command minisign || return 1
+  require_command hdiutil || return 1
+  require_command codesign || return 1
   set_release_context || return 1
   mkdir -p "$WAVE_HOME/downloads"
-  local sums_path sig_path expected actual
-  sums_path="$WAVE_HOME/downloads/SHA256SUMS"
-  sig_path="${ARTIFACT_PATH}.minisig"
+  local actual cdhash want_cdhash mp app got_cdhash="null"
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "$RELEASE_ASSET_URL" --output "$ARTIFACT_PATH" || return 1
-  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "$RELEASE_SUMS_URL" --output "$sums_path" || return 1
-  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "$RELEASE_MINISIG_URL" --output "$sig_path" || return 1
-  expected="$(awk -v file="$RELEASE_ASSET_NAME" '$2 == file || $2 == "*" file {print $1; exit}' "$sums_path")"
   actual="$(shasum -a 256 "$ARTIFACT_PATH" | awk '{print $1}')"
-  [[ -n "$expected" && "$expected" == "$actual" && "$RELEASE_EXPECTED_SHA256" == "$actual" ]] || fail_message "SHA256 불일치" || return 1
-  minisign -Vm "$ARTIFACT_PATH" -P "$RELEASE_PUBLIC_KEY" -x "$sig_path" >/dev/null || return 1
-  STEP_OBSERVED="$(python3 - "$RELEASE_PLATFORM" "$RELEASE_ASSET_NAME" "$actual" <<'PY'
+  [[ "$RELEASE_EXPECTED_SHA256" == "$actual" ]] || fail_message "SHA256 불일치(고정값과 다름)" || return 1
+  # 서명 검증: DMG 안 앱을 읽기 전용으로 잠시 열어 codesign 으로 확인한다(S04가 같은 앱을 설치).
+  mp="$WAVE_HOME/verify-mount"
+  mkdir -p "$mp"
+  hdiutil attach -nobrowse -readonly -mountpoint "$mp" "$ARTIFACT_PATH" >/dev/null || return 1
+  app="$(find "$mp" -maxdepth 2 -type d -name '*.app' -print -quit)"
+  if [[ -z "$app" ]] || ! codesign --verify --deep --strict "$app" >/dev/null 2>&1; then
+    hdiutil detach "$mp" >/dev/null 2>&1 || true
+    fail_message "앱 서명(codesign) 검증 실패"
+    return 1
+  fi
+  want_cdhash="$(json_value "$STEPS_FILE" "release.cdhash.$RELEASE_PLATFORM")"
+  if [[ -n "$want_cdhash" && "$want_cdhash" != null && "$want_cdhash" != __*__ ]]; then
+    got_cdhash="$(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+    if [[ "$got_cdhash" != "$want_cdhash" ]]; then
+      hdiutil detach "$mp" >/dev/null 2>&1 || true
+      fail_message "앱 CDHash 불일치"
+      return 1
+    fi
+  fi
+  hdiutil detach "$mp" >/dev/null 2>&1 || true
+  STEP_OBSERVED="$(python3 - "$RELEASE_PLATFORM" "$RELEASE_ASSET_NAME" "$actual" "$got_cdhash" <<'PY'
 import json, sys
-print(json.dumps({"platform": sys.argv[1], "asset": sys.argv[2], "sha256": sys.argv[3], "minisig_verified": True}))
+print(json.dumps({"platform": sys.argv[1], "asset": sys.argv[2], "sha256": sys.argv[3], "codesign_verified": True,
+                  "cdhash": None if sys.argv[4] == "null" else sys.argv[4]}))
 PY
 )"
 }
@@ -534,6 +627,7 @@ run_step() {
 
 main() {
   local arg
+  local -a orig_args=("$@")
   while [[ $# -gt 0 ]]; do
     arg="$1"
     case "$arg" in
@@ -546,6 +640,7 @@ main() {
     shift
   done
   assert_user_path "$WAVE_HOME" || return 1
+  ensure_pack ${orig_args[@]+"${orig_args[@]}"} || return 1
   load_config || return 1
   if [[ "$DRY_RUN" == 1 ]]; then
     log "dry-run: $STEPS_FILE / $STATE_FILE / $LOG_FILE"

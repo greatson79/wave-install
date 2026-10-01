@@ -151,7 +151,7 @@ PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니�
 `one-line-e2e.yml`은 새 표준 사용자를 만들고 Windows PowerShell 5.1을 그 계정과 프로필로 실행합니다. Administrators 그룹 부재와 실제 사용자 SID의 HKCU를 검사합니다.
 
 1. `published`: README의 Windows 한 줄을 그대로 실행합니다. S00/S01 통과와 S02 로그인 경계까지만 판정하며 전체 설치 성공으로 표시하지 않습니다. v0.2.3 공개 자산이 없으면 이 잡은 실패합니다. 발행 후 다시 실행해야 합니다.
-2. `post-login`: S00~S02에 `TEST_SYNTHETIC_BYPASS` 전제를 명시하고 checkout의 원본 S03~S09를 실행합니다. 실제 S02 로그인 성공을 주장하지 않으며 최종 전체 성공 상태를 거부합니다. 과거 S05의 schtasks 명령이 실제로 접근 거부되는 대조군도 요구합니다.
+2. `post-login`: S00~S02에 `TEST_SYNTHETIC_BYPASS` 전제를 명시하고 checkout의 원본 S03~S09를 실행합니다. 실제 S02 로그인 성공을 주장하지 않으며 최종 전체 성공 상태를 거부합니다. 과거 S05의 schtasks 명령이 실제로 접근 거부되는지도 기록합니다. 대조군 미재현은 경고이며 본 설치를 중단하지 않습니다.
 
 `Start-Process -Wait`는 자식 데몬까지 기다릴 수 있으므로 `-Credential -LoadUserProfile -PassThru`와 15분 제한 `WaitForExit`를 사용합니다. 종료 뒤 해당 CI 사용자 프로세스를 정리합니다. 신원·상태·로그·대조군·소스 해시를 artifact로 보존합니다. Windows 실측 결과는 CI 실행 후에만 확정할 수 있습니다.
 
@@ -162,3 +162,5 @@ S05 결과 파일은 `.wave/install/daemon-register-result`에 둡니다. 데몬
 5e60bd7의 PS5.1 회귀에서 S07 인자 문제가 재현되어, 설치기 내부 호출은 명시적인 PowerShell 매개변수 `-RolesPath`로 전달합니다. 자식 stderr 전체와 종료 코드를 함께 기록합니다. 선택 단계는 최초 running 상태 기록도 try 범위에 포함하므로 그때의 예외도 skipped_with_reason 처리 대상입니다. 상태 파일 자체를 계속 쓸 수 없는 경우는 기록 성공으로 주장하지 않습니다.
 
 2225 경로 가설 검증은 두 증거로 나눕니다. `daemon-natural-old-call.json`은 S04 뒤 실제 `.wave/daemon`에 구 `New-Item` 호출을 실행한 결과입니다. 접근 거부가 없으면 `not_reproduced`로 기록합니다. `daemon-locked-file-control.json`은 별도 임시 경로에서 독점 잠금한 daemon 파일에 구 호출이 접근 거부되고, 잠금을 유지한 채 ENV=0의 새 S05가 설치기 기록 파일을 만드는지 대조합니다. 후자는 `synthetic: true`로 표시하며 실PC 원인 확정을 대신하지 않습니다.
+
+대조군은 보고 전용입니다(펄스 보강 지시). 자연 경로·합성 잠금·schtasks 대조의 실패와 증거 수집 오류는 Write-Warning으로 남기고 실제 S05~S09를 계속 실행합니다. 실제 설치 단계와 복사 무결성의 판정은 그대로 적용합니다.

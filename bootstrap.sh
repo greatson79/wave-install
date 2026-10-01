@@ -454,6 +454,16 @@ step_s06() {
   local source="${WAVE_PACK_SOURCE:-${SCRIPT_DIR}/wave-pack}"
   [[ -d "$source" ]] || fail_message "S1 wave-pack 소스 없음: $source" || return 1
   [[ -f "$source/manifest.json" && -f "$source/SHA256SUMS" ]] || return 1
+  local name directive bytes
+  for name in MASTER_DIRECTIVE.md WORKER_DIRECTIVE.md REVIEWER_DIRECTIVE.md; do
+    directive="$source/directives/$name"
+    [[ -f "$directive" ]] || fail_message "라이트 지침 없음: $name" || return 1
+    bytes="$(wc -c < "$directive")"
+    [[ "$bytes" -ge 2048 ]] || fail_message "라이트 지침 본문 부족: $name" || return 1
+    if grep -Eq '골격.{0,30}본문은 S1 후속|목차뿐' "$directive"; then
+      fail_message "라이트 지침 골격 표식 발견: $name"; return 1
+    fi
+  done
   mkdir -p "$PACK_HOME"
   cp -R "$source"/. "$PACK_HOME"/
   (cd "$PACK_HOME" && shasum -a 256 -c SHA256SUMS) || return 1

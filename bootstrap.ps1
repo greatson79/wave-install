@@ -725,6 +725,13 @@ function Run-S06 {
   $source = if ($env:WAVE_PACK_SOURCE) { $env:WAVE_PACK_SOURCE } else { Join-Path $ScriptDir "wave-pack" }
   if (-not (Test-Path -LiteralPath (Join-Path $source "manifest.json"))) { throw "S1 wave-pack 소스 없음" }
   if (-not (Test-Path -LiteralPath (Join-Path $source "SHA256SUMS"))) { throw "wave-pack SHA256SUMS 없음" }
+  foreach ($name in @('MASTER_DIRECTIVE.md', 'WORKER_DIRECTIVE.md', 'REVIEWER_DIRECTIVE.md')) {
+    $directive = Join-Path $source "directives\$name"
+    if (-not (Test-Path -LiteralPath $directive -PathType Leaf)) { throw "라이트 지침 없음: $name" }
+    if ((Get-Item -LiteralPath $directive).Length -lt 2048) { throw "라이트 지침 본문 부족: $name" }
+    $body = Get-Content -LiteralPath $directive -Raw -Encoding UTF8
+    if ($body -match '골격.{0,30}본문은 S1 후속|목차뿐') { throw "라이트 지침 골격 표식 발견: $name" }
+  }
   New-Item -ItemType Directory -Force -Path $PackHome | Out-Null
   Copy-Item -Path (Join-Path $source "*") -Destination $PackHome -Recurse -Force
   $waveBin = Join-Path $PackHome "bin\wave.ps1"

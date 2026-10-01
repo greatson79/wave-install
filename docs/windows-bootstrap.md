@@ -37,7 +37,7 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 배포 시 `scripts/make-release.sh`가 `bootstrap.ps1`의 `__WAVE_INSTALL_ZIP_URL__`과 `__WAVE_INSTALL_ZIP_SHA256__`을 ZIP URL·측정 SHA256으로 채웁니다. 원본 자리표시자 상태는 실행을 거부합니다. 릴리스 게시 뒤 사용자 명령은 아래 한 줄입니다. 현재 URL은 게시 전이므로 실행 명령이 아니라 확정 문자열입니다.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.2/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.3/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
 ```
 
 이 한 줄은 설치기를 사용자 폴더에 `install-wave.ps1` 파일로 내려받아 `-File` 로 실행합니다(`irm | iex` 는 쓰지 않습니다 — 릴리스 파일의 UTF-8 BOM 이 문자열로 섞여 Windows PowerShell 5.1 파서가 깨짐 · 2026-10-01 실기 실측). 이 단계에는 SmartScreen 창이 없습니다. ZIP 검증 뒤 설치기가 다시 시작되고, Claude Code 설치·업데이트가 필요하면 이 창에서 실행합니다. 미로그인 상태면 브라우저 인증과 코드 붙여넣기를 요청합니다. Wave Terminal `setup.exe` 실행 시 SmartScreen 경고가 나타날 수 있으며, Defender·V3·알약이 다운로드나 실행을 차단하면 해당 백신의 알림·격리 기록을 확인합니다. 메모리에서 실행된 스크립트는 HTTPS ZIP을 받아 고정 SHA256을 검사하고, ZIP 안의 절대·상위 경로와 symlink를 거부한 뒤 `powershell.exe -ExecutionPolicy Bypass -File`로 검증된 팩의 설치기를 다시 실행합니다.
@@ -75,7 +75,7 @@ HTTPS `/api/progress` 주소를 지정할 수 있습니다. **실제 엔드포�
 `-DryRun`과 `WAVE_NO_PROGRESS=1`에서는 보내지 않습니다.
 
 진단 정본은 [help-rules.tsv](../tests/help-rules.tsv)이며 [도움말](help-codes.md)은 자동 생성합니다.
-12범주·19세부 코드입니다. 원본 TSV의 18개 외에 원본 설치기에 있던 PS32도 표에 포함했습니다.
+12범주·20세부 코드입니다. 한국어·영문 접근 거부는 J-PERM-02로 분류합니다.
 사례 열은 우리 코드·회귀 검체를 가리킵니다. 원본의 타인 실기 기록을 우리 관측으로 옮기지 않았습니다.
 `python3 tests/help-rules-check.py --write`는 문서를 생성하며 설치기의 내장 규칙과 다르면 여전히 실패합니다.
 
@@ -137,3 +137,20 @@ PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니�
 전체 unittest 42건 중 41건 통과, Windows NTFS ADS 1건은 macOS이므로 건너뛰었습니다.
 괄호·도움말·핀 변조 13검체·S3/S2/S5 계약도 통과했습니다.
 핀·설치기 본문은 수정하지 않았으며 실제 GitHub 러너 실행, 공개 릴리스 다운로드, push는 하지 않았습니다.
+
+## v0.2.3 비관리자 설치
+
+- S05는 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `WaveTerminal-cysd` 값을 등록하고 다시 읽어 확인합니다. 경로는 따옴표로 감싸며, 실패 원문을 로그와 상태에 남깁니다. Run 값의 260자 제한은 [Microsoft 문서](https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys)를 따릅니다.
+- `optional: true`인 단계가 실패하면 `skipped_with_reason`으로 기록하고 다음 단계로 진행합니다. 필수 단계 실패는 중단합니다. 예외가 있으면 최종 상태는 `complete_with_exceptions`이며 전체 검증 통과를 뜻하지 않습니다.
+- 진행 표기는 S00=[1/10], S05=[6/10], S09=[10/10]입니다.
+- S08과 doctor는 cys의 정상 자동기동 안내(stderr)를 PowerShell 5.1 예외로 오인하지 않도록 해당 호출만 Continue로 감쌉니다. 결과는 종료 코드로 판정하며 출력은 파일에 남깁니다.
+- S06은 사용자 프로필의 pack 경로, S07은 같은 프로필의 역할 정의, S08은 사용자 설치 cys, S09는 사용자 폴더의 안내·상태 파일을 사용합니다. S07의 실제 좌석 기동과 S08의 주입량은 기존 계약대로 미측정 예외입니다.
+
+### 비관리자 CI의 판정 범위
+
+`one-line-e2e.yml`은 새 표준 사용자를 만들고 Windows PowerShell 5.1을 그 계정과 프로필로 실행합니다. Administrators 그룹 부재와 실제 사용자 SID의 HKCU를 검사합니다.
+
+1. `published`: README의 Windows 한 줄을 그대로 실행합니다. S00/S01 통과와 S02 로그인 경계까지만 판정하며 전체 설치 성공으로 표시하지 않습니다. v0.2.3 공개 자산이 없으면 이 잡은 실패합니다. 발행 후 다시 실행해야 합니다.
+2. `post-login`: S00~S02에 `TEST_SYNTHETIC_BYPASS` 전제를 명시하고 checkout의 원본 S03~S09를 실행합니다. 실제 S02 로그인 성공을 주장하지 않으며 최종 전체 성공 상태를 거부합니다. 과거 S05의 schtasks 명령이 실제로 접근 거부되는 대조군도 요구합니다.
+
+`Start-Process -Wait`는 자식 데몬까지 기다릴 수 있으므로 `-Credential -LoadUserProfile -PassThru`와 15분 제한 `WaitForExit`를 사용합니다. 종료 뒤 해당 CI 사용자 프로세스를 정리합니다. 신원·상태·로그·대조군·소스 해시를 artifact로 보존합니다. Windows 실측 결과는 CI 실행 후에만 확정할 수 있습니다.

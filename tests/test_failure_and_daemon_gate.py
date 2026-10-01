@@ -66,6 +66,20 @@ class FailureAndDaemonGateTests(unittest.TestCase):
         self.assertEqual((state["status"], state["exit_code"], state["error_id"]),
                          ("failed", 7, "WT-S02-AUTH"))
 
+    def test_optional_failure_records_reason_and_continues(self):
+        wave = self.home / "wave"
+        wave.mkdir()
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        result = self.bash('step_s05() { printf "Access is denied\\n" >&2; return 5; }; '
+                           'run_step S05_DAEMON_REGISTER; printf "CONTINUED"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CONTINUED", result.stdout)
+        state = json.loads((wave / "install-state.json").read_text())["steps"]["S05_DAEMON_REGISTER"]
+        self.assertEqual(state["status"], "skipped_with_reason")
+        self.assertEqual(state["exit_code"], 5)
+        self.assertIn("Access is denied", state["observed"]["reason"])
+        self.assertIn("Access is denied", (wave / "install.log").read_text())
+
     def s04(self, mode="ok"):
         app = self.home / "wave/mount/Fixture.app/Contents/MacOS"
         app.mkdir(parents=True)

@@ -4,18 +4,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SIM="$(mktemp -d /tmp/wave-v02-sim.XXXXXX)"; H="$SIM/home"; ST="$SIM/stubs"; FK="$SIM/fake"
-mkdir -p "$H" "$ST" "$FK" "$SIM/rel/wave-install-0.2.2"
+mkdir -p "$H" "$ST" "$FK" "$SIM/rel/wave-install-0.2.3"
 # 가짜 릴리스 산출물
-cp -R "$ROOT/bootstrap.sh" "$ROOT/steps.json" "$ROOT/install-state.json" "$ROOT/wave-pack" "$SIM/rel/wave-install-0.2.2/"
+cp -R "$ROOT/bootstrap.sh" "$ROOT/steps.json" "$ROOT/install-state.json" "$ROOT/wave-pack" "$SIM/rel/wave-install-0.2.3/"
 printf 'fake-dmg' > "$FK/asset.dmg"; DSHA="$(shasum -a 256 "$FK/asset.dmg" | awk '{print $1}')"
-python3 - "$SIM/rel/wave-install-0.2.2/steps.json" "$DSHA" <<'PY'
+python3 - "$SIM/rel/wave-install-0.2.3/steps.json" "$DSHA" <<'PY'
 import json, sys
 p, d = sys.argv[1:]; s = json.load(open(p))
 for k in ("macos_arm64", "macos_x64"): s["release"]["sha256"][k] = d
 json.dump(s, open(p, "w"), ensure_ascii=False, indent=2)
 PY
-tar -czf "$SIM/wave-install-0.2.2.tar.gz" -C "$SIM/rel" wave-install-0.2.2
-TSHA="$(shasum -a 256 "$SIM/wave-install-0.2.2.tar.gz" | awk '{print $1}')"
+tar -czf "$SIM/wave-install-0.2.3.tar.gz" -C "$SIM/rel" wave-install-0.2.3
+TSHA="$(shasum -a 256 "$SIM/wave-install-0.2.3.tar.gz" | awk '{print $1}')"
 # 스텁
 cat > "$ST/claude" <<'S'
 #!/bin/bash
@@ -37,6 +37,6 @@ chmod +x "$ST"/*
 cp "$ROOT/bootstrap.sh" "$H/install-wave.sh"
 set +e
 HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 \
-  WAVE_INSTALL_TARBALL_URL="file://$SIM/wave-install-0.2.2.tar.gz" WAVE_INSTALL_TARBALL_SHA256="$TSHA" \
+  WAVE_INSTALL_TARBALL_URL="file://$SIM/wave-install-0.2.3.tar.gz" WAVE_INSTALL_TARBALL_SHA256="$TSHA" \
   bash "$H/install-wave.sh" 2>&1 | tee "$SIM/run.log"
 echo "SIM_DIR=$SIM"

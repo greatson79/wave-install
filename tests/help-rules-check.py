@@ -14,7 +14,7 @@ CATEGORIES = {'AV', 'NET', 'RM', 'PATH', 'LOGIN', 'PERM', 'DISK', 'VER', 'DL', '
 def render(rows):
     text = '# Windows 설치 진단 코드\n\n'
     text += '`tests/help-rules.tsv` 정본에서 생성합니다. `python3 tests/help-rules-check.py --write`로 갱신하세요.\n\n'
-    text += '12범주·19세부 코드입니다. 원본 TSV의 18행에 설치기가 사용하던 PS32를 포함했습니다. 사례 열은 우리 코드·회귀 검체의 근거이며, 실기 관측과 구별합니다.\n'
+    text += f'12범주·{len(rows)}세부 코드입니다. 사례 열은 우리 코드·회귀 검체의 근거이며, 실기 관측과 구별합니다.\n'
     for row in rows:
         text += f"\n<a id=\"{row['code'].lower()}\"></a>\n\n## {row['code']} — {row['symptom']}\n\n1. {row['action1']}\n2. {row['action2']}\n\n근거: {row['case']} · OS: {row['os']}\n"
     return text

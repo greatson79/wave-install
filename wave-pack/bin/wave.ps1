@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Position=0)][string]$Command,
   [Parameter(Position=1)][string]$Action,
   [Parameter(Position=2)][string]$Format,
@@ -30,7 +30,19 @@ if ($Command -eq "doctor" -and ($Action -eq "--json" -or $Json)) {
   $roles = (Get-Content -Raw -LiteralPath $RolesFile | ConvertFrom-Json).roles
   $identifyExit = 1
   $cys = Join-Path $WaveHome "bin\cys.exe"
-  if (Test-Path -LiteralPath $cys) { & $cys identify *> $null; $identifyExit = $LASTEXITCODE }
+  if (Test-Path -LiteralPath $cys) {
+    $previousPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $identifyOutput = (& $cys identify 2>&1 | Out-String).Trim()
+      $identifyExit = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previousPreference }
+    if ($identifyOutput) {
+      $log = Join-Path $WaveHome 'verify\identify-doctor.log'
+      New-Item -ItemType Directory -Force (Split-Path -Parent $log) | Out-Null
+      Set-Content -LiteralPath $log -Value $identifyOutput -Encoding UTF8
+    }
+  }
   [ordered]@{ identify_exit = $identifyExit; seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; injected_bytes = $null } }) } | ConvertTo-Json -Compress
   exit 0
 }

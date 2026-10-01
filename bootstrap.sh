@@ -615,10 +615,34 @@ run_step() {
   STEP_STATUS="passed"
   state_patch "$step_id" "running" 0 "" '{}'
   set +e
-  "$function_name"
+  local stderr_file
+  stderr_file="$(mktemp "$WAVE_HOME/.step-stderr.XXXXXX")" || return 1
+  "$function_name" 2>"$stderr_file"
   local rc=$?
+  cat "$stderr_file" >&2
+  cat "$stderr_file" >> "$LOG_FILE"
   set -e
   if [[ "$rc" -ne 0 ]]; then
+    STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" <<'PY_REASON'
+import json, sys
+from pathlib import Path
+observed = json.loads(sys.argv[1])
+observed["reason"] = Path(sys.argv[2]).read_text(errors="replace").strip() or "step exited with code " + sys.argv[3]
+print(json.dumps(observed, ensure_ascii=False))
+PY_REASON
+)"
+    local optional
+    optional="$(python3 - "$STEPS_FILE" "$step_id" <<'PY_OPTIONAL'
+import json, sys
+config = json.load(open(sys.argv[1], encoding="utf-8"))
+print("true" if any(s["id"] == sys.argv[2] and s.get("optional") is True for s in config["steps"]) else "false")
+PY_OPTIONAL
+)"
+    if [[ "$optional" == "true" ]]; then
+      state_patch "$step_id" "skipped_with_reason" "$rc" "$(step_error_id "$step_id")" "$STEP_OBSERVED"
+      log "[$step_id] 선택 단계 실패 — 이유를 기록하고 계속 진행합니다."
+      return 0
+    fi
     state_patch "$step_id" "failed" "$rc" "$(step_error_id "$step_id")" "$STEP_OBSERVED"
     return "$rc"
   fi

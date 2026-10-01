@@ -359,6 +359,16 @@ $HelpRulesJson = @'
     "sample": "사용자 프로필 밖 경로는 허용하지 않음"
   },
   {
+    "code": "J-PERM-02",
+    "symptom": "사용자 작업의 접근이 거부됨",
+    "pattern": "(?i)액세스가 거부|access is denied",
+    "action1": "관리자 권한 없이 되는 사용자별 등록 방식으로 다시 시도하세요.",
+    "action2": "선택 단계는 오류를 기록하고 계속합니다. 필수 단계의 오류가 계속되면 install.log를 담당자에게 전달하세요.",
+    "case": "2026-10-01 Windows 실기 S05 schtasks 접근 거부 보고 및 한국어·영문 오류 주입 회귀",
+    "os": "win",
+    "sample": "오류: 액세스가 거부되었습니다."
+  },
+  {
     "code": "J-PERM-01",
     "symptom": "파일 또는 폴더 접근 권한 부족",
     "pattern": "(?i)access.*denied|unauthorized|권한.*없|permission.*denied",
@@ -697,12 +707,17 @@ function Run-S05 {
   }
   $cysd = Join-Path $WaveHome "bin\cysd.exe"
   if (-not (Test-Path -LiteralPath $cysd)) { throw "cysd 없음" }
-  & schtasks /Create /TN ("WaveTerminal-cysd-" + $env:USERNAME) /SC ONLOGON /TR $cysd /F *> $null
-  if ($LASTEXITCODE -ne 0) { throw "사용자 데몬 등록 실패" }
-  & schtasks /Query /TN ("WaveTerminal-cysd-" + $env:USERNAME) *> $null
-  if ($LASTEXITCODE -ne 0) { throw "사용자 데몬 등록 확인 실패" }
+  # 현재 사용자 로그인에만 등록한다. 공백·한글 경로도 하나의 실행파일로 해석한다.
+  $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+  $valueName = 'WaveTerminal-cysd'
+  $command = '"' + $cysd + '"'
+  if ($command.Length -gt 260) { throw '사용자 데몬 등록 경로가 Run 값 길이 제한(260자)을 초과합니다' }
+  New-Item -Path $runKey -Force -ErrorAction Stop | Out-Null
+  New-ItemProperty -Path $runKey -Name $valueName -Value $command -PropertyType String -Force -ErrorAction Stop | Out-Null
+  $registered = Get-ItemProperty -LiteralPath $runKey -Name $valueName -ErrorAction Stop
+  if ($registered.$valueName -cne $command) { throw "사용자 데몬 등록 확인 실패: HKCU Run 값 불일치" }
   Set-Content -LiteralPath $result -Value "registered" -Encoding UTF8
-  $script:StepObserved = [ordered]@{ mode = "default_on"; registered = $true; admin_required = $false }
+  $script:StepObserved = [ordered]@{ mode = "default_on"; registered = $true; admin_required = $false; registration = "HKCU_Run"; command = $command }
 }
 
 function Run-S06 {
@@ -750,8 +765,16 @@ function Run-S08 {
   $wave = Join-Path $WaveHome "bin\wave.ps1"
   $verify = Join-Path $WaveHome "verify"
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
-  & $cys identify *> $null
-  if ($LASTEXITCODE -ne 0) { throw "cys identify 실패" }
+  # PS 5.1은 정상 autostart 안내(stderr)도 NativeCommandError로 감싼다.
+  # 네이티브 종료값으로 판정하고 원문은 로그에 보존한다.
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $identifyOutput = (& $cys identify 2>&1 | Out-String).Trim()
+    $identifyExit = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $previousPreference }
+  if ($identifyOutput) { Write-Log $identifyOutput }
+  if ($identifyExit -ne 0) { throw "cys identify 실패(exit=$identifyExit): $identifyOutput" }
   & powershell -NoProfile -ExecutionPolicy Bypass -File $wave doctor --json | Set-Content -LiteralPath (Join-Path $verify "doctor.json") -Encoding UTF8
   if ($LASTEXITCODE -ne 0) { throw "wave doctor 실패" }
   $doctor = Get-Content -LiteralPath (Join-Path $verify "doctor.json") -Raw | ConvertFrom-Json
@@ -851,10 +874,19 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     Update-Step $Id $StepStatus 0 "" $StepObserved
     Send-Progress $CurrentStep 'end'
   } catch {
-    $code = Get-JCode $_.Exception.Message
+    $reason = $_.Exception.Message
+    $code = Get-JCode $reason
     $script:StepObserved['j_code'] = $code
+    $script:StepObserved['reason'] = $reason
+    Write-Log "[$Id] 실패 원문: $reason"
     Write-JCode $code
-    $errorId = [string](($Config.steps | Where-Object { $_.id -eq $Id }).on_fail.error_id)
+    $step = $Config.steps | Where-Object { $_.id -eq $Id }
+    $errorId = [string]$step.on_fail.error_id
+    if ($step.optional -eq $true) {
+      Update-Step $Id "skipped_with_reason" 1 $errorId $StepObserved
+      Say "[$CurrentStep] 선택 단계 실패 — 이유를 기록하고 계속 진행합니다."
+      return
+    }
     Update-Step $Id "failed" 1 $errorId $StepObserved
     throw
   }

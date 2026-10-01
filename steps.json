@@ -1,7 +1,7 @@
 {
   "schema": "wave-install.steps.v1",
   "product": "Wave Terminal",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",
@@ -153,7 +153,7 @@
       "title": "데몬 등록(선택·기본 on)",
       "command": {
         "macos": "launchctl bootstrap gui/$(id -u) ~/.wave/daemon/com.waveainetworks.cysd.plist && launchctl print gui/$(id -u)/com.waveainetworks.cysd",
-        "windows": "schtasks /Create /TN WaveTerminal-cysd /SC ONLOGON /TR <cysd> /F && schtasks /Query /TN WaveTerminal-cysd"
+        "windows": "HKCU Run: WaveTerminal-cysd = quoted user cysd.exe path; read back exact value"
       },
       "pass": [
         {"kind": "exit_code", "equals": 0},

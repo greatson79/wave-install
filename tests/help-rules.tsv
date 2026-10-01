@@ -11,6 +11,7 @@ J-PATH-01	필요한 명령 또는 설치 결과 경로가 없음	명령 없음|�
 J-LOGIN-01	Claude 인증 상태 확인 실패	Claude 로그인 상태 확인 실패	claude auth login으로 브라우저 승인을 마치세요.	같은 설치 명령을 다시 실행하세요. 토큰은 보내지 마세요.	우리 S02 비정상 종료 회귀; 실제 계정 로그인 미검증	win	Claude 로그인 상태 확인 실패
 J-LOGIN-02	인증 코드가 거부됨	(?i)invalid.*(?:authorization|authentication).*code|로그인 코드.*거부	새 로그인 흐름에서 발급된 코드를 사용하세요.	계속 실패하면 오류 코드만 담당자에게 알려 주세요.	우리 인증 오류 주입 회귀; 현 S02는 코드 입력을 수집하지 않음	win	Invalid authentication code
 J-HOME-01	허용되지 않는 작업 폴더	사용자 프로필 밖 경로|W-HOME	WAVE_HOME을 해제하고 사용자 프로필 안 기본 경로로 다시 실행하세요.	기존 사용자 파일은 삭제하지 마세요.	우리 Assert-UserPath 경계 검사 회귀	win	사용자 프로필 밖 경로는 허용하지 않음
+J-PERM-02	사용자 작업의 접근이 거부됨	(?i)액세스가 거부|access is denied	관리자 권한 없이 되는 사용자별 등록 방식으로 다시 시도하세요.	선택 단계는 오류를 기록하고 계속합니다. 필수 단계의 오류가 계속되면 install.log를 담당자에게 전달하세요.	2026-10-01 Windows 실기 S05 schtasks 접근 거부 보고 및 한국어·영문 오류 주입 회귀	win	오류: 액세스가 거부되었습니다.
 J-PERM-01	파일 또는 폴더 접근 권한 부족	(?i)access.*denied|unauthorized|권한.*없|permission.*denied	사용자 프로필 폴더에 쓰기 권한이 있는지 확인하세요.	관리 컴퓨터라면 담당자에게 문의하세요.	우리 파일 쓰기 권한 오류 주입 회귀; 실기 미관측	win	Access to the path is denied
 J-DISK-01	설치 공간 부족	(?i)디스크 여유 공간 부족|disk.*full|not enough.*space	설치 드라이브에서 steps.json의 min_free_bytes 이상 확보하세요.	같은 설치 명령을 다시 실행하세요.	우리 S00 디스크 부족 조건 회귀; 실기 미관측	win	디스크 여유 공간 부족
 J-VER-01	필수 도구 버전 또는 플랫폼이 맞지 않음	Claude Code.*(?:이상 필요|semver|버전|미정)|지원하지 않는 Windows|Windows가 아님|W-CYSD-PE	Claude Code는 claude update로 갱신하세요.	Windows x64와 지원 PowerShell에서 다시 실행하세요.	우리 S01 버전 경계·S04 PE-x64 회귀	win	중단: Claude Code 2.1.278 이상 필요

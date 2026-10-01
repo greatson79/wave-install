@@ -8,28 +8,28 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = 'https://github.com/greatson79/wave-install/releases/download/v0.2.2'
+BASE = 'https://github.com/greatson79/wave-install/releases/download/v0.2.3'
 
 
 class WindowsReleaseTests(unittest.TestCase):
     def test_zip_and_powershell_bootstrap_are_pinned(self):
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder)
-            result = subprocess.run(['bash', str(ROOT / 'scripts/make-release.sh'), '0.2.2', BASE, folder],
+            result = subprocess.run(['bash', str(ROOT / 'scripts/make-release.sh'), '0.2.3', BASE, folder],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            zip_path = out / 'wave-install-0.2.2.zip'
+            zip_path = out / 'wave-install-0.2.3.zip'
             zip_sha = hashlib.sha256(zip_path.read_bytes()).hexdigest()
             bootstrap = (out / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
-            self.assertIn(BASE + '/wave-install-0.2.2.zip', bootstrap)
+            self.assertIn(BASE + '/wave-install-0.2.3.zip', bootstrap)
             self.assertIn(zip_sha, bootstrap)
             self.assertNotIn('__WAVE_INSTALL_ZIP_', bootstrap)
             with zipfile.ZipFile(zip_path) as archive:
                 names = archive.namelist()
-                self.assertEqual({name.split('/')[0] for name in names}, {'wave-install-0.2.2'})
+                self.assertEqual({name.split('/')[0] for name in names}, {'wave-install-0.2.3'})
                 for required in ('bootstrap.ps1', 'steps.json', 'install-state.json', 'wave-pack/manifest.json'):
-                    self.assertIn('wave-install-0.2.2/' + required, names)
-                self.assertIn(b'__WAVE_INSTALL_ZIP_SHA256__', archive.read('wave-install-0.2.2/bootstrap.ps1'))
+                    self.assertIn('wave-install-0.2.3/' + required, names)
+                self.assertIn(b'__WAVE_INSTALL_ZIP_SHA256__', archive.read('wave-install-0.2.3/bootstrap.ps1'))
             checksums = (out / 'SHA256SUMS').read_text()
             self.assertEqual(len(checksums.splitlines()), 4)
             check = subprocess.run(['shasum', '-a', '256', '-c', 'SHA256SUMS'], cwd=out,

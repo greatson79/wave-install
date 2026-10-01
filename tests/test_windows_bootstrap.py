@@ -235,6 +235,52 @@ Save-InstallDone
 if (Test-Path $InstallDoneFile) { throw 'exception falsely completed' }
 ''')
 
+    def test_optional_error_continues_and_required_error_throws(self):
+        self.run_ps(r'''
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+$StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
+Load-Config
+Init-State
+Invoke-Step 'S05_DAEMON_REGISTER' { throw '오류: 액세스가 거부되었습니다.' }
+$entry = $State.steps.S05_DAEMON_REGISTER
+if ($entry.status -ne 'skipped_with_reason' -or $entry.exit_code -eq 0 -or $entry.observed.j_code -ne 'J-PERM-02') { throw 'optional failure not preserved' }
+if ($entry.observed.reason -notmatch '액세스가 거부') { throw 'reason lost' }
+if ((Get-Content $LogFile -Raw) -notmatch '액세스가 거부') { throw 'original error not logged' }
+$threw = $false
+try { Invoke-Step 'S06_PACK_INSTALL' { throw 'Access is denied' } } catch { $threw = $true }
+if (-not $threw -or $State.steps.S06_PACK_INSTALL.status -ne 'failed') { throw 'required failure swallowed' }
+if ((Get-JCode 'Access is denied') -ne 'J-PERM-02') { throw 'English permission code' }
+''')
+
+    def test_s05_registers_quoted_hkcu_value_and_verifies_readback(self):
+        self.run_ps(r'''
+$bin = Join-Path $WaveHome 'bin'
+New-Item -ItemType Directory -Force $bin | Out-Null
+Set-Content (Join-Path $bin 'cysd.exe') 'fixture only'
+$script:saved = $null
+function New-Item {
+  param($Path, $ItemType, [switch]$Force, $ErrorAction)
+  if ($Path -like 'HKCU:*') { return }
+  Microsoft.PowerShell.Management\New-Item -Path $Path -ItemType $ItemType -Force
+}
+function New-ItemProperty {
+  param($Path, $Name, $Value, $PropertyType, [switch]$Force, $ErrorAction)
+  if ($Path -cne 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -or $PropertyType -ne 'String') { throw 'not user Run key' }
+  $script:saved = @{ name=$Name; value=$Value }
+}
+function Get-ItemProperty {
+  param($LiteralPath, $Name, $ErrorAction)
+  return @{ $Name = $saved.value }
+}
+Run-S05
+if ($saved.value -cne ('"' + (Join-Path $bin 'cysd.exe') + '"')) { throw 'path not quoted' }
+if (-not $StepObserved.registered -or $StepObserved.admin_required -or $StepObserved.registration -ne 'HKCU_Run') { throw 'registration evidence' }
+function Get-ItemProperty { param($LiteralPath, $Name, $ErrorAction); return @{ $Name = 'wrong.exe' } }
+$threw = $false
+try { Run-S05 } catch { $threw = $true }
+if (-not $threw) { throw 'wrong registry readback accepted' }
+''')
+
     def test_step_numbers_resume_and_failed_dispatch(self):
         output = self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'

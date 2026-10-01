@@ -326,6 +326,23 @@ $doctor = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bin 
 if ($doctor.identify_exit -ne 7) { throw 'doctor hid native failure' }
 ''')
 
+    @unittest.skipUnless(os.name == 'nt', 'Run-S07 uses Windows PowerShell child process')
+    def test_s07_real_wrapper_accepts_roles_file_switch(self):
+        self.run_ps(r'''
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+$StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
+Load-Config
+Init-State
+$bin = Join-Path $WaveHome 'bin'
+New-Item -ItemType Directory -Force $bin | Out-Null
+New-Item -ItemType Directory -Force $PackHome | Out-Null
+Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/roles.json') $PackHome
+Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/bin/wave.ps1') $bin
+Run-S07
+if ($StepObserved.seats -ne 2) { throw 'fleet seats' }
+if (-not (Test-Path (Join-Path $WaveHome 'fleet/initial-fleet.ok'))) { throw 'fleet marker absent' }
+''')
+
     def test_step_numbers_resume_and_failed_dispatch(self):
         output = self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'

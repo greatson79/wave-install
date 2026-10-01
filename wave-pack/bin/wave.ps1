@@ -3,14 +3,14 @@
   [Parameter(Position=1)][string]$Action,
   [Parameter(Position=2)][string]$Format,
   [Parameter(Position=3)][string]$RolesArgument,
-  [Parameter(Position=4)][string]$RolesPath,
+  [Parameter(Position=4)][Alias("-roles-file")][string]$RolesPath,
   [Alias("-json")][switch]$Json
 )
 
 $ErrorActionPreference = "Stop"
 $WaveHome = if ($env:WAVE_HOME) { $env:WAVE_HOME } else { Join-Path $env:USERPROFILE ".wave" }
 $PackHome = Join-Path $env:USERPROFILE ".cys\pack"
-$RolesFile = Join-Path $PackHome "roles.json"
+$RolesFile = if ($RolesPath) { $RolesPath } else { Join-Path $PackHome "roles.json" }
 
 if ($Command -eq "fleet" -and $Action -eq "bootstrap") {
   $fleet = Join-Path $WaveHome "fleet"

@@ -27,8 +27,7 @@
     },
     windows: {
       label: "Windows · PowerShell에 붙여넣기",
-      // PLACEHOLDER-WIN: 형식은 docs/windows-bootstrap.md(`irm <릴리스 bootstrap.ps1 URL> | iex`) 기준. 릴리스 URL은 s925 확정 전 자리표시자.
-      command: 'irm https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.ps1 | iex'
+      command: 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.ps1 | iex"'
     }
   };
 

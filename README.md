@@ -6,7 +6,7 @@ Wave AI Networks의 Wave Terminal 라이트 설치 GitHub 배포와 설치 가�
 ## 구성
 
 - `bootstrap.sh`, `bootstrap.ps1`: macOS·Windows 설치기
-- `steps.json`: 릴리스 URL·SHA256·(Windows용) minisign 공개키·10단계 정본
+- `steps.json`: 릴리스 URL·SHA256·macOS CDHash·10단계 정본
 - `site/`: 설치 한 줄, 단계별 안내, 릴리스 무결성 안내
 - `wave-pack/`: 초기 master 1석 + 부서 1석 편성 팩
 
@@ -20,13 +20,11 @@ Wave Terminal은 원개발자 idoforgod의 [`cys-terminal`](https://github.com/i
 
 ## 무결성
 
-macOS 설치기는 공개 Wave Terminal Release를 고정 SHA256과 앱 `codesign`으로 확인하고, Windows 설치기는 SHA256SUMS와 minisign 서명을 확인합니다.
-공개키만 `steps.json`에 기록하며, 비밀키는 `~/.config/waveai/minisign/`에 유지하고 저장소에는 넣지 않습니다.
+설치팩 자체는 두 운영체제 모두 고정 SHA256으로 확인합니다. Wave Terminal 앱은 macOS에서 고정 SHA256 + `codesign --verify` + CDHash로, Windows에서 고정 SHA256 + SHA256SUMS 대조 + Authenticode 확인(현재 미서명 — SHA256으로 진행)으로 확인합니다. minisign은 더 이상 필요하지 않습니다.
 
 ## 운영체제 안내
 
-macOS 설치 자산은 v0.1.0 릴리스에 연결되어 있습니다. Windows 설치기는 준비 중이며,
-Windows 설치 자산이 준비되기 전에는 설치를 진행하지 않습니다.
+macOS 설치 자산은 Wave Terminal v0.1.1 릴리스(v0.1.0 내용물을 서명 봉인만 다시 한 재패키징)에, Windows 설치 자산은 v0.1.0 릴리스에 연결되어 있습니다.
 
 공식 도메인은 별도 결재 후 연결하며, 그 전까지는 배포된 임시 URL만 검증 대상으로 삼습니다.
 
@@ -49,7 +47,15 @@ curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.0/b
 
 </details>
 
-Windows 준비 중: PowerShell 설치기는 제공하지만 Windows 설치 자산과 전체 실행 검증은 아직 없습니다.
+## 설치 (Windows) — 명령 한 줄
+
+PowerShell을 열고 아래 한 줄만 붙여넣은 뒤 Enter를 누릅니다(관리자 권한 불필요). 설치기가 설치팩(`wave-install-0.2.0.zip`)을 받아 고정 SHA256으로 확인한 뒤 이어서 진행하고, Claude Code 설치·업데이트·로그인도 같은 창에서 처리합니다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.ps1 | iex"
+```
+
+Wave Terminal 설치 파일을 실행할 때 SmartScreen 창이 뜨면 **추가 정보 → 실행**을 누릅니다. 백신이 경고하면 예외 등록 없이 화면을 사진으로 남겨 문의해 주세요.
 
 Claude Code 최소 버전은 `tooling.claude_code_min_version`의 `2.1.278`입니다.
 정식 X.Y.Z 최소값에 대해 [SemVer 2.0.0](https://semver.org/)의 숫자 우선순위로 비교하며,
@@ -63,8 +69,8 @@ Claude Code 최소 버전은 `tooling.claude_code_min_version`의 `2.1.278`입�
 **두 DMG 모두 Apple 공증 없음 · spctl 거부됨.**
 2026-09-22 v0.1.0 자산 검증에서 DMG 파일 자체에 대한 `spctl --assess`는 양쪽 모두
 `rejected`, `source=no usable signature`, exit 3이었습니다.
-arm64 앱은 리소스 봉인 검증에 실패했고, x64 앱은 미서명입니다.
-SHA256·codesign(Windows는 minisign) 검증은 배포 파일의 무결성 확인이며 Apple 공증을 대신하지 않습니다.
+v0.1.0의 arm64 앱은 리소스 봉인 검증에 실패했고 x64 앱은 미서명이었습니다 — v0.1.1에서 두 앱 모두 ad-hoc 서명을 다시 봉인해 `codesign --verify --deep --strict`를 통과합니다.
+SHA256·codesign(Windows는 SHA256·Authenticode) 검증은 배포 파일의 무결성 확인이며 Apple 공증을 대신하지 않습니다.
 
 양쪽 아키텍처에 공통으로 적용하는 수동 안내입니다.
 

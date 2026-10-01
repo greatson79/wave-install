@@ -16,21 +16,21 @@
   "profile": "wave-light",
   "directive_source": {
     "repository": "https://github.com/greatson79/wave-terminal",
-    "tag": "v0.1.0",
-    "commit": "2f45ad9d9de119db2424d200276fc0cacc2a6d3d",
+    "tag": "v0.1.2",
+    "commit": "e8772662cdea0731bf9ae931be62fcc1e4cc19f0",
     "path": "cysjavis-pack/directives",
     "files": {
       "directives/MASTER_DIRECTIVE.md": {
-        "bytes": 34086,
-        "sha256": "5be46486c3072560d18bea99628538c521f3319f331c225fbce2a286cd87d9c3"
+        "bytes": 7722,
+        "sha256": "e040bb28e1b0d02e2edfffb52231fba618c669ebea27eb4a3edc6ec497f0d8c9"
       },
       "directives/WORKER_DIRECTIVE.md": {
-        "bytes": 15141,
-        "sha256": "fa347fae643cba03661cd2f331618f5775cd9745f315078d37864157003b2aac"
+        "bytes": 4699,
+        "sha256": "fd50d9ce38ad1d6ad5e811ce3d6ba4387d939c2fbd5340df7cc021dba6b44106"
       },
       "directives/REVIEWER_DIRECTIVE.md": {
-        "bytes": 5612,
-        "sha256": "3309068cb0906a0d8fe39c07d65c0f7aecf5f06530030b7b74389548ecc0f2a4"
+        "bytes": 2675,
+        "sha256": "d49e0724eb7b87186278249c37b917378c02a81cca746c91d16073c5b0451f4d"
       }
     }
   }

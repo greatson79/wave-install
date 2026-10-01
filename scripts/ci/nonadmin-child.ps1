@@ -158,6 +158,36 @@ $env:CYS_PACK_DIR = $PackHome
 # No CI-authored settings, --skip, or replacement preflight are permitted.
 $init = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('init-pack') 'first-boot-init-pack' 120000
 if ($init.timed_out -or $init.exit_code -ne 0) { throw 'Product init-pack failed; inspect first-boot-init-pack logs' }
+# Clean first boot must preserve byte-identical canonical directives, without
+# creating merge candidates beside the installed files.
+$sourceManifestPath = Join-Path $env:WAVE_CI_ROOT 'wave-pack\manifest.json'
+$sourceManifest = Get-Content -LiteralPath $sourceManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$directiveSource = $sourceManifest.directive_source
+$directiveEvidence = [ordered]@{ source = $directiveSource; manifest_path = $sourceManifestPath; manifest_sha256 = (Get-FileHash $sourceManifestPath -Algorithm SHA256).Hash.ToLowerInvariant(); files = @(); passed = $false; error = $null }
+try {
+  foreach ($relative in @('directives/MASTER_DIRECTIVE.md', 'directives/WORKER_DIRECTIVE.md', 'directives/REVIEWER_DIRECTIVE.md')) {
+    $expected = Get-StateField $directiveSource.files $relative
+    if ($null -eq $expected -or $expected.bytes -le 0 -or $expected.sha256 -notmatch '^[a-f0-9]{64}$') { throw "Directive source entry invalid: $relative" }
+    $installedPath = Join-Path $PackHome $relative
+    $exists = Test-Path -LiteralPath $installedPath -PathType Leaf
+    $newExists = Test-Path -LiteralPath ($installedPath + '.new')
+    $actualBytes = $null
+    $actualHash = $null
+    if ($exists) {
+      $actualBytes = (Get-Item -LiteralPath $installedPath).Length
+      $actualHash = (Get-FileHash -LiteralPath $installedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $directiveMatches = $exists -and $actualBytes -eq $expected.bytes -and $actualHash -ceq $expected.sha256 -and -not $newExists
+    $directiveEvidence.files += [ordered]@{ relative = $relative; path = $installedPath; exists = $exists; bytes = $actualBytes; sha256 = $actualHash; expected_bytes = $expected.bytes; expected_sha256 = $expected.sha256; new_exists = $newExists; matches = $directiveMatches }
+  }
+  if (@($directiveEvidence.files | Where-Object { -not $_.matches }).Count) { throw 'Installed directives differ from canonical manifest or .new merge candidates exist' }
+  $directiveEvidence.passed = $true
+} catch {
+  $directiveEvidence.error = $_.Exception.Message
+  throw
+} finally {
+  $directiveEvidence | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'directive-source-evidence.json') -Encoding UTF8
+}
 $preflight = Join-Path $PackHome 'bin\javis_preflight.py'
 $boot = Join-Path $PackHome 'bin\javis_bootstrap.py'
 if (-not (Test-Path $preflight) -or -not (Test-Path $boot)) { throw 'Installed product preflight/bootstrap missing' }

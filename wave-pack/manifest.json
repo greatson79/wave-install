@@ -13,5 +13,25 @@
     "master",
     "worker-dept-1"
   ],
-  "profile": "wave-light"
+  "profile": "wave-light",
+  "directive_source": {
+    "repository": "https://github.com/greatson79/wave-terminal",
+    "tag": "v0.1.0",
+    "commit": "2f45ad9d9de119db2424d200276fc0cacc2a6d3d",
+    "path": "cysjavis-pack/directives",
+    "files": {
+      "directives/MASTER_DIRECTIVE.md": {
+        "bytes": 34086,
+        "sha256": "5be46486c3072560d18bea99628538c521f3319f331c225fbce2a286cd87d9c3"
+      },
+      "directives/WORKER_DIRECTIVE.md": {
+        "bytes": 15141,
+        "sha256": "fa347fae643cba03661cd2f331618f5775cd9745f315078d37864157003b2aac"
+      },
+      "directives/REVIEWER_DIRECTIVE.md": {
+        "bytes": 5612,
+        "sha256": "3309068cb0906a0d8fe39c07d65c0f7aecf5f06530030b7b74389548ecc0f2a4"
+      }
+    }
+  }
 }

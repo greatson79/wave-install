@@ -172,3 +172,9 @@ S08의 identify와 doctor 외부 호출은 각각 30초로 제한합니다. doct
 비관리자 `post-login` CI는 설치된 앱의 Python과 `cys init-pack`을 사용합니다. 제품 bootstrap의 첫 단계인 `preflight --fix`를 실행한 뒤, 같은 설치 팩의 `javis_preflight.py --json` 종료값 0·`ok=true`·`fails=0`·팩 경로 일치를 별도로 요구합니다. 자동 수정이 실패해도 report JSON은 수집합니다. S00~S02의 합성 전제는 계속 표시되며 이 결과가 실제 로그인이나 마스터 전체 부트 완료를 증명하지 않습니다.
 
 구 스텁 디렉티브 대조는 별도 팩 사본에서 실행하고 비차단 증거로 남깁니다. 라이트 검사·Windows 심링크 대체·C53 수리는 Wave Terminal 엔진에도 반영되어야 합니다. 기존 v0.1.0 앱의 init-pack은 수정한 시스템 파일을 옛 임베드 팩으로 복원할 수 있으므로 설치 ZIP만 교체해서 수리가 끝났다고 판정하지 않습니다.
+
+### 디렉티브 정본과 라이트 프로필 공급
+
+설치팩의 master·worker·reviewer 디렉티브는 Wave Terminal `v0.1.0` 태그의 커밋 `2f45ad9d9de119db2424d200276fc0cacc2a6d3d`, `cysjavis-pack/directives/` 원문과 바이트 단위로 같습니다. 각각 34,086·15,141·5,612바이트이며 `wave-pack/manifest.json`의 `directive_source`에 출처·SHA256을 기록합니다. 첫 실행 CI는 init-pack 후 설치된 파일의 크기·지문과 `.new` 부재도 확인합니다.
+
+기존 앱은 preflight의 `--skip` 명령행 인자만 받으며 설치 후 프로필 설정이나 스킵 목록 파일을 읽지 않습니다. bootstrap은 `preflight --fix`로 고정 호출합니다. 따라서 설정 파일만 추가해서 라이트 검사·C53·Windows 링크 수리를 적용할 수 없고, 수정된 팩을 임베드한 앱을 다시 빌드해야 합니다.

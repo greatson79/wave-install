@@ -2,6 +2,7 @@
 
 - 첫 실행 부트 검증을 설치된 팩의 preflight READY까지 확장합니다.
 - wave-light 프로필을 명시합니다.
+- master·worker·reviewer 스텁을 Wave Terminal v0.1.0(`2f45ad9`) 앱 임베드 원문으로 교체하고 원천 지문을 manifest에 기록합니다.
 
 # 변경 기록
 

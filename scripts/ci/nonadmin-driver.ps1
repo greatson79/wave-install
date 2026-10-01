@@ -15,12 +15,26 @@ if (@(Get-LocalGroupMember $admins | Where-Object { $_.SID -eq $user.SID }).Coun
 # Only this disposable test tree is writable by the standard user.
 & icacls $out /grant "${name}:(OI)(CI)M" | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'Evidence ACL failed' }
+if ($Mode -eq 'post-login') {
+  $stubs = Join-Path $out 'baseline-stubs'
+  New-Item -ItemType Directory -Force $stubs | Out-Null
+  try {
+    foreach ($file in @('MASTER_DIRECTIVE.md','WORKER_DIRECTIVE.md','REVIEWER_DIRECTIVE.md')) {
+      $content = & git -C $root show ("a4f29a9:wave-pack/directives/" + $file)
+      if ($LASTEXITCODE -ne 0) { throw 'Cannot acquire pinned old directive control' }
+      $content | Set-Content (Join-Path $stubs $file) -Encoding UTF8
+    }
+  } catch {
+    $_.Exception.Message | Set-Content (Join-Path $out 'stub-acquisition-error.txt') -Encoding UTF8
+    Write-Warning 'Nonblocking stub control could not be prepared; see artifact'
+  }
+}
 $cred = New-Object Management.Automation.PSCredential("$env:COMPUTERNAME\$name", $password)
 $childArguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -Root "{2}" -Evidence "{3}"' -f (Join-Path $PSScriptRoot 'nonadmin-child.ps1'), $Mode, $root, $out
 $p = Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $cred -LoadUserProfile -WorkingDirectory $out -ArgumentList $childArguments -PassThru
 # Bounded equivalent of -Wait: Start-Process -Wait waits on descendants too,
 # including the daemon under test. WaitForExit measures the installer root only.
-$finished = $p.WaitForExit(900000)
+$finished = $p.WaitForExit(1500000)
 if (-not $finished) {
   $ErrorActionPreference = 'Continue'
   & taskkill /PID $p.Id /T /F 2>&1 | Out-Host
@@ -71,5 +85,10 @@ if ($Mode -eq 'published') {
   }
   if ($s.required_steps_passed -or $s.status -eq 'complete') { throw 'Synthetic authentication incorrectly reported full success' }
   if (-not (Test-Path (Join-Path $out 'schtasks-control.json'))) { Write-Warning 'Old S05 denial evidence missing; inspect control warnings' }
+  $execution = Get-Content (Join-Path $out 'preflight-execution.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+  $ready = Get-Content (Join-Path $out 'installed-preflight.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+  $expectedPack = Join-Path $profile '.cys\pack'
+  if ($execution.timed_out -or $execution.exit_code -ne 0 -or $ready.ok -ne $true -or $ready.fails -ne 0 -or [IO.Path]::GetFullPath($ready.pack_dir) -ne [IO.Path]::GetFullPath($expectedPack)) { throw 'Installed pack READY evidence rejected' }
+  Write-Host 'INSTALLED_PREFLIGHT_READY: installed pack --json exit 0; authentication remains synthetic.'
   Write-Host 'POST_LOGIN_PROCEDURE_COMPLETED: S09 reached; inspect S08 status for timeout/unmeasured; authentication synthetic; NOT full verification.'
 }

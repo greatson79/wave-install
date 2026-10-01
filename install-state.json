@@ -1,7 +1,7 @@
 {
   "schema": "wave-install.state.v1",
   "product": "Wave Terminal",
-  "installer_version": "0.1.3",
+  "installer_version": "0.2.4",
   "status": "not_started",
   "created_at": null,
   "updated_at": null,

@@ -2,20 +2,22 @@ name: Standard-user Windows install boundaries
 on:
   workflow_dispatch:
   push:
-    branches: ['e2e/**', 'fix/v0.2.3']
+    branches: ['e2e/**', 'fix/v0.2.3', 'fix/v0.2.4']
 permissions:
   contents: read
 jobs:
   windows-nonadmin:
     name: Windows PowerShell 5.1 / ${{ matrix.mode }} / standard user
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         mode: [published, post-login]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Parse PowerShell scripts with the Windows 5.1 parser
         shell: powershell
         run: |

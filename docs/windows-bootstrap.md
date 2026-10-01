@@ -37,7 +37,7 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 배포 시 `scripts/make-release.sh`가 `bootstrap.ps1`의 `__WAVE_INSTALL_ZIP_URL__`과 `__WAVE_INSTALL_ZIP_SHA256__`을 ZIP URL·측정 SHA256으로 채웁니다. 원본 자리표시자 상태는 실행을 거부합니다. 릴리스 게시 뒤 사용자 명령은 아래 한 줄입니다. 현재 URL은 게시 전이므로 실행 명령이 아니라 확정 문자열입니다.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.3/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
 ```
 
 이 한 줄은 설치기를 사용자 폴더에 `install-wave.ps1` 파일로 내려받아 `-File` 로 실행합니다(`irm | iex` 는 쓰지 않습니다 — 릴리스 파일의 UTF-8 BOM 이 문자열로 섞여 Windows PowerShell 5.1 파서가 깨짐 · 2026-10-01 실기 실측). 이 단계에는 SmartScreen 창이 없습니다. ZIP 검증 뒤 설치기가 다시 시작되고, Claude Code 설치·업데이트가 필요하면 이 창에서 실행합니다. 미로그인 상태면 브라우저 인증과 코드 붙여넣기를 요청합니다. Wave Terminal `setup.exe` 실행 시 SmartScreen 경고가 나타날 수 있으며, Defender·V3·알약이 다운로드나 실행을 차단하면 해당 백신의 알림·격리 기록을 확인합니다. 메모리에서 실행된 스크립트는 HTTPS ZIP을 받아 고정 SHA256을 검사하고, ZIP 안의 절대·상위 경로와 symlink를 거부한 뒤 `powershell.exe -ExecutionPolicy Bypass -File`로 검증된 팩의 설치기를 다시 실행합니다.
@@ -138,7 +138,7 @@ PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니�
 괄호·도움말·핀 변조 13검체·S3/S2/S5 계약도 통과했습니다.
 핀·설치기 본문은 수정하지 않았으며 실제 GitHub 러너 실행, 공개 릴리스 다운로드, push는 하지 않았습니다.
 
-## v0.2.3 비관리자 설치
+## v0.2.4 비관리자 설치
 
 - S05는 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `WaveTerminal-cysd` 값을 등록하고 다시 읽어 확인합니다. 경로는 따옴표로 감싸며, 실패 원문을 로그와 상태에 남깁니다. Run 값의 260자 제한은 [Microsoft 문서](https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys)를 따릅니다.
 - `optional: true`인 단계가 실패하면 `skipped_with_reason`으로 기록하고 다음 단계로 진행합니다. 필수 단계 실패는 중단합니다. 예외가 있으면 최종 상태는 `complete_with_exceptions`이며 전체 검증 통과를 뜻하지 않습니다.
@@ -150,10 +150,10 @@ PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니�
 
 `one-line-e2e.yml`은 새 표준 사용자를 만들고 Windows PowerShell 5.1을 그 계정과 프로필로 실행합니다. Administrators 그룹 부재와 실제 사용자 SID의 HKCU를 검사합니다.
 
-1. `published`: README의 Windows 한 줄을 그대로 실행합니다. S00/S01 통과와 S02 로그인 경계까지만 판정하며 전체 설치 성공으로 표시하지 않습니다. v0.2.3 공개 자산이 없으면 이 잡은 실패합니다. 발행 후 다시 실행해야 합니다.
+1. `published`: README의 Windows 한 줄을 그대로 실행합니다. S00/S01 통과와 S02 로그인 경계까지만 판정하며 전체 설치 성공으로 표시하지 않습니다. v0.2.4 공개 자산이 없으면 이 잡은 실패합니다. 발행 후 다시 실행해야 합니다.
 2. `post-login`: S00~S02에 `TEST_SYNTHETIC_BYPASS` 전제를 명시하고 checkout의 원본 S03~S09를 실행합니다. 실제 S02 로그인 성공을 주장하지 않으며 최종 전체 성공 상태를 거부합니다. 과거 S05의 schtasks 명령이 실제로 접근 거부되는지도 기록합니다. 대조군 미재현은 경고이며 본 설치를 중단하지 않습니다.
 
-`Start-Process -Wait`는 자식 데몬까지 기다릴 수 있으므로 `-Credential -LoadUserProfile -PassThru`와 15분 제한 `WaitForExit`를 사용합니다. 종료 뒤 해당 CI 사용자 프로세스를 정리합니다. 신원·상태·로그·대조군·소스 해시를 artifact로 보존합니다. Windows 실측 결과는 CI 실행 후에만 확정할 수 있습니다.
+`Start-Process -Wait`는 자식 데몬까지 기다릴 수 있으므로 `-Credential -LoadUserProfile -PassThru`와 25분 제한 `WaitForExit`를 사용합니다. 종료 뒤 해당 CI 사용자 프로세스를 정리합니다. 신원·상태·로그·대조군·소스 해시를 artifact로 보존합니다. Windows 실측 결과는 CI 실행 후에만 확정할 수 있습니다.
 
 S05 결과 파일은 `.wave/install/daemon-register-result`에 둡니다. 데몬 런타임의 `.wave/daemon` 경로와 분리하며 기존 런타임 파일을 덮어쓰지 않습니다. 단계 실패와 최상위 실패 로그에는 `InvocationInfo.PositionMessage`로 파일·행 위치를 함께 남깁니다. Bash S07은 좌석 수 검증에 실패하면 필수 단계 실패를 반환합니다.
 
@@ -166,3 +166,9 @@ S05 결과 파일은 `.wave/install/daemon-register-result`에 둡니다. 데몬
 대조군은 보고 전용입니다(펄스 보강 지시). 자연 경로·합성 잠금·schtasks 대조의 실패와 증거 수집 오류는 Write-Warning으로 남기고 실제 S05~S09를 계속 실행합니다. 실제 설치 단계와 복사 무결성의 판정은 그대로 적용합니다.
 
 S08의 identify와 doctor 외부 호출은 각각 30초로 제한합니다. doctor 내부 identify는 20초로 제한합니다. 시간 초과 시 해당 클라이언트 프로세스 종료를 시도하고 출력·종료 오류를 남기며 S08을 `unmeasured`로 기록해 S09로 진행합니다. `reason=timeout`, 호출명·제한시간이 상태에 남고 최종 상태는 `complete_with_exceptions`입니다. 호출 비정상 종료·기동 실패·doctor 결과 형식 오류도 `unmeasured`, `reason=call_failed`와 오류·실제 종료값을 남겨 계속합니다. 정상 응답에서 실제로 측정한 주입량이 한도를 넘으면 기존 테스트 계약대로 중단합니다. CI는 시간 초과 미측정을 성공 검증으로 표시하지 않고 S09 도달 여부를 검사합니다.
+
+## v0.2.4 첫 실행 preflight 검증
+
+비관리자 `post-login` CI는 설치된 앱의 Python과 `cys init-pack`을 사용합니다. 제품 bootstrap의 첫 단계인 `preflight --fix`를 실행한 뒤, 같은 설치 팩의 `javis_preflight.py --json` 종료값 0·`ok=true`·`fails=0`·팩 경로 일치를 별도로 요구합니다. 자동 수정이 실패해도 report JSON은 수집합니다. S00~S02의 합성 전제는 계속 표시되며 이 결과가 실제 로그인이나 마스터 전체 부트 완료를 증명하지 않습니다.
+
+구 스텁 디렉티브 대조는 별도 팩 사본에서 실행하고 비차단 증거로 남깁니다. 라이트 검사·Windows 심링크 대체·C53 수리는 Wave Terminal 엔진에도 반영되어야 합니다. 기존 v0.1.0 앱의 init-pack은 수정한 시스템 파일을 옛 임베드 팩으로 복원할 수 있으므로 설치 ZIP만 교체해서 수리가 끝났다고 판정하지 않습니다.

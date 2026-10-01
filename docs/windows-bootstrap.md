@@ -175,6 +175,6 @@ S08의 identify와 doctor 외부 호출은 각각 30초로 제한합니다. doct
 
 ### 디렉티브 정본과 라이트 프로필 공급
 
-설치팩의 master·worker·reviewer 라이트 디렉티브는 Wave Terminal 커밋 `20ade1f5512bdb75074c8054800afacbf081f0e8`의 `cysjavis-pack/directives/` 원문과 바이트 단위로 같습니다. 각각 8,021·4,699·2,675바이트이며 `wave-pack/manifest.json`의 `directive_source`에 출처·SHA256을 기록합니다. 첫 실행 CI는 init-pack 후 설치된 파일의 크기·지문과 `.new` 부재도 확인합니다.
+설치팩의 master·worker·reviewer 라이트 디렉티브는 Wave Terminal 커밋 `40dc869af640325a50ec9e8867c2baebf0fccf0b`의 `cysjavis-pack/directives/` 원문과 바이트 단위로 같습니다. 각각 8,021·4,699·2,675바이트이며 `wave-pack/manifest.json`의 `directive_source`에 출처·SHA256을 기록합니다. 첫 실행 CI는 init-pack 후 설치된 파일의 크기·지문과 `.new` 부재도 확인합니다.
 
 기존 앱은 preflight의 `--skip` 명령행 인자만 받으며 설치 후 프로필 설정이나 스킵 목록 파일을 읽지 않습니다. bootstrap은 `preflight --fix`로 고정 호출합니다. 따라서 설정 파일만 추가해서 라이트 검사·C53·Windows 링크 수리를 적용할 수 없고, 수정된 팩을 임베드한 앱을 다시 빌드해야 합니다.

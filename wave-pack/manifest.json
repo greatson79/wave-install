@@ -16,7 +16,7 @@
   "profile": "wave-light",
   "directive_source": {
     "repository": "https://github.com/greatson79/wave-terminal",
-    "commit": "20ade1f5512bdb75074c8054800afacbf081f0e8",
+    "commit": "40dc869af640325a50ec9e8867c2baebf0fccf0b",
     "path": "cysjavis-pack/directives",
     "files": {
       "directives/MASTER_DIRECTIVE.md": {
@@ -31,6 +31,7 @@
         "bytes": 2675,
         "sha256": "d49e0724eb7b87186278249c37b917378c02a81cca746c91d16073c5b0451f4d"
       }
-    }
+    },
+    "tag": "v0.1.2"
   }
 }

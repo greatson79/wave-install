@@ -2,8 +2,8 @@
 """S3 설치기 계약 테스트.
 
 이 테스트는 네트워크·실제 설치·GitHub/Vercel 접근을 하지 않는다.
-초기 S3 스테이징에서는 S2 릴리스 자리표시자를 허용하고,
-S2 완료 후 --require-resolved-release 로 재실행한다.
+v0.2.1은 릴리스 자산 핀이 확정되어 기본 실행과
+--require-resolved-release 모두 자리표시자를 거부한다.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def assert_contract(require_resolved_release: bool) -> None:
     steps = load_json(STEPS_PATH)
     assert steps.get("schema") == "wave-install.steps.v1"
     assert steps.get("product") == "Wave Terminal"
-    assert steps.get("version") == "0.2.0"
+    assert steps.get("version") == "0.2.1"
     assert isinstance(steps.get("steps"), list)
     actual_ids = [step.get("id") for step in steps["steps"]]
     assert actual_ids == EXPECTED_IDS, actual_ids
@@ -104,19 +104,16 @@ def assert_contract(require_resolved_release: bool) -> None:
 
     serialized = json.dumps(release, ensure_ascii=False)
     placeholders = PLACEHOLDER_RE.findall(serialized)
+    assert not placeholders, f"S2 자리표시자 잔존: {placeholders}"
     if require_resolved_release:
-        assert not placeholders, f"S2 자리표시자 잔존: {placeholders}"
         assert release["repository"] == "greatson79/wave-terminal"
         assert release["version"] == "0.1.0"
         assert release["asset_name"]["windows_x64"] == "wave-terminal-0.1.0-windows-x64-setup.exe"
         for platform in ("macos_arm64", "macos_x64", "windows_x64"):
             assert re.fullmatch(r"[0-9a-f]{64}", release["sha256"][platform])
             assert release["asset_url"][platform].endswith(release["asset_name"][platform])
-        # macOS는 v0.2부터 minisig 대신 codesign — minisig는 Windows만 현행
-        assert release["minisig_url"]["windows_x64"].endswith(release["asset_name"]["windows_x64"] + ".minisig")
-        assert release["minisign_public_key"].startswith("RW")
-    else:
-        assert "__S2_" in serialized, "초기 S3에는 S2 자리표시자가 있어야 함"
+        assert release["windows_sha256sums_url"].endswith("/SHA256SUMS")
+        assert "windows_publisher_subject" in release
 
     state = load_json(STATE_PATH)
     assert state.get("schema") == "wave-install.state.v1"
@@ -178,7 +175,7 @@ def main() -> int:
         return 1
     print(
         "PASS: S3 설치기 계약 "
-        + ("(S2 URL 치환 후)" if args.require_resolved_release else "(S2 자리표시자 허용)")
+        + ("(릴리스 URL 재검사)" if args.require_resolved_release else "(확정 릴리스)")
     )
     return 0
 

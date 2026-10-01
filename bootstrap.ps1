@@ -125,6 +125,7 @@ function Ensure-Pack {
   try {
     Invoke-WebRequest -UseBasicParsing -Uri $BundleUrl -OutFile $zipPath -ErrorAction Stop
     if ((Get-ArtifactHash $zipPath) -ne $BundleSha256.ToLowerInvariant()) { throw '설치팩 ZIP SHA256 불일치' }
+    Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
     try {
@@ -453,6 +454,7 @@ function Get-ConfigValue([string]$Path) {
 }
 
 function Load-Config {
+  Ensure-Pack
   if (-not (Test-Path -LiteralPath $StepsFile)) {
     $url = if ($env:WAVE_INSTALL_STEPS_URL) { $env:WAVE_INSTALL_STEPS_URL } else { "https://raw.githubusercontent.com/greatson79/wave-install/main/steps.json" }
     if ($url -like "__*__") { throw "steps.json URL이 S5 전 배포 자리표시자 상태임" }
@@ -862,7 +864,6 @@ trap {
   exit 1
 }
 
-Ensure-Pack
 Load-Config
 if ($DryRun) {
   Write-Host "dry-run: $StepsFile / $StateFile / $LogFile"

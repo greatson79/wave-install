@@ -23,11 +23,11 @@
   const commands = {
     mac: {
       label: "Mac · 터미널에 붙여넣기",
-      command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
+      command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.1/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
     },
     windows: {
       label: "Windows · PowerShell에 붙여넣기",
-      command: 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.ps1 | iex"'
+      command: 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.1/bootstrap.ps1 | iex"'
     }
   };
 

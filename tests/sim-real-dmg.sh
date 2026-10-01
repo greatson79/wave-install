@@ -7,7 +7,7 @@ DMG="${1:?DMG 경로}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SIM="$(mktemp -d /tmp/wave-v02-sim.XXXXXX)"; H="$SIM/home"; ST="$SIM/stubs"; FK="$SIM/fake"
 mkdir -p "$H" "$ST" "$FK"; cp "$DMG" "$FK/asset.dmg"
-bash "$ROOT/scripts/make-release.sh" 0.2.0 "file://$SIM/rel" "$SIM/rel" >"$SIM/make-release.log"
+bash "$ROOT/scripts/make-release.sh" 0.2.1 "file://$SIM/rel" "$SIM/rel" >"$SIM/make-release.log"
 cat > "$ST/claude" <<'S'
 #!/bin/bash
 case "$1" in --version) echo 2.1.300 ;; auth) [ "$2" = login ] && touch "$FAKE/in"; [ "$2" = status ] && { [ -f "$FAKE/in" ] || exit 1; }; exit 0 ;; esac

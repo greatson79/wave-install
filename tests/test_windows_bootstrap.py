@@ -14,7 +14,7 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(PWSH, 'PWSH is required')
         with tempfile.TemporaryDirectory(dir=ROOT, prefix='.win-test-') as tmp:
             home = Path(tmp)
-            source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig').split('\nEnsure-Pack\nLoad-Config\nif ($DryRun)')[0]
+            source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig').split('\nLoad-Config\nif ($DryRun)')[0]
             source = source.replace('$ErrorActionPreference = "Stop"', '$ErrorActionPreference = "Stop"\n[Console]::OutputEncoding = [Text.UTF8Encoding]::new()')
             script = home / 'harness.ps1'
             script.write_text(source + '\n' + body, encoding='utf-8-sig')
@@ -44,7 +44,7 @@ function Run-S07 { $script:StepObserved = @{ fleet_started = $true } }
 function Run-S08 { $script:StepObserved = @{ injection_measured = $true; max_injected_bytes = 1 } }
 '''
             script = home/'bootstrap.ps1'
-            script.write_text(source.replace('\nEnsure-Pack\nLoad-Config\nif ($DryRun)', overrides+'\nEnsure-Pack\nLoad-Config\nif ($DryRun)'), encoding='utf-8-sig')
+            script.write_text(source.replace('\nLoad-Config\nif ($DryRun)', overrides+'\nLoad-Config\nif ($DryRun)'), encoding='utf-8-sig')
             env = dict(os.environ, USERPROFILE=str(home), WAVE_HOME=str(home/'wave'), WAVE_NO_PROGRESS='1')
             def run(*args):
                 result = subprocess.run([PWSH, '-NoProfile', '-File', str(script), *args], env=env, capture_output=True, text=True, encoding='utf-8')
@@ -77,6 +77,7 @@ if ((Get-JCode 'an unclassified failure') -ne 'J-UNK-00') { throw 'fallback' }
 
     def test_one_line_zip_rejects_hash_and_parent_path_before_relaunch(self):
         self.run_ps(r'''
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $script:ScriptDir = $null
 $script:WaveHome = Join-Path $env:USERPROFILE 'wave'

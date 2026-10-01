@@ -3,7 +3,7 @@
   [Parameter(Position=1)][string]$Action,
   [Parameter(Position=2)][string]$Format,
   [Parameter(Position=3)][string]$RolesArgument,
-  [Parameter(Position=4)][Alias("-roles-file")][string]$RolesPath,
+  [Parameter(Position=4)][Alias("-roles-file", "roles-file")][string]$RolesPath,
   [Alias("-json")][switch]$Json
 )
 

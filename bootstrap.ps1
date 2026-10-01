@@ -697,9 +697,9 @@ function Run-S04 {
 
 function Run-S05 {
   # 데몬 런타임 경로와 설치기 기록을 분리한다(기존 daemon 파일/폴더와 충돌 금지).
-  $daemon = Join-Path $WaveHome "installer\daemon"
+  $daemon = Join-Path $WaveHome "install"
   New-Item -ItemType Directory -Force -Path $daemon | Out-Null
-  $result = Join-Path $daemon "register-result"
+  $result = Join-Path $daemon "daemon-register-result"
   if ($env:WAVE_ENABLE_DAEMON -eq "0") {
     Set-Content -LiteralPath $result -Value "skipped_by_user" -Encoding UTF8
     $script:StepStatus = "skipped"
@@ -740,9 +740,16 @@ function Run-S07 {
   if (-not (Test-Path -LiteralPath $roles) -or -not (Test-Path -LiteralPath $wave)) { throw "roles.json 또는 wave CLI 없음" }
   $fleet = Join-Path $WaveHome "fleet"
   New-Item -ItemType Directory -Force -Path $fleet | Out-Null
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $wave fleet bootstrap --roles-file $roles *> (Join-Path $fleet "bootstrap.log")
-  if ($LASTEXITCODE -ne 0) { throw "초기 편성 기동 실패" }
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $fleetOutput = (& powershell -NoProfile -ExecutionPolicy Bypass -File $wave fleet bootstrap -RolesPath $roles 2>&1 | Out-String).Trim()
+    $fleetExit = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $previousPreference }
+  Set-Content -LiteralPath (Join-Path $fleet "bootstrap.log") -Value $fleetOutput -Encoding UTF8
+  if ($fleetExit -ne 0) { throw "초기 편성 기동 실패(exit=$fleetExit): $fleetOutput" }
   & powershell -NoProfile -ExecutionPolicy Bypass -File $wave fleet status --json | Set-Content -LiteralPath (Join-Path $fleet "status.json") -Encoding UTF8
+  if ($LASTEXITCODE -ne 0) { throw "초기 편성 상태 조회 실패" }
   $status = Get-Content -LiteralPath (Join-Path $fleet "status.json") -Raw | ConvertFrom-Json
   if (@($status.seats).Count -ne 2) { throw "초기 편성 좌석 수가 2가 아님" }
   New-Item -ItemType File -Force -Path (Join-Path $fleet "initial-fleet.ok") | Out-Null
@@ -868,9 +875,9 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
   $script:StepObserved = [ordered]@{}
   $script:StepStatus = "passed"
   $script:DiagnosticWritten = $false
-  Send-Progress $CurrentStep 'start'
-  Update-Step $Id "running" 0 "" ([ordered]@{})
   try {
+    Send-Progress $CurrentStep 'start'
+    Update-Step $Id "running" 0 "" ([ordered]@{})
     & $Action
     Update-Step $Id $StepStatus 0 "" $StepObserved
     Send-Progress $CurrentStep 'end'
@@ -881,8 +888,10 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     $script:StepObserved['j_code'] = $code
     $script:StepObserved['reason'] = $reason
     $script:StepObserved['position'] = $position
-    Write-Log "[$Id] 실패 원문: $reason"
-    if ($position) { Write-Log $position }
+    try {
+      Write-Log "[$Id] 실패 원문: $reason"
+      if ($position) { Write-Log $position }
+    } catch { Write-Host "[$Id] 실패 원문: $reason`n$position" }
     Write-JCode $code
     $step = $Config.steps | Where-Object { $_.id -eq $Id }
     $errorId = [string]$step.on_fail.error_id

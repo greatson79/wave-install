@@ -420,9 +420,9 @@ step_s04() {
 }
 
 step_s05() {
-  mkdir -p "$WAVE_HOME/installer/daemon"
+  mkdir -p "$WAVE_HOME/install"
   local result
-  result="$WAVE_HOME/installer/daemon/register-result"
+  result="$WAVE_HOME/install/daemon-register-result"
   if [[ "${WAVE_ENABLE_DAEMON:-1}" == "0" ]]; then
     printf '%s\n' 'skipped_by_user' > "$result"
     STEP_STATUS="skipped"
@@ -431,7 +431,7 @@ step_s05() {
   fi
   require_command launchctl || return 1
   local plist uid label
-  plist="$WAVE_HOME/installer/daemon/com.waveainetworks.cysd.plist"
+  plist="$WAVE_HOME/install/com.waveainetworks.cysd.plist"
   uid="$(id -u)"
   label="com.waveainetworks.cysd"
   cat > "$plist" <<EOF

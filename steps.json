@@ -152,12 +152,12 @@
       "total": 10,
       "title": "데몬 등록(선택·기본 on)",
       "command": {
-        "macos": "launchctl bootstrap gui/$(id -u) ~/.wave/installer/daemon/com.waveainetworks.cysd.plist && launchctl print gui/$(id -u)/com.waveainetworks.cysd",
+        "macos": "launchctl bootstrap gui/$(id -u) ~/.wave/install/com.waveainetworks.cysd.plist && launchctl print gui/$(id -u)/com.waveainetworks.cysd",
         "windows": "HKCU Run: WaveTerminal-cysd = quoted user cysd.exe path; read back exact value"
       },
       "pass": [
         {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/installer/daemon/register-result"}
+        {"kind": "file_exists", "path": "~/.wave/install/daemon-register-result"}
       ],
       "on_fail": {
         "error_id": "WT-S05-DAEMON",

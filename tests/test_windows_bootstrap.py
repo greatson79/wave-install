@@ -253,6 +253,24 @@ if (-not $threw -or $State.steps.S06_PACK_INSTALL.status -ne 'failed') { throw '
 if ((Get-JCode 'Access is denied') -ne 'J-PERM-02') { throw 'English permission code' }
 ''')
 
+    def test_optional_initial_state_write_error_is_caught(self):
+        self.run_ps(r'''
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+$StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
+Load-Config
+Init-State
+$script:realUpdateStep = ${function:Update-Step}
+function Update-Step {
+  param($Id, $Status, $ExitCode, $ErrorId, $Observed)
+  if ($Status -eq 'running') { throw 'Access is denied during initial state write' }
+  & $script:realUpdateStep $Id $Status $ExitCode $ErrorId $Observed
+}
+$script:actionCalled = $false
+Invoke-Step 'S05_DAEMON_REGISTER' { $script:actionCalled = $true }
+if ($actionCalled -or $State.steps.S05_DAEMON_REGISTER.status -ne 'skipped_with_reason') { throw 'initial state failure escaped optional boundary' }
+if ($State.steps.S05_DAEMON_REGISTER.observed.reason -notmatch 'initial state write') { throw 'initial state reason lost' }
+''')
+
     def test_s05_registers_quoted_hkcu_value_and_verifies_readback(self):
         self.run_ps(r'''
 $bin = Join-Path $WaveHome 'bin'
@@ -277,7 +295,7 @@ function Get-ItemProperty {
 }
 Run-S05
 if ($saved.value -cne ('"' + (Join-Path $bin 'cysd.exe') + '"')) { throw 'path not quoted' }
-if (-not (Test-Path (Join-Path $WaveHome 'installer/daemon/register-result'))) { throw 'installer marker absent' }
+if (-not (Test-Path (Join-Path $WaveHome 'install/daemon-register-result'))) { throw 'installer marker absent' }
 if ((Get-Content (Join-Path $WaveHome 'daemon')) -ne 'runtime-owned fixture') { throw 'runtime file changed' }
 if (-not $StepObserved.registered -or $StepObserved.admin_required -or $StepObserved.registration -ne 'HKCU_Run') { throw 'registration evidence' }
 function Get-ItemProperty { param($LiteralPath, $Name, $ErrorAction); return @{ $Name = 'wrong.exe' } }

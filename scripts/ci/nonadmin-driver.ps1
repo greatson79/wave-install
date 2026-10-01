@@ -45,7 +45,7 @@ if (Test-Path $wave) {
   $evidenceWave = Join-Path $out 'wave'
   New-Item -ItemType Directory -Force $evidenceWave | Out-Null
   # Keep state/log evidence; the 128 MB installer and installed executables are not logs.
-  foreach ($relative in @('install-state.json', 'install.log', 'START-HERE.md', 'verify', 'fleet', 'installer')) {
+  foreach ($relative in @('install-state.json', 'install.log', 'START-HERE.md', 'verify', 'fleet', 'install')) {
     $item = Join-Path $wave $relative
     if (Test-Path $item) { Copy-Item $item $evidenceWave -Recurse -Force }
   }

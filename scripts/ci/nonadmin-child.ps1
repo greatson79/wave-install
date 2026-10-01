@@ -67,6 +67,62 @@ foreach ($n in 3..9) {
     $runtimeItem = Get-Item -LiteralPath $runtimePath -Force -ErrorAction SilentlyContinue
     $runtimeAcl = if ($runtimeItem) { (Get-Acl -LiteralPath $runtimePath).Sddl } else { $null }
     @{ path = $runtimePath; exists = [bool]$runtimeItem; is_directory = $(if ($runtimeItem) { $runtimeItem.PSIsContainer } else { $null }); acl = $runtimeAcl; handle_measurement = 'not measured'; daemon_processes = @(Get-Process cysd -ErrorAction SilentlyContinue | Select-Object Id, Path) } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'daemon-path-before-s05.json') -Encoding UTF8
+    # Measure the original mkdir call on the natural post-S04 path. A missing
+    # collision is not proof of the incident hypothesis.
+    $natural = [ordered]@{ synthetic = $false; path = $runtimePath; old_call = 'New-Item -ItemType Directory -Force -Path $WaveHome\\daemon'; outcome = 'not_reproduced'; error = $null; error_id = $null }
+    $createdNaturalDirectory = $false
+    try {
+      New-Item -ItemType Directory -Force -Path $runtimePath -ErrorAction Stop | Out-Null
+      $createdNaturalDirectory = -not [bool]$runtimeItem
+    } catch {
+      $natural.error = $_.Exception.Message
+      $natural.error_id = $_.FullyQualifiedErrorId
+      if ($natural.error -match '(?i)access.*denied|액세스.*거부') { $natural.outcome = 'access_denied_reproduced' }
+    } finally {
+      $natural | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'daemon-natural-old-call.json') -Encoding UTF8
+      # Restore an originally absent path so this probe cannot create the very
+      # directory/file collision that later daemon startup is meant to measure.
+      if ($createdNaturalDirectory) { [IO.Directory]::Delete($runtimePath, $false) }
+    }
+    $savedWaveHome = $WaveHome
+    $savedDaemonOption = $env:WAVE_ENABLE_DAEMON
+    $savedStepObserved = $StepObserved
+    $savedStepStatus = $StepStatus
+    $fixtureHome = Join-Path $env:USERPROFILE ('daemon-lock-fixture-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fixtureHome | Out-Null
+    $fixturePath = Join-Path $fixtureHome 'daemon'
+    $fixtureEvidence = [ordered]@{ synthetic = $true; scope = 'isolated exclusive file lock; not the natural runtime path'; path = $fixturePath; file_share = 'None'; old_call_outcome = 'not_reproduced'; old_error = $null; old_error_id = $null; new_call_succeeded = $false; installer_result = $null; failure = $null }
+    $lock = $null
+    try {
+      $lock = [IO.File]::Open($fixturePath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+      try {
+        New-Item -ItemType Directory -Force -Path $fixturePath -ErrorAction Stop | Out-Null
+      } catch {
+        $fixtureEvidence.old_error = $_.Exception.Message
+        $fixtureEvidence.old_error_id = $_.FullyQualifiedErrorId
+        if ($fixtureEvidence.old_error -match '(?i)access.*denied|액세스.*거부') { $fixtureEvidence.old_call_outcome = 'access_denied_reproduced' }
+      }
+      # Keep the exclusive lock held while calling the unmodified new Run-S05.
+      $script:WaveHome = $fixtureHome
+      $env:WAVE_ENABLE_DAEMON = '0'
+      Run-S05
+      $fixtureResult = Join-Path $fixtureHome 'install\daemon-register-result'
+      $fixtureEvidence.installer_result = $fixtureResult
+      if (-not (Test-Path -LiteralPath $fixtureResult -PathType Leaf)) { throw 'New S05 did not create its installer-owned result' }
+      if ((Get-Content -LiteralPath $fixtureResult -Raw).Trim() -cne 'skipped_by_user' -or $StepStatus -cne 'skipped') { throw 'New S05 disabled-daemon result mismatch' }
+      $fixtureEvidence.new_call_succeeded = $true
+      if ($fixtureEvidence.old_call_outcome -ne 'access_denied_reproduced') { throw 'Synthetic locked-file old-call Access denied control not reproduced; inspect exact error' }
+    } catch {
+      $fixtureEvidence.failure = $_.Exception.Message
+      throw
+    } finally {
+      if ($null -ne $lock) { $lock.Dispose() }
+      $script:WaveHome = $savedWaveHome
+      if ($null -eq $savedDaemonOption) { Remove-Item Env:WAVE_ENABLE_DAEMON -ErrorAction SilentlyContinue } else { $env:WAVE_ENABLE_DAEMON = $savedDaemonOption }
+      $script:StepObserved = $savedStepObserved
+      $script:StepStatus = $savedStepStatus
+      $fixtureEvidence | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'daemon-locked-file-control.json') -Encoding UTF8
+    }
     $oldPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     $denial = & schtasks /Create /TN ('WaveTerminal-cysd-' + $env:USERNAME) /SC ONLOGON /TR (Join-Path $WaveHome 'bin\cysd.exe') /F 2>&1 | Out-String

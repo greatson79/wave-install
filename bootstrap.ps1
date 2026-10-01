@@ -7,6 +7,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+# PS 5.1: 진행 막대가 Invoke-WebRequest 큰 파일(앱 128MB)을 수십 배 느리게 해 멈춘 것처럼 보인다 · 구형 Win10 은 TLS1.2 를 켜야 GitHub 에 붙는다
+$ProgressPreference = 'SilentlyContinue'
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
 
 $ScriptDir = if ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { $null }
 $BundleUrl = if ($env:WAVE_INSTALL_ZIP_URL) { $env:WAVE_INSTALL_ZIP_URL } else { '__WAVE_INSTALL_ZIP_URL__' }

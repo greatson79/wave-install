@@ -281,6 +281,46 @@ try { Run-S05 } catch { $threw = $true }
 if (-not $threw) { throw 'wrong registry readback accepted' }
 ''')
 
+    @unittest.skipUnless(os.name == 'nt' and Path(PWSH or '').name.lower() == 'powershell.exe',
+                         'Native stderr control requires Windows PowerShell 5.1')
+    def test_s08_and_doctor_accept_native_stderr_only_when_exit_is_zero(self):
+        self.run_ps(r'''
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+$StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
+Load-Config
+Init-State
+$bin = Join-Path $WaveHome 'bin'
+New-Item -ItemType Directory -Force $bin | Out-Null
+New-Item -ItemType Directory -Force $PackHome | Out-Null
+Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/roles.json') $PackHome
+Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/bin/wave.ps1') $bin
+Add-Type -OutputAssembly (Join-Path $bin 'cys.exe') -OutputType ConsoleApplication -TypeDefinition @"
+using System;
+public class StderrFixture {
+  public static int Main(string[] args) {
+    Console.Error.WriteLine("[cys] cysd not running - autostarting fixture");
+    Console.WriteLine("{}");
+    return Environment.GetEnvironmentVariable("WAVE_TEST_CYS_FAIL") == "1" ? 7 : 0;
+  }
+}
+"@
+$env:WAVE_TEST_CYS_FAIL = '0'
+# Control proves PS5.1 + Stop would reject the successful native stderr call.
+$control = $false
+try { & (Join-Path $bin 'cys.exe') identify 2>&1 | Out-Null } catch { $control = $true }
+if (-not $control) { throw 'PS5.1 native stderr control did not reproduce' }
+Run-S08
+if ($StepObserved.identify_exit -ne 0 -or $ErrorActionPreference -ne 'Stop') { throw 'S08 lost exit or preference' }
+if ((Get-Content $LogFile -Raw) -notmatch 'autostarting fixture') { throw 'S08 diagnostic lost' }
+if ((Get-Content (Join-Path $WaveHome 'verify/identify-doctor.log') -Raw) -notmatch 'autostarting fixture') { throw 'doctor diagnostic lost' }
+$env:WAVE_TEST_CYS_FAIL = '1'
+$rejected = $false
+try { Run-S08 } catch { $rejected = $_.Exception.Message -match 'exit=7' }
+if (-not $rejected -or $ErrorActionPreference -ne 'Stop') { throw 'nonzero cys exit accepted' }
+$doctor = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bin 'wave.ps1') doctor --json | ConvertFrom-Json
+if ($doctor.identify_exit -ne 7) { throw 'doctor hid native failure' }
+''')
+
     def test_step_numbers_resume_and_failed_dispatch(self):
         output = self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'

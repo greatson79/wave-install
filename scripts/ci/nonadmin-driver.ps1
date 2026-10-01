@@ -16,8 +16,8 @@ if (@(Get-LocalGroupMember $admins | Where-Object { $_.SID -eq $user.SID }).Coun
 & icacls $out /grant "${name}:(OI)(CI)M" | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'Evidence ACL failed' }
 $cred = New-Object Management.Automation.PSCredential("$env:COMPUTERNAME\$name", $password)
-$args = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -Root "{2}" -Evidence "{3}"' -f (Join-Path $PSScriptRoot 'nonadmin-child.ps1'), $Mode, $root, $out
-$p = Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $cred -LoadUserProfile -WorkingDirectory $out -ArgumentList $args -PassThru
+$childArguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -Root "{2}" -Evidence "{3}"' -f (Join-Path $PSScriptRoot 'nonadmin-child.ps1'), $Mode, $root, $out
+$p = Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $cred -LoadUserProfile -WorkingDirectory $out -ArgumentList $childArguments -PassThru
 # Bounded equivalent of -Wait: Start-Process -Wait waits on descendants too,
 # including the daemon under test. WaitForExit measures the installer root only.
 $finished = $p.WaitForExit(900000)

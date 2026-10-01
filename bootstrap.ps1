@@ -147,7 +147,12 @@ function Ensure-Pack {
       if (-not (Test-Path -LiteralPath (Join-Path $pack $required) -PathType Leaf)) { throw "설치팩 구성 누락: $required" }
     }
     if (-not (Test-Path -LiteralPath (Join-Path $pack 'wave-pack') -PathType Container)) { throw '설치팩 wave-pack 누락' }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pack 'bootstrap.ps1') -Reinstall:$Reinstall -Resume:$Resume -DryRun:$DryRun
+    # -File 로 넘긴 인수는 전부 문자열이라 -Reinstall:False 는 switch 로 안 바뀐다(PS 5.1 실기 실패 2026-10-01) → 켜진 스위치만 넘긴다
+    $relaunch = @()
+    if ($Reinstall) { $relaunch += '-Reinstall' }
+    if ($Resume) { $relaunch += '-Resume' }
+    if ($DryRun) { $relaunch += '-DryRun' }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pack 'bootstrap.ps1') @relaunch
     exit $LASTEXITCODE
   } finally { Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue }
 }

@@ -90,6 +90,7 @@ jobs:
             $old = (powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm http://127.0.0.1:8765/bootstrap.ps1 | iex" 2>&1 | Out-String)
             Write-Host $old
             if ($old -notmatch 'ParserError|ExpectedExpression|At line:1 char:19') { throw 'control: irm|iex no longer fails - this step cannot tell the forms apart' }
+            $global:LASTEXITCODE = 0
           } finally { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
       - name: Workflow, canonical help, mutants, and helper behavior
         shell: pwsh

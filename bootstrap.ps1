@@ -585,7 +585,7 @@ function Run-S01 {
     $version = (& claude --version 2>$null | Out-String).Trim()
     $actual = [regex]::Match($version, '\A' + $core + '(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?: \(Claude Code\))?\z')
     if (-not $actual.Success -or [version]($actual.Groups[1].Value + '.' + $actual.Groups[2].Value + '.' + $actual.Groups[3].Value) -lt [version]$minimum -or $actual.Groups[4].Value) {
-      throw "Claude Code $minimum 이상 필요: 업데이트 후 재확인 실패"
+      throw "중단: claude update 후에도 $minimum 미만입니다($version). PowerShell에서 claude update를 직접 실행한 뒤 다시 시도하세요."
     }
     Set-Content -LiteralPath (Join-Path $tooling 'claude.version') -Value $version -Encoding UTF8
   }

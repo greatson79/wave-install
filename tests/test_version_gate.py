@@ -73,7 +73,7 @@ try { Run-S01; exit 0 } catch { [Console]::Error.WriteLine($_.Exception.Message)
                     if accepted:
                         self.assertEqual(recorded, version)
                     else:
-                        self.assertIn("업그레이드", output)
+                        self.assertIn("claude update 후에도", output)
                         self.assertIn("claude update", output)
 
     def test_placeholder_and_malformed_input_fail_closed(self):

@@ -75,6 +75,7 @@ jobs:
         shell: powershell
         run: |
           # README 의 한 줄을 그대로 실행한다(릴리스 주소만 로컬 서버로). 2026-10-01 실기: irm|iex 가 BOM 때문에 ParserError.
+          $ErrorActionPreference = 'Continue'   # 자식 powershell 의 stderr 를 판정용 텍스트로 받는다(종료로 바꾸지 않음)
           $line = Get-Content -Encoding UTF8 README.md | Where-Object { $_ -like 'powershell *install-wave.ps1*' } | Select-Object -First 1
           if (-not $line) { throw 'README Windows one-line command not found' }
           $srv = Start-Process python -ArgumentList '-m','http.server','8765','--bind','127.0.0.1' -PassThru -WindowStyle Hidden
@@ -83,12 +84,12 @@ jobs:
             $local = $line -replace 'https://github\.com/greatson79/wave-install/releases/download/v[0-9.]+/', 'http://127.0.0.1:8765/'
             $out = (Invoke-Expression $local 2>&1 | Out-String)
             Write-Host $out
-            if ($out -match 'ParserError|ExpectedExpression') { throw 'documented one-line command hits a parser error' }
+            if ($out -match 'ParserError|ExpectedExpression|At line:1 char:19') { throw 'documented one-line command hits a parser error' }
             if ($out -notmatch 'ZIP URL') { throw 'documented one-line command did not reach the pack self-fetch step' }
             # 대조군: 옛 irm|iex 형식은 같은 파일에서 파서 오류가 나야 이 단계가 실제 결함을 잡는다는 증거가 된다
             $old = (powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm http://127.0.0.1:8765/bootstrap.ps1 | iex" 2>&1 | Out-String)
             Write-Host $old
-            if ($old -notmatch 'ParserError|ExpectedExpression') { throw 'control: irm|iex no longer fails - this step cannot tell the forms apart' }
+            if ($old -notmatch 'ParserError|ExpectedExpression|At line:1 char:19') { throw 'control: irm|iex no longer fails - this step cannot tell the forms apart' }
           } finally { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
       - name: Workflow, canonical help, mutants, and helper behavior
         shell: pwsh

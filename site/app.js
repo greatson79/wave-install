@@ -22,12 +22,13 @@
 
   const commands = {
     mac: {
-      label: "macOS · 사용자 폴더 설치",
+      label: "Mac · 터미널에 붙여넣기",
       command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
     },
     windows: {
-      label: "Windows · PowerShell 설치",
-      command: 'irm https://raw.githubusercontent.com/greatson79/wave-install/main/bootstrap.ps1 -OutFile bootstrap.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File .\\bootstrap.ps1'
+      label: "Windows · PowerShell에 붙여넣기",
+      // PLACEHOLDER-WIN: 형식은 docs/windows-bootstrap.md(`irm <릴리스 bootstrap.ps1 URL> | iex`) 기준. 릴리스 URL은 s925 확정 전 자리표시자.
+      command: 'irm https://github.com/greatson79/wave-install/releases/download/v0.2.0/bootstrap.ps1 | iex'
     }
   };
 
@@ -47,7 +48,10 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-selected", String(isActive));
     });
-    copyStatus.textContent = "터미널에 붙여넣고 Return. 설치팩 내려받기·Claude Code 설치·로그인 안내까지 설치기가 진행합니다.";
+    document.querySelectorAll("[data-os-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.osPanel !== os;
+    });
+    copyStatus.textContent = "복사한 뒤 아래 순서대로 하세요.";
   }
 
   async function copyCommand() {
@@ -55,7 +59,7 @@
     try {
       await navigator.clipboard.writeText(command);
       copyButton.textContent = "복사됨";
-      copyStatus.textContent = "명령을 클립보드에 복사했습니다. 터미널에 붙여넣고 Return을 누르세요.";
+      copyStatus.textContent = "복사했습니다. 이제 아래 순서대로 붙여넣으세요.";
     } catch (error) {
       copyStatus.textContent = "자동 복사에 실패했습니다. 명령을 직접 선택해 복사하세요.";
     }

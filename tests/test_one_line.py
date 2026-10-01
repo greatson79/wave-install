@@ -55,13 +55,13 @@ class Sandbox:
 
 class TarballSelfFetch(unittest.TestCase):
     def make_tarball(self, sb):
-        top = sb.tmp / "wave-install-0.2.1"
+        top = sb.tmp / "wave-install-0.2.2"
         (top / "wave-pack").mkdir(parents=True)
         for name in ("bootstrap.sh", "steps.json", "install-state.json"):
             shutil.copy(ROOT / name, top / name)
-        tgz = sb.tmp / "wave-install-0.2.1.tar.gz"
+        tgz = sb.tmp / "wave-install-0.2.2.tar.gz"
         with tarfile.open(tgz, "w:gz") as t:
-            t.add(top, arcname="wave-install-0.2.1")
+            t.add(top, arcname="wave-install-0.2.2")
         return tgz
 
     def run_alone(self, sb, **extra):

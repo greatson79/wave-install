@@ -23,7 +23,7 @@
         <a href="#first-run">첫 실행</a>
         <a href="#help">문의</a>
       </nav>
-      <span class="header-tag">LIGHT / v0.2.1</span>
+      <span class="header-tag">LIGHT / v0.2.2</span>
     </header>
 
     <main id="main">
@@ -75,7 +75,7 @@
               <span class="command-label" id="command-label">Mac · 터미널에 붙여넣기</span>
             </div>
             <div class="command-line">
-              <code id="install-command">curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.1/bootstrap.sh -o "$HOME/install-wave.sh" &amp;&amp; bash "$HOME/install-wave.sh"</code>
+              <code id="install-command">curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.2/bootstrap.sh -o "$HOME/install-wave.sh" &amp;&amp; bash "$HOME/install-wave.sh"</code>
               <button class="copy-button" type="button" id="copy-command" aria-describedby="copy-status">복사</button>
             </div>
             <p class="copy-status" id="copy-status" role="status" aria-live="polite">복사한 뒤 아래 순서대로 하세요.</p>
@@ -196,7 +196,7 @@
           <summary id="advanced-title">고급 · 설치팩을 직접 받았거나, 검증·단계를 자세히 보고 싶은 경우</summary>
           <div class="advanced-body">
             <h3>설치팩 zip을 직접 받은 경우</h3>
-            <p><a href="https://github.com/greatson79/wave-install/archive/refs/tags/v0.2.1.zip">wave-install-0.2.1.zip</a>을 내려받아 압축을 풀면 <code>wave-install-0.2.1</code> 폴더가 생깁니다. 터미널에서 <code>cd ~/Downloads/wave-install-0.2.1 &amp;&amp; bash bootstrap.sh</code> 한 줄만 실행하세요(위의 설치 명령은 칠 필요 없음).</p>
+            <p><a href="https://github.com/greatson79/wave-install/archive/refs/tags/v0.2.2.zip">wave-install-0.2.2.zip</a>을 내려받아 압축을 풀면 <code>wave-install-0.2.2</code> 폴더가 생깁니다. 터미널에서 <code>cd ~/Downloads/wave-install-0.2.2 &amp;&amp; bash bootstrap.sh</code> 한 줄만 실행하세요(위의 설치 명령은 칠 필요 없음).</p>
 
             <h3>설치기가 확인하는 것</h3>
             <p>공식 저장소 <a href="https://github.com/greatson79/wave-terminal" target="_blank" rel="noreferrer">greatson79/wave-terminal</a>의 Release에서 받은 파일인지, 설치기에 고정된 SHA256 지문과 일치하는지를 확인합니다. macOS는 앱 <code>codesign</code> 검증을 추가로 합니다. 이 검증은 파일이 변조되지 않았다는 확인이며 Apple 공증을 대신하지 않습니다. 현재 macOS 공증은 받지 않았고(<code>spctl</code> 거부), Windows는 Authenticode 코드서명이 없습니다. 전체 설치 실측은 진행 중입니다.</p>

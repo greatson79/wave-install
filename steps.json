@@ -1,7 +1,7 @@
 {
   "schema": "wave-install.steps.v1",
   "product": "Wave Terminal",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",

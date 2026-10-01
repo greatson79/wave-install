@@ -37,10 +37,10 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 배포 시 `scripts/make-release.sh`가 `bootstrap.ps1`의 `__WAVE_INSTALL_ZIP_URL__`과 `__WAVE_INSTALL_ZIP_SHA256__`을 ZIP URL·측정 SHA256으로 채웁니다. 원본 자리표시자 상태는 실행을 거부합니다. 릴리스 게시 뒤 사용자 명령은 아래 한 줄입니다. 현재 URL은 게시 전이므로 실행 명령이 아니라 확정 문자열입니다.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.1/bootstrap.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.2/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
 ```
 
-`irm | iex` 자체에는 SmartScreen 창이 없습니다. ZIP 검증 뒤 설치기가 다시 시작되고, Claude Code 설치·업데이트가 필요하면 이 창에서 실행합니다. 미로그인 상태면 브라우저 인증과 코드 붙여넣기를 요청합니다. Wave Terminal `setup.exe` 실행 시 SmartScreen 경고가 나타날 수 있으며, Defender·V3·알약이 다운로드나 실행을 차단하면 해당 백신의 알림·격리 기록을 확인합니다. 메모리에서 실행된 스크립트는 HTTPS ZIP을 받아 고정 SHA256을 검사하고, ZIP 안의 절대·상위 경로와 symlink를 거부한 뒤 `powershell.exe -ExecutionPolicy Bypass -File`로 검증된 팩의 설치기를 다시 실행합니다.
+이 한 줄은 설치기를 사용자 폴더에 `install-wave.ps1` 파일로 내려받아 `-File` 로 실행합니다(`irm | iex` 는 쓰지 않습니다 — 릴리스 파일의 UTF-8 BOM 이 문자열로 섞여 Windows PowerShell 5.1 파서가 깨짐 · 2026-10-01 실기 실측). 이 단계에는 SmartScreen 창이 없습니다. ZIP 검증 뒤 설치기가 다시 시작되고, Claude Code 설치·업데이트가 필요하면 이 창에서 실행합니다. 미로그인 상태면 브라우저 인증과 코드 붙여넣기를 요청합니다. Wave Terminal `setup.exe` 실행 시 SmartScreen 경고가 나타날 수 있으며, Defender·V3·알약이 다운로드나 실행을 차단하면 해당 백신의 알림·격리 기록을 확인합니다. 메모리에서 실행된 스크립트는 HTTPS ZIP을 받아 고정 SHA256을 검사하고, ZIP 안의 절대·상위 경로와 symlink를 거부한 뒤 `powershell.exe -ExecutionPolicy Bypass -File`로 검증된 팩의 설치기를 다시 실행합니다.
 
 S01은 Claude Code가 없으면 공식 `https://claude.ai/install.ps1`을 받아 설치하고, 버전이 낮으면 `claude update` 뒤 버전을 재확인합니다. S02는 인증되지 않았을 때 같은 창에서 `claude auth login`을 실행하고 상태를 다시 확인합니다.
 

@@ -135,10 +135,17 @@ foreach ($n in 3..9) {
   Say-Step $step 'CI: actual function with synthetic authentication precondition'
   $fn = 'Run-S{0:D2}' -f $n
   Invoke-Step $step.id { & $fn }
+  if ($n -eq 6) {
+    $wrapperPaths = @((Join-Path $env:WAVE_CI_ROOT 'wave-pack\bin\wave.ps1'), (Join-Path $ScriptDir 'wave-pack\bin\wave.ps1'), (Join-Path $PackHome 'bin\wave.ps1'), (Join-Path $WaveHome 'bin\wave.ps1'))
+    $wrapperHashes = @(Get-FileHash -LiteralPath $wrapperPaths -Algorithm SHA256 | Select-Object Path, Hash)
+    $wrapperHashes | ConvertTo-Json | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'wave-wrapper-copy-hashes.json') -Encoding UTF8
+    if (@($wrapperHashes.Hash | Select-Object -Unique).Count -ne 1) { throw 'Checkout/fixture/pack/installed wave.ps1 hashes differ' }
+  }
 }
 Complete-State
 '@
   $env:WAVE_CI_EVIDENCE = $Evidence
+  $env:WAVE_CI_ROOT = $Root
   $harness = Join-Path $run 'post-login.ps1'
   ($text.Substring(0, $idx) + "`n" + $tail) | Set-Content $harness -Encoding UTF8
   & powershell -NoProfile -ExecutionPolicy Bypass -File $harness

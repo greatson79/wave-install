@@ -41,7 +41,15 @@ $ErrorActionPreference = 'Stop'
 $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($user.SID.Value)"
 $profile = (Get-ItemProperty $profileKey).ProfileImagePath
 $wave = Join-Path $profile '.wave'
-if (Test-Path $wave) { Copy-Item $wave (Join-Path $out 'wave') -Recurse -Force }
+if (Test-Path $wave) {
+  $evidenceWave = Join-Path $out 'wave'
+  New-Item -ItemType Directory -Force $evidenceWave | Out-Null
+  # Keep state/log evidence; the 128 MB installer and installed executables are not logs.
+  foreach ($relative in @('install-state.json', 'install.log', 'START-HERE.md', 'verify', 'fleet', 'installer')) {
+    $item = Join-Path $wave $relative
+    if (Test-Path $item) { Copy-Item $item $evidenceWave -Recurse -Force }
+  }
+}
 @{ mode = $Mode; sid = $user.SID.Value; profile = $profile; timed_out = (-not $finished); exit_code = $(if ($finished) { $p.ExitCode } else { $null }); scope = 'Windows hosted runner; physical clean PC not measured' } | ConvertTo-Json | Set-Content (Join-Path $out 'runner.json') -Encoding UTF8
 if (-not (Test-Path (Join-Path $out 'identity.json'))) { throw 'Standard user identity evidence missing' }
 $statePath = Join-Path $out 'wave\install-state.json'

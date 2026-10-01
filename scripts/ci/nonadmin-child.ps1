@@ -63,6 +63,10 @@ Set-Content (Join-Path $auth 'claude-authenticated') 'TEST_SYNTHETIC_BYPASS'
 foreach ($n in 3..9) {
   $step = $Config.steps | Where-Object { $_.id -like ('S{0:D2}_*' -f $n) }
   if ($n -eq 5) {
+    $runtimePath = Join-Path $WaveHome 'daemon'
+    $runtimeItem = Get-Item -LiteralPath $runtimePath -Force -ErrorAction SilentlyContinue
+    $runtimeAcl = if ($runtimeItem) { (Get-Acl -LiteralPath $runtimePath).Sddl } else { $null }
+    @{ path = $runtimePath; exists = [bool]$runtimeItem; is_directory = $(if ($runtimeItem) { $runtimeItem.PSIsContainer } else { $null }); acl = $runtimeAcl; handle_measurement = 'not measured'; daemon_processes = @(Get-Process cysd -ErrorAction SilentlyContinue | Select-Object Id, Path) } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'daemon-path-before-s05.json') -Encoding UTF8
     $oldPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     $denial = & schtasks /Create /TN ('WaveTerminal-cysd-' + $env:USERNAME) /SC ONLOGON /TR (Join-Path $WaveHome 'bin\cysd.exe') /F 2>&1 | Out-String

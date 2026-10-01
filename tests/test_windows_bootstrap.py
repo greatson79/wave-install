@@ -361,6 +361,36 @@ if ($StepObserved.seats -ne 2) { throw 'fleet seats' }
 if (-not (Test-Path (Join-Path $WaveHome 'fleet/initial-fleet.ok'))) { throw 'fleet marker absent' }
 ''')
 
+    @unittest.skipUnless(os.name == 'nt', 'Bounded native child test requires Windows')
+    def test_bounded_check_kills_sleeping_child_without_waiting_for_sleep(self):
+        self.run_ps(r'''
+$watch = [Diagnostics.Stopwatch]::StartNew()
+$result = Invoke-BoundedCheck 'powershell.exe' @('-NoProfile', '-Command', 'Start-Sleep -Seconds 30') 'sleep-fixture' 300
+$watch.Stop()
+if (-not $result.timed_out -or $null -ne $result.exit_code -or $result.kill_error) { throw 'timeout not preserved or child not killed' }
+if ($watch.ElapsedMilliseconds -gt 5000) { throw 'timeout did not bound process wait' }
+''')
+
+    def test_s08_timeouts_are_unmeasured_and_allow_s09(self):
+        self.run_ps(r'''
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+$StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
+Load-Config
+Init-State
+function Invoke-BoundedCheck {
+  param($FilePath, $Arguments, $Name, $TimeoutMs)
+  return [pscustomobject]@{ timed_out = ($Name -eq $script:timeoutName); timeout_ms = $TimeoutMs; exit_code = 0; stdout = ''; stderr = ''; kill_error = $null }
+}
+foreach ($script:timeoutName in @('identify', 'doctor')) {
+  Invoke-Step 'S08_VERIFY' { Run-S08 }
+  if ($State.steps.S08_VERIFY.status -ne 'unmeasured' -or $State.steps.S08_VERIFY.observed.reason -ne 'timeout') { throw 'S08 timeout falsely passed' }
+  Mark-RequiredComplete
+  Invoke-Step 'S09_COMPLETE' { Run-S09 }
+  Complete-State
+  if ($State.steps.S09_COMPLETE.status -ne 'passed' -or $State.status -ne 'complete_with_exceptions' -or $State.required_steps_passed) { throw 'S09 continuation or exception semantics broken' }
+}
+''')
+
     def test_step_numbers_resume_and_failed_dispatch(self):
         output = self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'

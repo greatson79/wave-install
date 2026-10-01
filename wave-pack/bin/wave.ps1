@@ -29,21 +29,39 @@ if ($Command -eq "fleet" -and $Action -eq "status") {
 if ($Command -eq "doctor" -and ($Action -eq "--json" -or $Json)) {
   $roles = (Get-Content -Raw -LiteralPath $RolesFile | ConvertFrom-Json).roles
   $identifyExit = 1
+  $identifyTimedOut = $false
+  $identifyKillError = $null
+  $identifyTimeoutMs = 20000
   $cys = Join-Path $WaveHome "bin\cys.exe"
   if (Test-Path -LiteralPath $cys) {
-    $previousPreference = $ErrorActionPreference
+    $verify = Join-Path $WaveHome 'verify'
+    New-Item -ItemType Directory -Force $verify | Out-Null
+    $stdout = Join-Path $verify 'identify-doctor.stdout.log'
+    $stderr = Join-Path $verify 'identify-doctor.stderr.log'
+    $process = Start-Process -FilePath $cys -ArgumentList 'identify' -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     try {
-      $ErrorActionPreference = 'Continue'
-      $identifyOutput = (& $cys identify 2>&1 | Out-String).Trim()
-      $identifyExit = $LASTEXITCODE
-    } finally { $ErrorActionPreference = $previousPreference }
-    if ($identifyOutput) {
-      $log = Join-Path $WaveHome 'verify\identify-doctor.log'
-      New-Item -ItemType Directory -Force (Split-Path -Parent $log) | Out-Null
-      Set-Content -LiteralPath $log -Value $identifyOutput -Encoding UTF8
-    }
+      $null = $process.Handle
+      if ($process.WaitForExit($identifyTimeoutMs)) {
+        $identifyExit = $process.ExitCode
+      } else {
+        $identifyExit = $null
+        $identifyTimedOut = $true
+        # Stop only the client launched here; an autostarted daemon keeps its lifecycle.
+        try {
+          if (-not $process.HasExited) { $process.Kill(); $null = $process.WaitForExit(1000) }
+        } catch {
+          if (-not $process.HasExited) { $identifyKillError = $_.Exception.Message }
+        }
+      }
+    } finally { $process.Dispose() }
+    $identifyOutput = @(
+      if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout -Raw }
+      if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr -Raw }
+      if ($identifyTimedOut) { "cys identify timed out after $identifyTimeoutMs ms; exit code is unmeasured." }
+    ) -join "`n"
+    Set-Content -LiteralPath (Join-Path $verify 'identify-doctor.log') -Value $identifyOutput -Encoding UTF8
   }
-  [ordered]@{ identify_exit = $identifyExit; seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; injected_bytes = $null } }) } | ConvertTo-Json -Compress
+  [ordered]@{ identify_exit = $identifyExit; identify_timed_out = $identifyTimedOut; timeout_ms = $identifyTimeoutMs; identify_kill_error = $identifyKillError; seats = @($roles | ForEach-Object { [ordered]@{ role = $_.role; injected_bytes = $null } }) } | ConvertTo-Json -Compress
   exit 0
 }
 

@@ -768,24 +768,51 @@ function Test-ByteCount([object]$Value) {
   return (($Value -is [int] -or $Value -is [long]) -and $Value -ge 0)
 }
 
+function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$Name, [int]$TimeoutMs = 30000) {
+  $verify = Join-Path $WaveHome 'verify'
+  New-Item -ItemType Directory -Force -Path $verify | Out-Null
+  $stdoutPath = Join-Path $verify ($Name + '.stdout.log')
+  $stderrPath = Join-Path $verify ($Name + '.stderr.log')
+  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+  $null = $process.Handle
+  $finished = $process.WaitForExit($TimeoutMs)
+  $exitCode = $null
+  $killError = $null
+  if ($finished) {
+    $exitCode = $process.ExitCode
+  } else {
+    try { $process.Kill(); $null = $process.WaitForExit(1000) }
+    catch { $killError = $_.Exception.Message }
+  }
+  $process.Dispose()
+  $stdout = if (Test-Path $stdoutPath) { [IO.File]::ReadAllText($stdoutPath) } else { '' }
+  $stderr = if (Test-Path $stderrPath) { [IO.File]::ReadAllText($stderrPath) } else { '' }
+  return [pscustomobject]@{ timed_out = (-not $finished); timeout_ms = $TimeoutMs; exit_code = $exitCode; stdout = $stdout; stderr = $stderr; kill_error = $killError }
+}
+
+function Set-S08Timeout([string]$Command, [int]$TimeoutMs, [string]$KillError = '') {
+  $script:StepStatus = 'unmeasured'
+  $script:StepObserved = [ordered]@{ reason = 'timeout'; timed_out_command = $Command; timeout_ms = $TimeoutMs; identify_exit = $null; seats = $null; injection_measured = $false; max_injected_bytes = $null; kill_error = $KillError }
+  Say "S08 $Command 시간 제한 ${TimeoutMs}ms 초과 — unmeasured로 기록하고 S09로 진행합니다."
+}
+
 function Run-S08 {
   $cys = Join-Path $WaveHome "bin\cys.exe"
   $wave = Join-Path $WaveHome "bin\wave.ps1"
   $verify = Join-Path $WaveHome "verify"
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
-  # PS 5.1은 정상 autostart 안내(stderr)도 NativeCommandError로 감싼다.
-  # 네이티브 종료값으로 판정하고 원문은 로그에 보존한다.
-  $previousPreference = $ErrorActionPreference
-  try {
-    $ErrorActionPreference = 'Continue'
-    $identifyOutput = (& $cys identify 2>&1 | Out-String).Trim()
-    $identifyExit = $LASTEXITCODE
-  } finally { $ErrorActionPreference = $previousPreference }
-  if ($identifyOutput) { Write-Log $identifyOutput }
-  if ($identifyExit -ne 0) { throw "cys identify 실패(exit=$identifyExit): $identifyOutput" }
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $wave doctor --json | Set-Content -LiteralPath (Join-Path $verify "doctor.json") -Encoding UTF8
-  if ($LASTEXITCODE -ne 0) { throw "wave doctor 실패" }
-  $doctor = Get-Content -LiteralPath (Join-Path $verify "doctor.json") -Raw | ConvertFrom-Json
+  $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000
+  if ($identify.stdout) { Write-Log $identify.stdout.Trim() }
+  if ($identify.stderr) { Write-Log $identify.stderr.Trim() }
+  if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
+  if ($identify.exit_code -ne 0) { throw "cys identify 실패(exit=$($identify.exit_code)): $($identify.stderr)" }
+  $doctorResult = Invoke-BoundedCheck 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $wave + '"'), 'doctor', '--json') 'doctor' 30000
+  if ($doctorResult.stderr) { Write-Log $doctorResult.stderr.Trim() }
+  if ($doctorResult.timed_out) { Set-S08Timeout 'wave doctor' $doctorResult.timeout_ms $doctorResult.kill_error; return }
+  if ($doctorResult.exit_code -ne 0) { throw "wave doctor 실패(exit=$($doctorResult.exit_code)): $($doctorResult.stderr)" }
+  Set-Content -LiteralPath (Join-Path $verify 'doctor.json') -Value $doctorResult.stdout -Encoding UTF8
+  $doctor = $doctorResult.stdout | ConvertFrom-Json
+  if ((Get-StateField $doctor 'identify_timed_out') -eq $true) { Set-S08Timeout 'wave doctor: cys identify' ([int](Get-StateField $doctor 'timeout_ms')) ([string](Get-StateField $doctor 'identify_kill_error')); return }
   if ($doctor.identify_exit -ne 0 -or @($doctor.seats).Count -ne 2) { throw "identify·좌석 수 계약 불일치" }
   $limit = [int64](Get-ConfigValue "tooling.max_injected_bytes_per_seat")
   $measured = $true

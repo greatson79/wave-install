@@ -164,3 +164,5 @@ S05 결과 파일은 `.wave/install/daemon-register-result`에 둡니다. 데몬
 2225 경로 가설 검증은 두 증거로 나눕니다. `daemon-natural-old-call.json`은 S04 뒤 실제 `.wave/daemon`에 구 `New-Item` 호출을 실행한 결과입니다. 접근 거부가 없으면 `not_reproduced`로 기록합니다. `daemon-locked-file-control.json`은 별도 임시 경로에서 독점 잠금한 daemon 파일에 구 호출이 접근 거부되고, 잠금을 유지한 채 ENV=0의 새 S05가 설치기 기록 파일을 만드는지 대조합니다. 후자는 `synthetic: true`로 표시하며 실PC 원인 확정을 대신하지 않습니다.
 
 대조군은 보고 전용입니다(펄스 보강 지시). 자연 경로·합성 잠금·schtasks 대조의 실패와 증거 수집 오류는 Write-Warning으로 남기고 실제 S05~S09를 계속 실행합니다. 실제 설치 단계와 복사 무결성의 판정은 그대로 적용합니다.
+
+S08의 identify와 doctor 외부 호출은 각각 30초로 제한합니다. doctor 내부 identify는 20초로 제한합니다. 시간 초과 시 해당 클라이언트 프로세스 종료를 시도하고 출력·종료 오류를 남기며 S08을 `unmeasured`로 기록해 S09로 진행합니다. `reason=timeout`, 호출명·제한시간이 상태에 남고 최종 상태는 `complete_with_exceptions`입니다. 종료값이 명백히 실패인 경우와 잘못된 검증 데이터는 기존 중단 규칙을 유지합니다. CI는 시간 초과 미측정을 성공 검증으로 표시하지 않고 S09 도달 여부를 검사합니다.

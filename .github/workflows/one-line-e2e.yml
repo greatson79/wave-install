@@ -1,0 +1,42 @@
+name: Published one-line install (Windows, verbatim README command)
+
+# 발행된 릴리스를 깨끗한 Windows 러너에서 README 한 줄 그대로 실행한다(2026-10-01 실기 실패 2회 뒤 도입).
+# Claude 로그인은 러너에서 할 수 없으므로 시간 제한으로 끊고, 어디까지 갔는지는 install-state.json 으로 판정한다.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-one-line:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run README Windows line verbatim (Windows PowerShell 5.1, 8 min cap)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $line = Get-Content -Encoding UTF8 README.md | Where-Object { $_ -like 'powershell *install-wave.ps1*' } | Select-Object -First 1
+          if (-not $line) { throw 'README Windows one-line command not found' }
+          Write-Host "LINE: $line"
+          $job = Start-Job -ScriptBlock { param($l) Invoke-Expression $l 2>&1 | Out-String } -ArgumentList $line
+          if (-not (Wait-Job $job -Timeout 480)) { Write-Host 'TIMEOUT (expected at Claude login)'; Stop-Job $job }
+          Receive-Job $job | Write-Host
+      - name: Report which steps passed
+        shell: powershell
+        run: |
+          $state = Join-Path $env:USERPROFILE '.wave\install-state.json'
+          if (-not (Test-Path $state)) { throw 'install-state.json not created - installer did not start its steps' }
+          $s = Get-Content -Raw -Encoding UTF8 $state | ConvertFrom-Json
+          $s.steps.PSObject.Properties | ForEach-Object { Write-Host ("{0}`t{1}`t{2}" -f $_.Name, $_.Value.status, $_.Value.error_id) }
+          if ($s.steps.S00_PREFLIGHT.status -ne 'passed') { throw 'S00_PREFLIGHT did not pass' }
+      - name: Upload installer state and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-line-e2e-${{ github.sha }}
+          path: |
+            ~/.wave/install-state.json
+            ~/.wave/install.log
+          if-no-files-found: warn

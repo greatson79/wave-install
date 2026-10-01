@@ -108,7 +108,7 @@
       "id": "S03_DOWNLOAD_VERIFY",
       "index": 3,
       "total": 10,
-      "title": "Wave Terminal 내려받기·SHA256·codesign 검증(Windows는 minisig)",
+      "title": "Wave Terminal 내려받기·지문(SHA256)·서명 확인",
       "command": {
         "macos": "curl -fL <asset-url> -o <artifact> && shasum -a 256 <artifact> (고정값 대조) && codesign --verify --deep --strict <앱>",
         "windows": "Invoke-WebRequest <asset-url> -OutFile <artifact>; Get-FileHash <artifact> -Algorithm SHA256; Get-AuthenticodeSignature <artifact>"

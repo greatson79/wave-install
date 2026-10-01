@@ -88,7 +88,7 @@ function Send-Progress([string]$Step, [string]$Event, $Elapsed = $null, [string]
     }
     $fields = [ordered]@{
       install_id = $InstallId
-      installer_version = '0.1.3'
+      installer_version = '0.2.4'
       os = 'win'
       step = $Step
       event = $Event

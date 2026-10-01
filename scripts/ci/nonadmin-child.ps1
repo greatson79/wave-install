@@ -148,6 +148,70 @@ foreach ($n in 3..9) {
   }
 }
 Complete-State
+# Use the installed application's runtimes, never the hosted runner's Python.
+$runtime = Join-Path $WaveHome 'bin\runtime'
+$python = Join-Path $runtime 'python\python3.exe'
+if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw 'Installed bundled Python missing; READY cannot be measured' }
+$env:PATH = @((Join-Path $WaveHome 'bin'), (Join-Path $runtime 'python'), (Join-Path $runtime 'git\cmd'), (Join-Path $runtime 'git\usr\bin'), (Join-Path $runtime 'node'), $env:PATH) -join ';'
+$env:CYS_PACK_DIR = $PackHome
+# Product entry point: init-pack installs the bundled pack and registers hooks.
+# No CI-authored settings, --skip, or replacement preflight are permitted.
+$init = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('init-pack') 'first-boot-init-pack' 120000
+if ($init.timed_out -or $init.exit_code -ne 0) { throw 'Product init-pack failed; inspect first-boot-init-pack logs' }
+$preflight = Join-Path $PackHome 'bin\javis_preflight.py'
+$boot = Join-Path $PackHome 'bin\javis_bootstrap.py'
+if (-not (Test-Path $preflight) -or -not (Test-Path $boot)) { throw 'Installed product preflight/bootstrap missing' }
+$bootSource = Get-Content $boot -Raw -Encoding UTF8
+if ($bootSource -notmatch 'preflight,\s*["'']--fix["'']') { throw 'Installed bootstrap does not establish preflight --fix as product boot behavior' }
+$hashes = Get-FileHash $python, $preflight, $boot -Algorithm SHA256 | Select-Object Path, Hash
+$hashes | ConvertTo-Json | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'preflight-source-hashes.json') -Encoding UTF8
+# A stale app may run external pip installs in the full-profile --fix path.
+# Read-only profile proof must precede every mutating first-boot preflight call.
+$profileProbe = Invoke-BoundedCheck $python @(('"' + $preflight + '"'), '--json') 'preflight-profile-probe' 120000
+$profileProbe | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'preflight-profile-execution.json') -Encoding UTF8
+$profileProbe.stdout | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'preflight-profile.json') -Encoding UTF8
+if ($profileProbe.timed_out) { throw 'Preflight profile probe timed out; --fix prohibited' }
+if ($profileProbe.exit_code -notin @(0, 1)) { throw 'Preflight profile probe exited unexpectedly; --fix prohibited' }
+try { $profileReport = $profileProbe.stdout | ConvertFrom-Json }
+catch { throw ('Preflight profile JSON invalid; --fix prohibited: ' + $_.Exception.Message) }
+if ((Get-StateField $profileReport 'profile') -cne 'wave-light') { throw 'Installed app pin does not supply wave-light preflight; --fix prohibited until app pin is updated' }
+# javis_bootstrap.py's first boot phase calls exactly preflight --fix (300s).
+# Run that phase, then independently demand the requested report-only --json exit 0.
+$fix = Invoke-BoundedCheck $python @(('"' + $preflight + '"'), '--fix') 'first-boot-preflight-fix' 300000
+@{ product_boot_phase = 'javis_bootstrap.py: preflight --fix'; result = $fix } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'preflight-boot-phase.json') -Encoding UTF8
+$check = Invoke-BoundedCheck $python @(('"' + $preflight + '"'), '--json') 'installed-preflight' 120000
+$check | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'preflight-execution.json') -Encoding UTF8
+$check.stdout | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'installed-preflight.json') -Encoding UTF8
+if ($fix.timed_out -or $fix.exit_code -ne 0) { throw 'Product first-boot preflight phase failed; READY not achieved' }
+if ($check.timed_out -or $check.exit_code -ne 0) { throw 'Installed preflight --json did not exit 0' }
+$report = $check.stdout | ConvertFrom-Json
+if ($report.ok -ne $true -or $report.fails -ne 0 -or [IO.Path]::GetFullPath($report.pack_dir) -ne [IO.Path]::GetFullPath($PackHome)) { throw 'Installed preflight JSON does not prove READY for this pack' }
+if (@($report.checks | Where-Object { $_.status -eq 'FAIL' }).Count) { throw 'Preflight JSON contains FAIL despite summary' }
+# Report-only negative control on a separate complete copy; live pack is untouched.
+$control = [ordered]@{ synthetic = $true; baseline_commit = 'a4f29a9'; blocking = $false; outcome = 'not_reproduced'; pin_failures = @(); error = $null }
+$savedPack = $env:CYS_PACK_DIR
+try {
+  $controlPack = Join-Path $env:USERPROFILE ('preflight-stub-control-' + [guid]::NewGuid().ToString('N'))
+  Copy-Item -LiteralPath $PackHome -Destination $controlPack -Recurse
+  foreach ($name in @('MASTER_DIRECTIVE.md','WORKER_DIRECTIVE.md','REVIEWER_DIRECTIVE.md')) {
+    Copy-Item -LiteralPath (Join-Path $env:WAVE_CI_EVIDENCE ('baseline-stubs\' + $name)) -Destination (Join-Path $controlPack ('directives\' + $name)) -Force
+  }
+  $env:CYS_PACK_DIR = $controlPack
+  $controlScript = Join-Path $controlPack 'bin\javis_preflight.py'
+  $negative = Invoke-BoundedCheck $python @(('"' + $controlScript + '"'), '--json') 'stub-preflight-control' 120000
+  $control.exit_code = $negative.exit_code
+  $control.timed_out = $negative.timed_out
+  $negative.stdout | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'stub-preflight.json') -Encoding UTF8
+  if (-not $negative.timed_out) {
+    $negativeReport = $negative.stdout | ConvertFrom-Json
+    $control.pin_failures = @($negativeReport.checks | Where-Object { $_.id -like 'C03*' -and $_.status -eq 'FAIL' })
+    if ($control.pin_failures.Count) { $control.outcome = 'C03_FAIL_reproduced' }
+  }
+} catch { $control.error = $_.Exception.Message }
+finally {
+  $env:CYS_PACK_DIR = $savedPack
+  $control | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $env:WAVE_CI_EVIDENCE 'stub-control-evidence.json') -Encoding UTF8
+}
 '@
   $env:WAVE_CI_EVIDENCE = $Evidence
   $env:WAVE_CI_ROOT = $Root

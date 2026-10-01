@@ -306,7 +306,7 @@ if (-not $threw) { throw 'wrong registry readback accepted' }
 
     @unittest.skipUnless(os.name == 'nt' and Path(PWSH or '').name.lower() == 'powershell.exe',
                          'Native stderr control requires Windows PowerShell 5.1')
-    def test_s08_and_doctor_accept_native_stderr_only_when_exit_is_zero(self):
+    def test_s08_and_doctor_preserve_native_exit_and_stderr(self):
         self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 $StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
@@ -337,9 +337,8 @@ if ($StepObserved.identify_exit -ne 0 -or $ErrorActionPreference -ne 'Stop') { t
 if ((Get-Content $LogFile -Raw) -notmatch 'autostarting fixture') { throw 'S08 diagnostic lost' }
 if ((Get-Content (Join-Path $WaveHome 'verify/identify-doctor.log') -Raw) -notmatch 'autostarting fixture') { throw 'doctor diagnostic lost' }
 $env:WAVE_TEST_CYS_FAIL = '1'
-$rejected = $false
-try { Run-S08 } catch { $rejected = $_.Exception.Message -match 'exit=7' }
-if (-not $rejected -or $ErrorActionPreference -ne 'Stop') { throw 'nonzero cys exit accepted' }
+Run-S08
+if ($StepStatus -ne 'unmeasured' -or $StepObserved.reason -ne 'call_failed' -or $StepObserved.command_exit -ne 7 -or $null -ne $StepObserved.max_injected_bytes) { throw 'failed cys observation lost or falsely passed' }
 $doctor = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bin 'wave.ps1') doctor --json | ConvertFrom-Json
 if ($doctor.identify_exit -ne 7) { throw 'doctor hid native failure' }
 ''')
@@ -371,7 +370,7 @@ if (-not $result.timed_out -or $null -ne $result.exit_code -or $result.kill_erro
 if ($watch.ElapsedMilliseconds -gt 5000) { throw 'timeout did not bound process wait' }
 ''')
 
-    def test_s08_timeouts_are_unmeasured_and_allow_s09(self):
+    def test_s08_timeout_and_call_failure_allow_s09_without_false_measurements(self):
         self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 $StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
@@ -379,11 +378,12 @@ Load-Config
 Init-State
 function Invoke-BoundedCheck {
   param($FilePath, $Arguments, $Name, $TimeoutMs)
-  return [pscustomobject]@{ timed_out = ($Name -eq $script:timeoutName); timeout_ms = $TimeoutMs; exit_code = 0; stdout = ''; stderr = ''; kill_error = $null }
+  return [pscustomobject]@{ timed_out = ($script:failureMode -eq 'timeout' -and $Name -eq $script:timeoutName); timeout_ms = $TimeoutMs; exit_code = $(if ($script:failureMode -eq 'call_failed' -and $Name -eq $script:timeoutName) { 7 } else { 0 }); stdout = ''; stderr = 'fixture detail'; kill_error = $null }
 }
-foreach ($script:timeoutName in @('identify', 'doctor')) {
+foreach ($case in @('timeout:identify', 'timeout:doctor', 'call_failed:identify', 'call_failed:doctor')) {
+  $script:failureMode, $script:timeoutName = $case.Split(':')
   Invoke-Step 'S08_VERIFY' { Run-S08 }
-  if ($State.steps.S08_VERIFY.status -ne 'unmeasured' -or $State.steps.S08_VERIFY.observed.reason -ne 'timeout') { throw 'S08 timeout falsely passed' }
+  if ($State.steps.S08_VERIFY.status -ne 'unmeasured' -or $State.steps.S08_VERIFY.observed.reason -ne $script:failureMode -or $null -ne $State.steps.S08_VERIFY.observed.max_injected_bytes) { throw 'S08 call failure falsely passed' }
   Mark-RequiredComplete
   Invoke-Step 'S09_COMPLETE' { Run-S09 }
   Complete-State

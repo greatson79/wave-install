@@ -38,7 +38,7 @@ if ($Command -eq "doctor" -and ($Action -eq "--json" -or $Json)) {
     New-Item -ItemType Directory -Force $verify | Out-Null
     $stdout = Join-Path $verify 'identify-doctor.stdout.log'
     $stderr = Join-Path $verify 'identify-doctor.stderr.log'
-    $process = Start-Process -FilePath $cys -ArgumentList 'identify' -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $process = Start-Process -FilePath $cys -ArgumentList 'identify' -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     try {
       $null = $process.Handle
       if ($process.WaitForExit($identifyTimeoutMs)) {

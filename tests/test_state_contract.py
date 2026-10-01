@@ -56,7 +56,11 @@ class StateContractTests(unittest.TestCase):
                 script.write_text(source.split(marker)[0] + '''
 $script:Config = Get-Content -LiteralPath $env:TEST_STEPS -Raw | ConvertFrom-Json
 $script:State = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
-function powershell { $global:LASTEXITCODE=0; Get-Content -LiteralPath $env:TEST_DOCTOR -Raw }
+function Invoke-BoundedCheck {
+  param($FilePath, $Arguments, $Name, $TimeoutMs)
+  $output = if ($Name -eq 'doctor') { Get-Content -LiteralPath $env:TEST_DOCTOR -Raw } else { '' }
+  return [pscustomobject]@{ timed_out=$false; timeout_ms=$TimeoutMs; exit_code=0; stdout=$output; stderr=''; kill_error=$null }
+}
 try {
 ''' + powershell + '\nexit 0\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }\n')
                 command = [PWSH, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)]

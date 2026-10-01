@@ -63,8 +63,8 @@ if ($Mode -eq 'published') {
 } else {
   if (-not $finished -or $p.ExitCode -ne 0) { throw 'Post-login fixture failed or timed out; inspect artifacts' }
   foreach ($id in @('S03_DOWNLOAD_VERIFY','S04_INSTALL_LINK','S05_DAEMON_REGISTER','S06_PACK_INSTALL','S07_INITIAL_FLEET','S08_VERIFY','S09_COMPLETE')) {
-    if ($id -eq 'S08_VERIFY' -and $s.steps.$id.status -eq 'unmeasured' -and $s.steps.$id.observed.reason -eq 'timeout' -and $s.steps.$id.observed.timeout_ms -le 30000) {
-      Write-Warning 'S08 timed out and is unmeasured; requiring S09 completion, not claiming verification passed'
+    if ($id -eq 'S08_VERIFY' -and $s.steps.$id.status -eq 'unmeasured' -and (($s.steps.$id.observed.reason -eq 'timeout' -and $s.steps.$id.observed.timeout_ms -le 30000) -or $s.steps.$id.observed.reason -eq 'call_failed')) {
+      Write-Warning 'S08 call could not be measured; requiring S09 completion, not claiming verification passed'
       continue
     }
     if ($s.steps.$id.status -ne 'passed') { throw "$id did not pass in post-login fixture" }

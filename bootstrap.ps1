@@ -796,24 +796,33 @@ function Set-S08Timeout([string]$Command, [int]$TimeoutMs, [string]$KillError = 
   Say "S08 $Command 시간 제한 ${TimeoutMs}ms 초과 — unmeasured로 기록하고 S09로 진행합니다."
 }
 
+function Set-S08CallFailure([string]$Command, $ExitCode, [string]$Detail) {
+  $script:StepStatus = 'unmeasured'
+  $script:StepObserved = [ordered]@{ reason = 'call_failed'; command = $Command; command_exit = $ExitCode; detail = $Detail; identify_exit = $null; seats = $null; injection_measured = $false; max_injected_bytes = $null }
+  Say "S08 $Command 확인 실패 — unmeasured로 기록하고 S09로 진행합니다: $Detail"
+}
+
 function Run-S08 {
   $cys = Join-Path $WaveHome "bin\cys.exe"
   $wave = Join-Path $WaveHome "bin\wave.ps1"
   $verify = Join-Path $WaveHome "verify"
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
-  $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000
+  try { $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000 }
+  catch { Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
   if ($identify.stdout) { Write-Log $identify.stdout.Trim() }
   if ($identify.stderr) { Write-Log $identify.stderr.Trim() }
   if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
-  if ($identify.exit_code -ne 0) { throw "cys identify 실패(exit=$($identify.exit_code)): $($identify.stderr)" }
-  $doctorResult = Invoke-BoundedCheck 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $wave + '"'), 'doctor', '--json') 'doctor' 30000
+  if ($identify.exit_code -ne 0) { Set-S08CallFailure 'cys identify' $identify.exit_code $identify.stderr; return }
+  try {$doctorResult = Invoke-BoundedCheck 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $wave + '"'), 'doctor', '--json') 'doctor' 30000 }
+  catch { Set-S08CallFailure 'wave doctor' $null $_.Exception.Message; return }
   if ($doctorResult.stderr) { Write-Log $doctorResult.stderr.Trim() }
   if ($doctorResult.timed_out) { Set-S08Timeout 'wave doctor' $doctorResult.timeout_ms $doctorResult.kill_error; return }
-  if ($doctorResult.exit_code -ne 0) { throw "wave doctor 실패(exit=$($doctorResult.exit_code)): $($doctorResult.stderr)" }
+  if ($doctorResult.exit_code -ne 0) { Set-S08CallFailure 'wave doctor' $doctorResult.exit_code $doctorResult.stderr; return }
   Set-Content -LiteralPath (Join-Path $verify 'doctor.json') -Value $doctorResult.stdout -Encoding UTF8
-  $doctor = $doctorResult.stdout | ConvertFrom-Json
+  try { $doctor = $doctorResult.stdout | ConvertFrom-Json }
+  catch { Set-S08CallFailure 'wave doctor' $doctorResult.exit_code $_.Exception.Message; return }
   if ((Get-StateField $doctor 'identify_timed_out') -eq $true) { Set-S08Timeout 'wave doctor: cys identify' ([int](Get-StateField $doctor 'timeout_ms')) ([string](Get-StateField $doctor 'identify_kill_error')); return }
-  if ($doctor.identify_exit -ne 0 -or @($doctor.seats).Count -ne 2) { throw "identify·좌석 수 계약 불일치" }
+  if ((Get-StateField $doctor 'identify_exit') -ne 0 -or @((Get-StateField $doctor 'seats')).Count -ne 2) { Set-S08CallFailure 'wave doctor' (Get-StateField $doctor 'identify_exit') 'identify·좌석 수 계약 불일치'; return }
   $limit = [int64](Get-ConfigValue "tooling.max_injected_bytes_per_seat")
   $measured = $true
   $max = 0

@@ -58,12 +58,17 @@ try {
   # 설치기가 시작 직후 죽는 경우(10차: Get-JCode 미인식)를 가리기 위한 진단 — 설치팩 bootstrap.ps1 의 파싱 결과·인코딩·함수 목록·설치 로그
   $pk = Get-ChildItem (Join-Path $h '.wave\src') -Recurse -Filter bootstrap.ps1 -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($pk) {
-    $tk = $null; $er = $null; $ast = [System.Management.Automation.Language.Parser]::ParseFile($pk.FullName, [ref]$tk, [ref]$er)
-    $bytes = [IO.File]::ReadAllBytes($pk.FullName)
-    @("path=$($pk.FullName)", "bytes=$($bytes.Length)", ('head=' + (($bytes[0..7] | ForEach-Object { $_.ToString('x2') }) -join ' ')), "crlf=$(([regex]::Matches([Text.Encoding]::UTF8.GetString($bytes), "`r`n")).Count)",
-      "sha256=$((Get-FileHash $pk.FullName -Algorithm SHA256).Hash.ToLower())", "parse_errors=$($er.Count)", ($er | ForEach-Object { 'ERR ' + $_.Message + ' @' + $_.Extent.StartLineNumber }),
-      ('functions=' + ((($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) | ForEach-Object { $_.Name }) -join ',')),
-      ('lib=' + ((Get-ChildItem (Join-Path $pk.DirectoryName 'lib') -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) -join ','))) | Set-Content (Join-Path $e 'phaseA\bootstrap_parse_check.txt') -Encoding UTF8
+    $lines = @()
+    foreach ($f in @($pk) + @(Get-ChildItem (Join-Path $pk.DirectoryName 'lib') -Filter *.ps1 -ErrorAction SilentlyContinue)) {
+      $tk = $null; $er = $null; $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tk, [ref]$er)
+      $bytes = [IO.File]::ReadAllBytes($f.FullName)
+      $fn = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) | ForEach-Object { $_.Name })
+      $nonAscii = @($bytes | Where-Object { $_ -gt 127 }).Count
+      $lines += "file=$($f.FullName)"; $lines += "  bytes=$($bytes.Length) head=$((($bytes[0..2] | ForEach-Object { $_.ToString('x2') }) -join ' ')) nonascii_bytes=$nonAscii sha256=$((Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower())"
+      $lines += "  parse_errors=$($er.Count)"; foreach ($x in $er) { $lines += '  ERR ' + $x.Message + ' @line ' + $x.Extent.StartLineNumber }
+      $lines += "  functions($($fn.Count))=" + ($fn -join ',')
+    }
+    $lines | Set-Content (Join-Path $e 'phaseA\bootstrap_parse_check.txt') -Encoding UTF8
   }
   foreach ($lf in @('install.log', 'install-done.txt')) { Copy-Item (Join-Path $h ".wave\$lf") (Join-Path $e "phaseA\$lf") -ErrorAction SilentlyContinue }
   Install-Fake

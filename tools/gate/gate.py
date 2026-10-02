@@ -175,9 +175,21 @@ def hcheck(name, ok_fn, label):
 
 h1 = hcheck("H1_help_landing.json", lambda d: (d.get("landed_s", 1e9) <= 60 and d.get("dashboard_listed") is True, "착지 %ss · 대시보드 %s" % (d.get("landed_s"), d.get("dashboard_listed"))), "막힘→60초 내 inbox 착지·대시보드 표시")
 h2 = hcheck("H2_answer_shown.json", lambda d: (d.get("shown_s", 1e9) <= 120, "처방 표시 %ss" % d.get("shown_s")), "처방 파일→120초 내 설치 창 표시")
-h3 = hcheck("H3_mask.json", lambda d: (bool(d.get("planted")) and all(v == 0 for v in d.get("found_in", {}).values()) and len(d.get("found_in", {})) >= 3, "심은 값 검출 %s" % d.get("found_in")), "가림: 원장·대시보드·저장소 0")
+h3 = hcheck("H3_mask.json", lambda d: (bool(d.get("planted")) and all(v == 0 for v in d.get("found_in", {}).values()) and {"ledger", "dashboard", "sheet", "drive"} <= set(d.get("found_in", {})), "심은 값 검출 %s" % d.get("found_in")), "가림: 원장·대시보드·시트·드라이브 0")
 h4 = hcheck("H4_failopen.json", lambda d: (d.get("server_blocked") is True and d.get("step10_ok") is True, "차단=%s · 10/10=%s" % (d.get("server_blocked"), d.get("step10_ok"))), "서버 차단에도 10/10")
 h5 = hcheck("H5_dashboard_ledger.json", lambda d: (d.get("ledger_count") == d.get("dashboard_count") and d.get("status_match") is True, "원장 %s · 대시보드 %s · 상태일치 %s" % (d.get("ledger_count"), d.get("dashboard_count"), d.get("status_match"))), "대시보드=원장 건수·상태")
+
+
+def h6(b, c=None):
+    d, bad = need(b, "H6_concurrency.json")
+    if bad: return bad
+    sub_ids, got = set(d.get("submitted_ids", [])), set(d.get("received_ids", []))
+    miss, qerr, n = sorted(sub_ids - got), d.get("quota_errors"), d.get("concurrent", 0)
+    if n < 30 or len(sub_ids) < 30: return NA, "동시 30건 미만 측정 (동시 %s · 제출 %d)" % (n, len(sub_ids))
+    if qerr is None: return NA, "쓰기 한도 오류 수(quota_errors) 기록 없음"
+    if qerr or miss: return FAIL, "한도 오류 %s · 접수 누락 %d" % (qerr, len(miss))
+    return PASS, "동시 %d건 · 한도 오류 0 · 접수 누락 0" % n
+
 
 # (id, 제목, 적용 칸: os=맥·윈 각각 / common=한 번만, 판정 함수)
 GATES = [("G1", "한 줄 설치 10/10", "os", g1), ("G2", "프리플라이트 FAIL 0 · 새 WARN 0", "os", g2),
@@ -186,7 +198,8 @@ GATES = [("G1", "한 줄 설치 10/10", "os", g1), ("G2", "프리플라이트 FA
          ("G7", "문구 3곳 일치 · 라이선스 동봉", "common", g7), ("G8", "적대검수 젠·노아 blocking 0", "common", g8),
          ("G9", "실기 3대(윈2+맥1)", "common", g9),
          ("H1", "막힘→펄스 inbox 60초", "os", h1), ("H2", "처방→설치 창 2분", "os", h2),
-         ("H3", "가림 시험", "os", h3), ("H4", "서버 차단 fail-open", "os", h4), ("H5", "대시보드=원장", "common", h5)]
+         ("H3", "가림 시험", "os", h3), ("H4", "서버 차단 fail-open", "os", h4), ("H5", "대시보드=원장", "common", h5),
+         ("H6", "동시 30건 · 시트 한도 오류 0 · 접수 누락 0", "common", h6)]
 
 
 def judge(root):

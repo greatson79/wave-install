@@ -25,7 +25,7 @@ def os_set(b):
         put(s, extra[0], dict(extra[1]))
     put(b, "H1_help_landing.json", {"landed_s": 42, "dashboard_listed": True})
     put(b, "H2_answer_shown.json", {"shown_s": 90})
-    put(b, "H3_mask.json", {"planted": ["t"], "found_in": {"ledger": 0, "dashboard": 0, "supabase": 0}})
+    put(b, "H3_mask.json", {"planted": ["t"], "found_in": {"ledger": 0, "dashboard": 0, "sheet": 0, "drive": 0}})
     put(b, "H4_failopen.json", {"server_blocked": True, "step10_ok": True})
 
 
@@ -37,6 +37,8 @@ def make_all(root):
     put(c, "G7_text.json", {"gen_check_exit": 0, "license_files": ["LICENSES/jarvis-install-MIT.txt", "LICENSE"]})
     put(c, "G8_review.json", {"verdicts": {"zen": {"verdict": "ACCEPT", "blocking": 0}, "noah": {"verdict": "ACCEPT", "blocking": 0}}})
     put(c, "H5_dashboard_ledger.json", {"ledger_count": 3, "dashboard_count": 3, "status_match": True})
+    ids = ["i%d" % i for i in range(30)]
+    put(c, "H6_concurrency.json", {"concurrent": 30, "submitted_ids": ids, "received_ids": ids, "quota_errors": 0})
     real = c / "real"
     for i, o in enumerate(("win", "win", "mac")):
         put(real, "d%d.json" % i, {"os": o, "seats": ["master", "cso", "worker"], "human_hands": {"login_approve": 1, "other": 0}})
@@ -87,6 +89,23 @@ class T(unittest.TestCase):
         (self.d / "win" / "G5" / "G4_boot.json").write_text(json.dumps({"steps": [{"n": 1, "exit": 2}], "raw": []}))
         self.assertIn(verdicts(self.d)["G5win"], (gate.NA, gate.FAIL))
         self.assertNotEqual(verdicts(self.d)["G5win"], gate.PASS)
+
+    def test_h6_concurrency(self):
+        f = self.d / "common" / "H6_concurrency.json"
+        d = json.loads(f.read_text()); base = dict(d)
+        d["quota_errors"] = 2; f.write_text(json.dumps(d))
+        self.assertEqual(verdicts(self.d)["H6common"], gate.FAIL)
+        d = dict(base); d["received_ids"] = d["received_ids"][:-1]; f.write_text(json.dumps(d))
+        self.assertEqual(verdicts(self.d)["H6common"], gate.FAIL)
+        d = dict(base); d["concurrent"] = 10; f.write_text(json.dumps(d))
+        self.assertEqual(verdicts(self.d)["H6common"], gate.NA)
+        d = dict(base); del d["quota_errors"]; f.write_text(json.dumps(d))
+        self.assertEqual(verdicts(self.d)["H6common"], gate.NA)
+
+    def test_h3_needs_sheet_and_drive(self):
+        f = self.d / "mac" / "H3_mask.json"
+        d = json.loads(f.read_text()); del d["found_in"]["drive"]; f.write_text(json.dumps(d))
+        self.assertEqual(verdicts(self.d)["H3mac"], gate.FAIL)
 
     def test_empty_root_all_unmeasured(self):
         e = pathlib.Path(tempfile.mkdtemp())

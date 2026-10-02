@@ -39,8 +39,7 @@
   "tooling": {
     "claude_code_version": "2.1.278",
     "claude_code_min_version": "2.1.278",
-    "min_free_bytes": 5368709120,
-    "max_injected_bytes_per_seat": 20480
+    "min_free_bytes": 5368709120
   },
   "steps": [
     {
@@ -233,7 +232,7 @@
       "id": "S08_VERIFY",
       "index": 8,
       "total": 10,
-      "title": "master·cso·worker 재확인 · 주입량 미측정(후속)",
+      "title": "master·cso·worker 재확인 · 주입=팩 원본/.new 0",
       "command": {
         "macos": "cys status --json; master 부트 표지 대조",
         "windows": "cys status --json; master 부트 표지 대조"
@@ -244,16 +243,21 @@
           "equals": 0
         },
         {
-          "kind": "bytes_lte",
-          "path": "~/.wave/verify/doctor.json",
-          "json_path": "max_injected_bytes",
-          "max": 20480,
-          "message": "주입량 — 미측정(후속) · 측정 시 기준 20KB 이하"
+          "kind": "json_path",
+          "path": "~/.wave/install-state.json",
+          "json_path": "steps.S08_VERIFY.observed.original_match",
+          "equals": true
+        },
+        {
+          "kind": "json_path",
+          "path": "~/.wave/install-state.json",
+          "json_path": "steps.S08_VERIFY.observed.new_file_count",
+          "equals": 0
         }
       ],
       "on_fail": {
         "error_id": "WT-S08-VERIFY",
-        "message": "identify·좌석 수 확인 실패 또는 실측 주입량 초과 시 중단합니다. 주입량 미측정은 예외에 기록하고 진행합니다.",
+        "message": "주입 지침과 앱 원본 불일치 또는 .new 잔여는 실패입니다. 실제 주입 증거가 없으면 미측정으로 기록합니다.",
         "next": "stop"
       },
       "optional": false

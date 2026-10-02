@@ -41,7 +41,7 @@ function Run-S04 { Say 'ACTION-S04' }
 function Run-S05 { Say 'ACTION-S05' }
 function Run-S06 { Say 'ACTION-S06' }
 function Run-S07 { $script:StepObserved = @{ fleet_started = $true } }
-function Run-S08 { $script:StepObserved = @{ injection_measured = $true; max_injected_bytes = 1 } }
+function Run-S08 { $script:StepObserved = @{ original_match = $true; new_file_count = 0 } }
 '''
             script = home/'bootstrap.ps1'
             script.write_text(source.replace('\nLoad-Config\nif ($DryRun)', overrides+'\nLoad-Config\nif ($DryRun)'), encoding='utf-8-sig')
@@ -349,7 +349,7 @@ if ((Get-Content $LogFile -Raw) -notmatch 'autostarting fixture') { throw 'S08 d
 if ((Get-Content (Join-Path $WaveHome 'verify/identify-doctor.log') -Raw) -notmatch 'autostarting fixture') { throw 'doctor diagnostic lost' }
 $env:WAVE_TEST_CYS_FAIL = '1'
 Run-S08
-if ($StepStatus -ne 'unmeasured' -or $StepObserved.reason -ne 'call_failed' -or $StepObserved.command_exit -ne 7 -or $null -ne $StepObserved.max_injected_bytes) { throw 'failed cys observation lost or falsely passed' }
+if ($StepStatus -ne 'unmeasured' -or $StepObserved.reason -ne 'call_failed' -or $StepObserved.command_exit -ne 7 -or $null -ne $StepObserved.original_match) { throw 'failed cys observation lost or falsely passed' }
 $doctor = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bin 'wave.ps1') doctor --json | ConvertFrom-Json
 if ($doctor.identify_exit -ne 7) { throw 'doctor hid native failure' }
 ''')
@@ -413,11 +413,11 @@ function Invoke-BoundedCheck {
   return [pscustomobject]@{ timed_out = $false; timeout_ms = $TimeoutMs; exit_code = 0; stdout = ''; stderr = ''; kill_error = $null }
 }
 try {
-  foreach ($name in @('identify', 'doctor')) {
+  foreach ($name in @('identify', 'fleet-status')) {
     $script:lockedName = $name
     Invoke-Step 'S08_VERIFY' { Run-S08 }
     $entry = $State.steps.S08_VERIFY
-    if ($entry.status -ne 'unmeasured' -or $entry.observed.reason -ne 'call_failed' -or $null -ne $entry.observed.max_injected_bytes) { throw 'locked log falsely measured' }
+    if ($entry.status -ne 'unmeasured' -or $entry.observed.reason -ne 'call_failed' -or $null -ne $entry.observed.original_match) { throw 'locked log falsely measured' }
     if ($entry.observed.detail -notmatch 'Diagnostic log read failed' -or $entry.observed.detail -notmatch 'locked.stdout.log') { throw 'read failure reason or path missing' }
     Mark-RequiredComplete
     Invoke-Step 'S09_COMPLETE' { Run-S09 }
@@ -437,10 +437,10 @@ function Invoke-BoundedCheck {
   param($FilePath, $Arguments, $Name, $TimeoutMs)
   return [pscustomobject]@{ timed_out = ($script:failureMode -eq 'timeout' -and $Name -eq $script:timeoutName); timeout_ms = $TimeoutMs; exit_code = $(if ($script:failureMode -eq 'call_failed' -and $Name -eq $script:timeoutName) { 7 } else { 0 }); stdout = ''; stderr = 'fixture detail'; kill_error = $null }
 }
-foreach ($case in @('timeout:identify', 'timeout:doctor', 'call_failed:identify', 'call_failed:doctor')) {
+foreach ($case in @('timeout:identify', 'timeout:fleet-status', 'call_failed:identify', 'call_failed:fleet-status')) {
   $script:failureMode, $script:timeoutName = $case.Split(':')
   Invoke-Step 'S08_VERIFY' { Run-S08 }
-  if ($State.steps.S08_VERIFY.status -ne 'unmeasured' -or $State.steps.S08_VERIFY.observed.reason -ne $script:failureMode -or $null -ne $State.steps.S08_VERIFY.observed.max_injected_bytes) { throw 'S08 call failure falsely passed' }
+  if ($State.steps.S08_VERIFY.status -ne 'unmeasured' -or $State.steps.S08_VERIFY.observed.reason -ne $script:failureMode -or $null -ne $State.steps.S08_VERIFY.observed.original_match) { throw 'S08 call failure falsely passed' }
   Mark-RequiredComplete
   Invoke-Step 'S09_COMPLETE' { Run-S09 }
   Complete-State

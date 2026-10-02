@@ -9,15 +9,15 @@
 | 데몬 | S05 daemon install, ping, 앱 폴백 | S05 daemon install, ping, cysd/app 폴백 | 등록 실패는 예외 기록, 이후 각성 실측 |
 | 자동 각성 | UTF-8 wake.sh → master surface | UTF-8 wake-master.ps1 → master surface | upstream MIT write_wake_file/step_wake 구조 참고 |
 | 부트 확인 | 최신 master marker + live master/cso/worker | marker + live/awakened master/cso/worker | 실제 LLM 로그인·실기 설치는 이 변경에서 미실행 |
-| 주입량 | null / 미측정 | null / 미측정 | 데몬 status 미제공. 기존 완료 게이트 유지, 10/10 완전 통과 주장 불가 |
+| G3 원본 일치 | 훅 stdout 본문 포함·영수증·앱/설치팩 해시/바이트 대조 | 같은 계약 | master/cso/worker 3역할, .new 실측0; 영수증 없으면 미측정 |
 | 재설치 | 검증된 상태파일 백업 이동 | 상태/완료표지 검증 백업, 정확한 옛 Run 값만 정리 | 앱·bin 전체 삭제 위한 소유 manifest 없음: 삭제 구현 미완 |
 
 ## 남은 출시 관문
 
 - 양 OS 깨끗한 러너와 실제 로그인 기기에서 자동 각성 검증.
-- 주입 바이트 측정 계약 및 원본 팩 기준으로 기존 20KB 제한을 유지할지 상급 결정 필요. 설치기가 임의 완화하지 않음.
+- 0142 테오 승인: 20KB 상한 폐기, 실제 주입=팩 원본 및 .new0로 교체. 실제 hook stdout에서 G3 영수증을 생산하는 W3/W6 연동 필요.
 - 재설치 소유 manifest 도입, 앱·pack 설치기 소유 파일만 제거하는 전체 왕복 검증.
-- 기존 스텁 wave doctor/20KB 중심 테스트를 신규 승인 계약과 대조한 뒤 갱신.
+- 주입 영수증 producer는 실제 hook stdout 실측을 보유해야 하며, 설치기가 디스크 해시로 injected 필드를 만들어서는 안 된다.
 - 독립 리뷰어 검수 전이며 배포 가능 판정 아님.
 
 출처(confidence: High): 로컬 bootstrap.sh/bootstrap.ps1·앱 src/pack.rs의 PACK_ALL 및 cys pack-manifest, cysjavis-pack/bin/javis_bootstrap.py의 .master-bootstrapped 계약.

@@ -577,14 +577,57 @@ sys.exit(0 if ok else 1)
 PY_LIVE
 }
 
+verify_original_injection() {
+  bounded_cys pack-manifest > "$WAVE_HOME/verify/embedded-pack.json" || return 1
+  python3 - "$PACK_HOME" "$WAVE_HOME/verify/embedded-pack.json" "$WAVE_HOME/verify/G3_inject.json" <<'PY_G3'
+import hashlib, json, re, sys
+from pathlib import Path
+pack, manifest, receipt = map(Path, sys.argv[1:])
+if pack.is_symlink() or (pack/'directives').is_symlink():
+    raise SystemExit('G3 linked pack refused')
+files=json.loads(manifest.read_text())['files']
+roles=json.loads(receipt.read_text())['roles']
+if not isinstance(roles,dict) or set(roles) != {'master','cso','worker'}:
+    raise SystemExit('G3 requires master/cso/worker role evidence')
+result={}
+for role in ('master','cso','worker'):
+    entry=roles[role]
+    rel='directives/'+role.upper()+'_DIRECTIVE.md'
+    source=pack/rel
+    if source.is_symlink() or not source.is_file():
+        raise SystemExit('G3 missing/linked original: '+role)
+    data=source.read_bytes(); actual=hashlib.sha256(data).hexdigest()
+    hook=receipt.parent/('hook_'+role+'.out')
+    if hook.is_symlink() or not hook.is_file() or not data or data not in hook.read_bytes():
+        raise SystemExit('G3 hook output missing original body: '+role)
+    a,b=entry.get('injected_sha256'),entry.get('pack_sha256')
+    if not all(isinstance(v,str) and re.fullmatch('[0-9a-fA-F]{64}',v) for v in (a,b)):
+        raise SystemExit('G3 invalid hash: '+role)
+    x,y=entry.get('injected_bytes'),entry.get('pack_bytes')
+    if not all(type(v) is int and v>0 for v in (x,y)) or x!=y or y!=len(data):
+        raise SystemExit('G3 byte mismatch: '+role)
+    if not (a.lower()==b.lower()==actual==files.get(rel)):
+        raise SystemExit('G3 original mismatch: '+role)
+    result[role]=dict(injected_sha256=a.lower(),pack_sha256=actual,injected_bytes=x,pack_bytes=y)
+if list(pack.rglob('*.new')):
+    raise SystemExit('G3 pending .new files')
+print(json.dumps(dict(original_match=True,new_file_count=0,roles=result,
+    source='hook-stdout+receipt-hashes+app-manifest+installed-pack',fleet_verified=True)))
+PY_G3
+}
+
 step_s08() {
   local ref started
   ref="$(cat "$WAVE_HOME/fleet/master-ref")" || return 1
   started="$(cat "$WAVE_HOME/fleet/started-at")" || return 1
   bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
   verify_live_fleet "$ref" "$started" || return 1
-  # No invented byte count: the daemon status does not expose injected byte lengths.
-  STEP_OBSERVED='{"fleet_verified":true,"injection_measured":false,"max_injected_bytes":null}'
+  if [[ ! -f "$WAVE_HOME/verify/G3_inject.json" ]]; then
+    STEP_STATUS="unmeasured"
+    STEP_OBSERVED='{"fleet_verified":true,"original_match":null,"new_file_count":null,"reason":"injection_receipt_missing"}'
+    return 0
+  fi
+  STEP_OBSERVED="$(verify_original_injection)" || return 1
 }
 
 summarize_state() {
@@ -632,11 +675,11 @@ for step in config["steps"]:
         if step_id == "S07_INITIAL_FLEET" and observed.get("fleet_started") is not True:
             reasons.append("fleet_unmeasured")
         if step_id == "S08_VERIFY":
-            value = observed.get("max_injected_bytes")
-            if observed.get("injection_measured") is not True or type(value) is not int or value < 0:
-                reasons.append("injection_unmeasured")
-            elif value > config["tooling"]["max_injected_bytes_per_seat"]:
-                reasons.append("injection_limit_exceeded")
+            if observed.get("original_match") is not True:
+                reasons.append("injection_original_unverified")
+            count = observed.get("new_file_count")
+            if type(count) is not int or count != 0:
+                reasons.append("pending_new_unverified")
     for reason in reasons:
         exceptions.append({"step_id": step_id, "reason": reason})
 state["required_steps_passed"] = not exceptions
@@ -664,7 +707,7 @@ message = ("필수 단계 검증을 통과했습니다." if state["required_step
            "설치 절차를 마무리했습니다. 예외·미검증 항목이 있으므로 전체 검증 완료가 아닙니다.")
 Path(sys.argv[2]).write_text("# Wave Terminal 시작하기\n\n" + message +
     "\n\ninstall-state.json의 required_steps_passed·exceptions와 install.log를 확인하세요. "
-    "주입량 미측정은 0바이트 통과를 뜻하지 않습니다.\n", encoding="utf-8")
+    "원본 주입 증거가 없거나 .new가 남으면 완료로 처리하지 않습니다.\n", encoding="utf-8")
 print(json.dumps({"required_steps_passed": state["required_steps_passed"],
                   "start_here": True, "silent_completion": False}))
 PY

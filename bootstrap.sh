@@ -450,6 +450,7 @@ step_s05() {
   fi
   STEP_OBSERVED="{\"registered\":$registered,\"daemon_ready\":$ready,\"registration\":\"cys daemon install\"}"
   printf '%s\n' "$STEP_OBSERVED" > "$WAVE_HOME/install/daemon-register-result"
+  [[ "$registered" == true ]] || STEP_STATUS="skipped_with_reason"
   [[ "$ready" == true ]] || { fail_message "데몬 응답 없음 — 각성 단계에서 재확인 필요"; return 1; }
 }
 
@@ -516,6 +517,14 @@ print('bash ' + shlex.quote(sys.argv[1]))
 PY_QUOTE
 )"
   open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
+  bounded_cys status --json > "$WAVE_HOME/fleet/before.json" || return 1
+  ref="$(python3 - "$WAVE_HOME/fleet/before.json" <<'PY_EXISTING'
+import json, sys
+live = [s for s in json.load(open(sys.argv[1]))['surfaces'] if s.get('role') == 'master' and s.get('exited') is False]
+if live:
+    raise SystemExit('기존 master가 살아 있습니다. 중복 생성 없이 설치를 중단합니다.')
+PY_EXISTING
+)" || return 1
   ref="$(bounded_cys new-surface --role master --cmd "$command")" || return 1
   [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
   printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"

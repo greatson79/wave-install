@@ -31,6 +31,7 @@ permissions:
   contents: read
 env:
   WAVE_NO_PROGRESS: '1'
+  PYTHONUTF8: '1'
   RC_BASE: https://127.0.0.1:8443/
 jobs:
   cfg:

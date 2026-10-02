@@ -14,9 +14,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Identity observation regression tests
         shell: pwsh
+        env:
+          W3_BASH_EVIDENCE: ci-evidence/runner/bash-conversion.json
         run: |
-          python -B tests/test_process_identity.py
-          if ($LASTEXITCODE -ne 0) { throw 'Identity observation regressions failed' }
+          New-Item -ItemType Directory -Force ci-evidence/runner | Out-Null
+          python -B tests/test_process_identity.py *> ci-evidence/runner/identity-regressions.log
+          $testExit = $LASTEXITCODE
+          Get-Content ci-evidence/runner/identity-regressions.log
+          if ($testExit -ne 0) { throw 'Identity observation regressions failed' }
       - name: Verify pinned source run and artifact
         shell: pwsh
         env:
@@ -54,5 +59,7 @@ jobs:
         if: always()
         with:
           name: p0-windows-${{ github.sha }}
-          path: ci-evidence/p0/
+          path: |
+            ci-evidence/p0/
+            ci-evidence/runner/
           if-no-files-found: error

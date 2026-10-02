@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import unittest
@@ -120,7 +121,8 @@ class IdentityEvidenceTests(unittest.TestCase):
                         self.assertTrue(all(row['bytes'] == 0 and len(row['sha256']) == 64 for row in saved['hook-trace-files.json']['files']))
 
     def test_bash_probes_preserve_quoted_path_arguments_and_failure_code(self):
-        bash = shutil.which('bash')
+        path_bash = shutil.which('bash')
+        bash = path_bash
         if os.name == 'nt':
             # PATH bash may be the Windows/WSL launcher; this test requires Git MSYS.
             git = shutil.which('git')
@@ -131,6 +133,30 @@ class IdentityEvidenceTests(unittest.TestCase):
         self.assertIsNotNone(bash, 'Git MSYS bash with sibling cygpath was not found')
         print('Bash regression executable: ' + bash, flush=True)
         bash_env = dict(os.environ, PATH=str(Path(bash).parent) + os.pathsep + os.environ.get('PATH', ''))
+        evidence_path = os.environ.get('W3_BASH_EVIDENCE')
+        evidence = {'platform': sys.platform, 'python': sys.executable,
+                    'path_bash_candidate': path_bash, 'selected_bash': bash,
+                    'selected_cygpath': str(Path(bash).with_name('cygpath.exe')) if os.name == 'nt' else None,
+                    'conversions': []}
+        def record_conversion(label, command, env):
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=15)
+                row = {'label': label, 'command': command, 'exit_code': result.returncode,
+                       'stdout': result.stdout, 'stderr': result.stderr}
+            except subprocess.TimeoutExpired as exc:
+                row = {'label': label, 'command': command, 'timed_out': True,
+                       'stdout': (exc.stdout or b'').decode(errors='replace'),
+                       'stderr': (exc.stderr or b'').decode(errors='replace')}
+                result = None
+            except OSError as exc:
+                row = {'label': label, 'command': command, 'exit_code': None, 'error': repr(exc)}
+                result = None
+            evidence['conversions'].append(row)
+            if evidence_path:
+                target = Path(evidence_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding='utf-8')
+            return result
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "space and 'quote"
             root.mkdir()
@@ -143,8 +169,12 @@ class IdentityEvidenceTests(unittest.TestCase):
             def bash_path(path):
                 if os.name != 'nt':
                     return str(path)
-                converted = subprocess.run([bash, '-c', 'cygpath -u "$1"', '_', str(path)],
-                                           capture_output=True, text=True, env=bash_env)
+                if evidence_path:
+                    # Reproduce the former runner PATH selection on the same fixture.
+                    record_conversion('former-path-bash', ['bash', '-c', 'cygpath -u "$1"', '_', str(path)], os.environ)
+                converted = record_conversion('explicit-git-msys',
+                    [bash, '-c', 'cygpath -u "$1"', '_', str(path)], bash_env)
+                self.assertIsNotNone(converted, 'Explicit Git MSYS conversion failed to start or timed out')
                 self.assertEqual(converted.returncode, 0, f'bash={bash} stdout={converted.stdout!r} stderr={converted.stderr!r}')
                 self.assertTrue(converted.stdout.strip(), 'cygpath returned an empty path')
                 return converted.stdout.strip()

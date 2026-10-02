@@ -6,7 +6,7 @@ RCJ="$1"; CA="$2"; EV="$3/mac/G5"; HERE="$(cd "$(dirname "$0")" && pwd)"; mkdir 
 ONE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["one_line"])' "$RCJ")"
 OLD='curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.3/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh"'
 export WAVE_NO_PROGRESS=1
-mkdir -p "$HOME/.local/bin"; cp "$HERE/fake-claude.sh" "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"
+mkdir -p "$HOME/.local/bin"; cp "$HERE/fake_claude.py" "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"
 for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(4차 run: cys boot 가 claude 를 못 찾아 60초 미확인)
 python3 "$HERE/run_to.py" 1500 "$EV/from_v023.log" -- bash -c "cd \"\$HOME\" && $OLD"; echo $? > "$EV/from_v023.exit"
 cp "$HOME/.wave/install-state.json" "$EV/from_v023_state.json"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""합성 claude(Windows 판 · LLM·로그인 없음 — 「합성」 표기, 관문 미산입). fake-claude.sh 와 같은 계약.
-경로의 디렉터리 이름이 claude 여야 cysd 의 agent_alive(명령줄 토큰/경로 세그먼트 매칭)에 잡힌다: <...>\\claude\\fake_claude.py"""
+"""합성 claude(맥·Windows 공용 · LLM·로그인 없음 — 「합성」 표기, 관문 미산입). fake-claude.sh 와 같은 계약.
+맥: ~/.local/bin/claude 로 설치 — SIP 보호 바이너리(/bin/bash 등)가 아니라 python 인터프리터 프로세스여야 cysd 가 명령줄(…/claude)을 읽는다(8차: bash 판은 agent_alive 미매칭). 경로의 디렉터리 이름이 claude 여야 cysd 의 agent_alive(명령줄 토큰/경로 세그먼트 매칭)에 잡힌다: <...>\\claude\\fake_claude.py"""
 import glob, json, os, subprocess, sys, time
 
 a = sys.argv[1:]
@@ -25,10 +25,18 @@ if cmd and role != "none":
     open(os.path.join(rc, "hook_%s.rc" % role), "w").write(str(r.returncode))
 if role == "master":
     import shutil
-    open(os.path.join(rc, "preflight_path.txt"), "w", encoding="utf-8").write("PATH=%s\nuvx=%s\npython3=%s\n" % (os.environ.get("PATH", ""), shutil.which("uvx"), shutil.which("python3")))
+    diag = "PATH=%s\nuvx=%s\npython3=%s\n" % (os.environ.get("PATH", ""), shutil.which("uvx"), shutil.which("python3"))
+    if os.name != "nt":
+        link = os.path.join(home, ".wave", "bin", "cysd")
+        diag += "cysd_link=%s\n" % (os.readlink(link) if os.path.islink(link) else None)
+        diag += subprocess.run("ps -axo pid,command | grep '[c]ysd' | head -5", shell=True, capture_output=True, text=True).stdout
+    open(os.path.join(rc, "preflight_path.txt"), "w", encoding="utf-8").write(diag)
     pack = os.environ.get("CYS_PACK_DIR") or os.path.join(home, ".cys", "pack")
     r = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)
     open(os.path.join(rc, "bootstrap.rc"), "w").write(str(r.returncode))
 sys.stdout.write("\n❯ \n"); sys.stdout.flush()  # agents.json ready_marker — launch-agent 가 이 표지를 볼 때까지 대기한다
+if os.name != "nt":  # 8차 진단: cysd 가 보는 자기 프로세스 명령줄(agent_alive 매칭 근거) 원문
+    time.sleep(8)
+    open(os.path.join(rc, "ps_claude_%s.txt" % role), "w", encoding="utf-8").write(subprocess.run("ps -axo pid,ppid,command | grep -i '[c]laude' | head -20", shell=True, capture_output=True, text=True).stdout)
 while True: time.sleep(3600)

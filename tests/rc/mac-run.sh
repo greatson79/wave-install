@@ -23,7 +23,7 @@ cp "$HOME/.wave/install-state.json" "$EV/phaseA/state.json" 2>/dev/null
 
 log "합성 claude 투입(S02 이하 결정론 단계용)"
 mkdir -p "$HOME/.local/bin"; [ -e "$HOME/.local/bin/claude" ] && mv "$HOME/.local/bin/claude" "$HOME/.local/bin/claude.real"
-cp "$HERE/fake-claude.sh" "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"
+cp "$HERE/fake_claude.py" "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"
 for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(4차 run: cys boot 가 claude 를 못 찾아 60초 미확인)
 
 log "B: 같은 한 줄 재실행"

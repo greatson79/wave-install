@@ -25,13 +25,15 @@ for f in files:
 
 steps_p = stage / "steps.json"; steps = json.loads(steps_p.read_text(encoding="utf-8")); rel = steps["release"]
 ver = steps["version"]
+m_ver = re.search(r"(\d+\.\d+\.\d+)", asset.name)  # 앱 산출 이름 'Wave Terminal_0.1.2_aarch64.dmg' 의 버전 — 실제 릴리스 규약 이름으로 바꿔 서빙(바이트 불변)
+app_ver = m_ver.group(1) if m_ver else sys.exit("자산 이름에서 버전을 찾지 못함: " + asset.name)
 if a.os == "mac":
-    name = "wave-terminal-rc-macos-arm64.dmg"  # 앱 산출 DMG 이름에는 공백이 있어 URL 이 깨진다 — 바이트는 그대로, 서빙 이름만 안전하게
+    name = "wave-terminal-%s-macos-arm64.dmg" % app_ver; rel["macos_version"] = app_ver
     for k in ("macos_arm64", "macos_x64"):
         rel["asset_name"][k] = name; rel["asset_url"][k] = a.base + name; rel["sha256"][k] = sha
         rel["cdhash"][k] = a.cdhash
 else:
-    name = "wave-terminal-rc-windows-x64-setup.exe"  # 설치기는 steps.json release 의 pin 을 정본으로 읽는다(코드 치환 불필요)
+    name = "wave-terminal-%s-windows-x64-setup.exe" % app_ver; rel["version"] = app_ver  # 설치기는 steps.json release 핀(version·bytes·sha256·asset_name)이 단일 정본
     rel["asset_name"]["windows_x64"] = name; rel["asset_url"]["windows_x64"] = a.base + name; rel["sha256"]["windows_x64"] = sha
     rel["bytes"]["windows_x64"] = asset.stat().st_size
     rel["windows_sha256sums_url"] = a.base + "SHA256SUMS"

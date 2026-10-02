@@ -38,7 +38,7 @@ try {
     $old = ((Get-Content (Join-Path $Repo 'README.md') -Encoding UTF8) | Where-Object { $_ -like 'powershell *install-wave.ps1*' } | Select-Object -First 1) -replace 'download/v[0-9.]+/', 'download/v0.2.3/'
     OneLine $old (Join-Path $g5 'from_v023.log') | Out-Null
     Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $g5 'from_v023_state.json') -ErrorAction SilentlyContinue
-    $from = (Get-Content (Join-Path $g5 'from_v023_state.json') -Raw | ConvertFrom-Json).installer_version
+    $m = [regex]::Match((Get-Content (Join-Path $g5 'from_v023.log') -Raw -Encoding UTF8), 'wave-install-(\d+\.\d+\.\d+)\.(tar\.gz|zip)'); $from = if ($m.Success) { $m.Groups[1].Value } else { 'unknown' }  # 공개 v0.2.3 상태 파일 installer_version 은 0.1.3 이라 받은 설치팩 주소로 판정
     if ($from -ne '0.2.3') { Write-Host "v0.2.3 이 아님($from) — G5 측정 불가"; return }
     $sha = (Get-FileHash (Join-Path $g5 'from_v023_state.json') -Algorithm SHA256).Hash.ToLower()
     "{`"from_version`":`"$from`",`"raw`":[{`"path`":`"from_v023_state.json`",`"sha256`":`"$sha`"}]}" | Set-Content (Join-Path $g5 'G5_meta.json') -Encoding ASCII

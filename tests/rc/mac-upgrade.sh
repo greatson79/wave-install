@@ -10,7 +10,14 @@ mkdir -p "$HOME/.local/bin"; cp "$HERE/fake-claude.sh" "$HOME/.local/bin/claude"
 grep -q 'local/bin' "$HOME/.zshenv" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshenv"
 ( cd "$HOME" && bash -c "$OLD" ) > "$EV/from_v023.log" 2>&1; echo $? > "$EV/from_v023.exit"
 cp "$HOME/.wave/install-state.json" "$EV/from_v023_state.json"
-FROM="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("installer_version"))' "$EV/from_v023_state.json")"
+# 공개 v0.2.3 의 상태 파일 installer_version 은 0.1.3 으로 안 올려진 채 배포됐다(10/3 실측) → 받은 설치팩 주소·팩 steps.json 의 version 으로 판정
+FROM="$(python3 - "$EV/from_v023.log" "$HOME/.wave/src/pack/steps.json" <<'PY'
+import json, re, sys
+m = re.search(r"wave-install-(\d+\.\d+\.\d+)\.(?:tar\.gz|zip)", open(sys.argv[1], encoding="utf-8", errors="replace").read())
+v = json.load(open(sys.argv[2], encoding="utf-8")).get("version")
+print(m.group(1) if m and m.group(1) == v else "mismatch(%s,%s)" % (m and m.group(1), v))
+PY
+)"
 echo "[rc-mac-upgrade] 기존 설치기 버전: $FROM"
 [ "$FROM" = "0.2.3" ] || { echo "v0.2.3 이 아님 — G5 측정 불가(증거 미생성)"; exit 0; }
 SUM="$(shasum -a 256 "$EV/from_v023_state.json" | awk '{print $1}')"

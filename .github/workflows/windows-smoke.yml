@@ -37,11 +37,11 @@ jobs:
       - name: Windows delimiter precheck (first executable check)
         if: runner.os == 'Windows'
         shell: cmd
-        run: python tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 scripts/windows-smoke.ps1
+        run: python tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 lib/install-help.ps1 wave-pack/bin/wave.ps1 scripts/windows-smoke.ps1
       - name: macOS delimiter precheck (first executable check)
         if: runner.os == 'macOS'
         shell: bash
-        run: python3 tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 scripts/windows-smoke.ps1
+        run: python3 tests/ps-balance.py bootstrap.ps1 reinstall.ps1 reset.ps1 lib/install-help.ps1 wave-pack/bin/wave.ps1 scripts/windows-smoke.ps1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -133,7 +133,7 @@ jobs:
       # Korean/space account names, or real login after [3/10].
       - name: PowerShell delimiter precheck (first check)
         shell: cmd
-        run: python tests/ps-balance.py bootstrap.ps1 scripts/windows-smoke.ps1
+        run: python tests/ps-balance.py bootstrap.ps1 lib/install-help.ps1 scripts/windows-smoke.ps1
       - name: Install signature verifier
         shell: pwsh
         run: |

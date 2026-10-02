@@ -1,0 +1,38 @@
+name: P0 Windows measurements only
+on:
+  workflow_dispatch:
+  push:
+    branches: [measure/p0-windows]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: greatson79/wave-terminal
+          run-id: 36884497676
+          name: cys-windows-x64-nsis
+          github-token: ${{ github.token }}
+          path: p0-input
+      - name: Parse Windows PowerShell 5.1 measurement scripts
+        shell: powershell
+        run: |
+          foreach ($f in @('scripts/ci/p0-driver.ps1', 'scripts/ci/p0-child.ps1')) {
+            $t=$null; $e=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$t, [ref]$e)
+            if ($e.Count) { throw ($e | Out-String) }
+          }
+      - name: Measure installed app as fresh standard user
+        shell: powershell
+        run: ./scripts/ci/p0-driver.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-windows-${{ github.sha }}
+          path: ci-evidence/p0/
+          if-no-files-found: error

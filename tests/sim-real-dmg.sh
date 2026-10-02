@@ -20,6 +20,6 @@ S
 chmod +x "$ST"/*
 cp "$SIM/rel/bootstrap.sh" "$H/install-wave.sh"   # 한 줄 명령이 받는 단독 파일(주입본)
 set +e
-HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 \
+HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 WAVE_NO_PROGRESS=1 \
   bash "$H/install-wave.sh" 2>&1 | tee "$SIM/run.log"
 echo "SIM_DIR=$SIM"

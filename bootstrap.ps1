@@ -41,6 +41,12 @@ $ProgressWarned = $false
 $CurrentStep = '1/10'
 $DiagnosticWritten = $false
 $AwakeningStartedAt = $null
+# 설치 도움(R5): lib/install-help.ps1 이 설치팩에 있으면 불러온다. 첫 화면 고지 전에는 진행·도움 모두 보내지 않는다.
+$HelpNoticeShown = $false
+$HelpInteractive = $false
+$LastJCode = 'J-UNK-00'
+$HelpLib = if ($ScriptDir) { Join-Path (Join-Path $ScriptDir 'lib') 'install-help.ps1' } else { '' }
+if ($HelpLib -and (Test-Path -LiteralPath $HelpLib -PathType Leaf)) { . $HelpLib }
 
 function Say([string]$Message) { Write-Log $Message }
 
@@ -61,6 +67,7 @@ function Write-JCode([string]$Code) {
   $rule = if ($matches5.Count -gt 0) { $matches5[0] } else { $null }
   if ($null -eq $rule) { $Code = 'J-UNK-00'; $rule = $HelpRules[-1] }
   $script:DiagnosticWritten = $true
+  $script:LastJCode = $Code
   # Reporting must still run when local logging fails (disk/permission errors).
   try {
     Say "진단 코드: $Code — $($rule.symptom)"
@@ -71,25 +78,37 @@ function Write-JCode([string]$Code) {
   Send-Progress $CurrentStep 'fail' $null $Code
 }
 
+function Get-WaveInstallId {
+  if (-not $script:InstallId) {
+    Assert-UserPath $WaveHome
+    $idPath = Join-Path $WaveHome 'install-id.txt'
+    $id = if (Test-Path -LiteralPath $idPath) { (Get-Content -LiteralPath $idPath -Raw).Trim() } else { '' }
+    if ($id -notmatch '^[a-f0-9]{32}$') {
+      $id = [guid]::NewGuid().ToString('N')
+      Set-Content -LiteralPath $idPath -Value $id -Encoding ASCII
+    }
+    $script:InstallId = $id
+  }
+  return $script:InstallId
+}
+
+# 설치기 버전은 steps.json version(RC 때 정해짐)에서 읽는다. 고정 문자열을 두지 않는다.
+function Get-InstallerVersion {
+  $version = [string](Get-StateField $Config 'version')
+  if ($version -cmatch '^[0-9A-Za-z._-]{1,20}$') { return $version }
+  return 'unknown'
+}
+
 function Send-Progress([string]$Step, [string]$Event, $Elapsed = $null, [string]$Detail = '') {
-  if ($DryRun -or $env:WAVE_NO_PROGRESS -eq '1') { return }
+  if ($DryRun -or $env:WAVE_NO_PROGRESS -eq '1' -or -not $script:HelpNoticeShown) { return }
   try {
-    $url = if ($env:WAVE_PROGRESS_URL) { $env:WAVE_PROGRESS_URL } else { $ProgressUrl }
+    $url = if ($env:WAVE_PROGRESS_URL) { $env:WAVE_PROGRESS_URL } elseif ($env:WAVE_HELP_BASE_URL) { $env:WAVE_HELP_BASE_URL.TrimEnd('/') + '/api/progress' } else { $ProgressUrl }
     $uri = [uri]$url
     if ($uri.Scheme -ne 'https' -or $uri.AbsolutePath -ne '/api/progress') { throw 'invalid progress endpoint' }
-    if (-not $script:InstallId) {
-      Assert-UserPath $WaveHome
-      $idPath = Join-Path $WaveHome 'install-id.txt'
-      $id = if (Test-Path -LiteralPath $idPath) { (Get-Content -LiteralPath $idPath -Raw).Trim() } else { '' }
-      if ($id -notmatch '^[a-f0-9]{32}$') {
-        $id = [guid]::NewGuid().ToString('N')
-        Set-Content -LiteralPath $idPath -Value $id -Encoding ASCII
-      }
-      $script:InstallId = $id
-    }
+    $null = Get-WaveInstallId
     $fields = [ordered]@{
       install_id = $InstallId
-      installer_version = '0.2.4'
+      installer_version = (Get-InstallerVersion)
       os = 'win'
       step = $Step
       event = $Event
@@ -99,9 +118,10 @@ function Send-Progress([string]$Step, [string]$Event, $Elapsed = $null, [string]
     # Only diagnostic codes leave the machine; never send raw exception text or accounts.
     if ($Detail -match '^J-[A-Z0-9]+-[0-9]{2}$') { $fields.detail = $Detail }
     $body = $fields | ConvertTo-Json -Compress
+    if ([Text.Encoding]::UTF8.GetByteCount($body) -gt 8KB) { throw 'progress body too large' }
     $ProgressPreference = 'SilentlyContinue'
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $null = Invoke-WebRequest -Uri $uri -Method POST -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing -TimeoutSec $ProgressTimeoutSec -ErrorAction Stop
+    $null = Invoke-WebRequest -Uri $uri -Method POST -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing -TimeoutSec $ProgressTimeoutSec -MaximumRedirection 0 -ErrorAction Stop
   } catch {
     if (-not $script:ProgressWarned) {
       $script:ProgressWarned = $true
@@ -1095,6 +1115,19 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
   }
 }
 
+# 최종 막힘 도움 요청. 고지 전·lib 없음·WAVE_NO_PROGRESS=1 이면 아무것도 하지 않는다. 결과와 무관하게 종료값은 호출자가 정한다.
+function Invoke-FinalHelp {
+  if (-not $script:HelpNoticeShown -or -not (Get-Command Send-HelpRequest -ErrorAction SilentlyContinue)) { return }
+  $tail = ''
+  try { if (Test-Path -LiteralPath $LogFile) { $tail = @(Get-Content -LiteralPath $LogFile -Tail 40 -Encoding UTF8) -join "`n" } } catch { }
+  $stateText = ''
+  try { if (Test-Path -LiteralPath $StateFile) { $stateText = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 } } catch { }
+  $envReport = @('os=win', ('installer_version=' + (Get-InstallerVersion)), ('step=' + $CurrentStep),
+    ('platform=' + [Environment]::OSVersion.VersionString), ('machine=' + $env:PROCESSOR_ARCHITECTURE),
+    ('powershell=' + $PSVersionTable.PSVersion), 'install-state.json:', $stateText) -join "`n"
+  $null = Send-HelpRequest -BaseUrl (Get-HelpBaseUrl) -InstallId (Get-WaveInstallId) -Version (Get-InstallerVersion) -Step $CurrentStep -Code $LastJCode -EnvReport $envReport -LogTail $tail -Interactive $HelpInteractive -Username ([string]$env:USERNAME)
+}
+
 function Complete-State {
   Summarize-State $true
   Save-InstallDone
@@ -1107,6 +1140,7 @@ trap {
     Write-Log $failure.Exception.Message
     if ($failure.InvocationInfo.PositionMessage) { Write-Log $failure.InvocationInfo.PositionMessage }
   } catch { Write-Host $failure.Exception.Message; Write-Host $failure.InvocationInfo.PositionMessage }
+  try { Invoke-FinalHelp } catch { }
   exit 1
 }
 
@@ -1119,6 +1153,10 @@ Assert-UserPath $WaveHome
 if (Test-RecentInstallDone) {
   Say '[10/10] 이미 끝나 있습니다 — 10분 이내 같은 릴리스 재실행입니다.'
   exit 0
+}
+if ($env:WAVE_NO_PROGRESS -ne '1' -and (Get-Command Show-HelpNotice -ErrorAction SilentlyContinue)) {
+  $HelpInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and -not ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
+  Show-HelpNotice
 }
 Init-State
 if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }

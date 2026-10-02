@@ -213,14 +213,17 @@ $script:InstallId = 'test-install-id'
 $script:ProgressUrl = 'https://example.test/api/progress'
 $script:calls = 0
 function Invoke-WebRequest {
-  param($Uri, $Method, $Body, $ContentType, $TimeoutSec, [switch]$UseBasicParsing, $ErrorAction)
+  param($Uri, $Method, $Body, $ContentType, $TimeoutSec, [switch]$UseBasicParsing, $ErrorAction, $MaximumRedirection)
   $script:calls++
   $payload = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
-  if ($payload.step -ne '4/10' -or $payload.detail -ne 'J-DL-04' -or $TimeoutSec -gt 5) { throw 'bad payload' }
+  if ($payload.step -ne '4/10' -or $payload.detail -ne 'J-DL-04' -or $TimeoutSec -gt 5 -or $MaximumRedirection -ne 0) { throw 'bad payload' }
   $script:payloadOK = $true
   throw 'network down'
 }
 function Write-Log { throw 'disk full too' }
+Send-Progress '4/10' 'fail' 3 'J-DL-04'
+if ($calls -ne 0) { throw 'progress sent before first-screen notice' }
+$script:HelpNoticeShown = $true
 $output = @(Send-Progress '4/10' 'fail' 3 'J-DL-04')
 if ($output.Count -ne 0 -or $calls -ne 1 -or -not $payloadOK) { throw 'progress contract' }
 $DryRun = $true

@@ -21,6 +21,12 @@ RESUME=0
 DRY_RUN=0
 STEP_OBSERVED='{}'
 STEP_STATUS="passed"
+# 설치 도움(R5): 첫 화면 고지 뒤에만 전송. 기본 주소는 WAVE_HELP_BASE_URL 로 교체, WAVE_NO_PROGRESS=1 이면 진행·도움 모두 끈다.
+HELP_NOTICE_SHOWN=0
+HELP_INTERACTIVE=0
+HELP_PROGRESS_WARNED=0
+HELP_STEP="1/10"
+HELP_VERSION="unknown"
 
 usage() {
   cat <<'EOF'
@@ -50,6 +56,42 @@ assert_user_path() {
     "$HOME"|"$HOME"/*) ;;
     *) fail_message "사용자 폴더 밖 경로는 허용하지 않음: $1"; return 1 ;;
   esac
+}
+
+help_enabled() {
+  [[ "${WAVE_NO_PROGRESS:-}" != 1 && "$HELP_NOTICE_SHOWN" == 1 && -f "$SCRIPT_DIR/lib/install_help_client.py" ]]
+}
+
+# 수집 항목·목적·30일 보관 고지. 이 함수가 끝나야 전송이 열린다(대화형 여부도 여기서 — tee 연결 전에 판정).
+show_help_notice() {
+  [[ "${WAVE_NO_PROGRESS:-}" == 1 ]] && return 0
+  [[ -f "$SCRIPT_DIR/lib/help-notice.txt" && -f "$SCRIPT_DIR/lib/install_help_client.py" ]] || return 0
+  if [[ -t 0 && -t 1 ]]; then HELP_INTERACTIVE=1; fi
+  cat -- "$SCRIPT_DIR/lib/help-notice.txt"
+  HELP_NOTICE_SHOWN=1
+}
+
+# 진행 신호(3초·8KB). 실패해도 한 번만 알리고 설치를 계속한다. 본문·오류 원문은 출력하지 않는다.
+help_progress() {
+  help_enabled || return 0
+  local rc=0
+  python3 "$SCRIPT_DIR/lib/install_help_client.py" progress --notice-shown --version "$HELP_VERSION" \
+    --step "$HELP_STEP" --event "$1" --detail "${2:-}" </dev/null >/dev/null 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 && "$HELP_PROGRESS_WARNED" == 0 ]]; then
+    HELP_PROGRESS_WARNED=1
+    log 'progress send failed (fail-open); 설치를 계속합니다.'
+  fi
+  return 0
+}
+
+# 최종 막힘 도움 요청. 대화형이면 처방 글을 기다려 표시만 한다. 어떤 결과든 호출자 종료값은 바꾸지 않는다.
+help_request() {
+  help_enabled || return 0
+  local -a mode=()
+  [[ "$HELP_INTERACTIVE" == 1 ]] && mode=(--interactive)
+  python3 "$SCRIPT_DIR/lib/install_help_client.py" help --notice-shown --version "$HELP_VERSION" \
+    --step "$HELP_STEP" --code J-UNK-00 --log-file "$LOG_FILE" ${mode[@]+"${mode[@]}"} 2>/dev/null || true
+  return 0
 }
 
 # steps.json·wave-pack 이 옆에 없으면(= curl 한 파일만 받은 경우) 고정 SHA256 tarball 을 받아 풀고 그 안에서 재실행한다.
@@ -722,6 +764,7 @@ run_step() {
   esac
   STEP_OBSERVED='{}'
   STEP_STATUS="passed"
+  help_progress start
   state_patch "$step_id" "running" 0 "" '{}'
   set +e
   local stderr_file
@@ -732,6 +775,7 @@ run_step() {
   cat "$stderr_file" >> "$LOG_FILE"
   set -e
   if [[ "$rc" -ne 0 ]]; then
+    help_progress fail J-UNK-00
     STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" <<'PY_REASON'
 import json, sys
 from pathlib import Path
@@ -756,6 +800,7 @@ PY_OPTIONAL
     return "$rc"
   fi
   state_patch "$step_id" "$STEP_STATUS" 0 "" "$STEP_OBSERVED"
+  help_progress end
 }
 
 main() {
@@ -779,19 +824,24 @@ main() {
     log "dry-run: $STEPS_FILE / $STATE_FILE / $LOG_FILE"
     return 0
   fi
+  HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
+  show_help_notice
   init_state
-  local id status
+  local id status step_no=0
   while IFS= read -r id; do
+    step_no=$((step_no + 1))
+    HELP_STEP="${step_no}/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
     if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
       log "[$id] resume: 이미 $status — 건너뜀"
+      help_progress end
       continue
     fi
     if [[ "$id" == "S09_COMPLETE" ]]; then
       mark_required_complete || return 1
     fi
     log "[$id] 시작"
-    run_step "$id" || return 1
+    run_step "$id" || { help_request; return 1; }
   done < <(python3 - "$STEPS_FILE" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:

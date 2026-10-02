@@ -29,6 +29,8 @@ try {
   New-Item -ItemType Directory -Force $env:TEMP | Out-Null
   # Exclude runner credentials/configuration and tool paths from the fresh user's environment.
   Get-ChildItem Env: | Where-Object { $_.Name -match '^(WAVE_|CLAUDE_|ANTHROPIC_|CYS_)' } | ForEach-Object { Remove-Item "Env:$($_.Name)" }
+  # CI must never file install-help reports to the real server (progress/help off).
+  $env:WAVE_NO_PROGRESS = '1'
   $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
   if (Test-Path (Join-Path $profile '.wave')) { throw 'Profile was not empty' }
   @{ user = $identity.Name; sid = $identity.User.Value; administrator = $admin; profile = $profile; powershell = $PSVersionTable.PSVersion.ToString(); fresh_wave_home = $true; hkcu_sid_verified = $true; evidence_acl = (Get-Acl $Evidence).Sddl } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'identity.json') -Encoding UTF8

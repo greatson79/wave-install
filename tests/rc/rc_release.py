@@ -26,19 +26,15 @@ for f in files:
 steps_p = stage / "steps.json"; steps = json.loads(steps_p.read_text(encoding="utf-8")); rel = steps["release"]
 ver = steps["version"]
 if a.os == "mac":
-    name = asset.name
+    name = "wave-terminal-rc-macos-arm64.dmg"  # 앱 산출 DMG 이름에는 공백이 있어 URL 이 깨진다 — 바이트는 그대로, 서빙 이름만 안전하게
     for k in ("macos_arm64", "macos_x64"):
         rel["asset_name"][k] = name; rel["asset_url"][k] = a.base + name; rel["sha256"][k] = sha
         rel["cdhash"][k] = a.cdhash
 else:
-    name = "wave-terminal-%s-windows-x64-setup.exe" % rel["version"]  # ps1 은 이 이름만 인정
+    name = "wave-terminal-rc-windows-x64-setup.exe"  # 설치기는 steps.json release 의 pin 을 정본으로 읽는다(코드 치환 불필요)
     rel["asset_name"]["windows_x64"] = name; rel["asset_url"]["windows_x64"] = a.base + name; rel["sha256"]["windows_x64"] = sha
+    rel["bytes"]["windows_x64"] = asset.stat().st_size
     rel["windows_sha256sums_url"] = a.base + "SHA256SUMS"
-    ps = stage / "bootstrap.ps1"; t = ps.read_text(encoding="utf-8-sig")
-    for pat, new in ((r"(\$WaveWinBytes = )\d+", r"\g<1>%d" % asset.stat().st_size), (r"(\$WaveWinSha256 = ')[a-f0-9]{64}(')", r"\g<1>%s\g<2>" % sha)):
-        t, n = re.subn(pat, new, t, count=1)
-        if n != 1: sys.exit("ps1 핀 줄을 찾지 못함: " + pat)
-    ps.write_bytes(b"\xef\xbb\xbf" + t.encode("utf-8"))
 steps_p.write_text(json.dumps(steps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 subprocess.run(["bash", str(stage / "scripts/make-release.sh"), ver, a.base, str(out)], check=True, stdout=subprocess.DEVNULL)

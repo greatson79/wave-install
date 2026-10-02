@@ -3,7 +3,7 @@
   rc_release.py --os mac|win --asset FILE --base https://127.0.0.1:8443/ --out DIR [--cdhash HEX] [--repo ROOT]
 산출(--out): 한 줄 설치가 받는 bootstrap.sh/.ps1 · 설치팩 tar.gz/zip · 앱 자산 · SHA256SUMS, 그리고 rc-release.json(한 줄 명령·지문).
 설치기는 minisign 을 쓰지 않는다(SHA256 + codesign/CDHash · Authenticode) — 시험 서명키는 필요 없고, 비밀값은 만들지도 기록하지도 않는다."""
-import argparse, hashlib, json, pathlib, re, shutil, subprocess, sys, tempfile
+import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, tempfile
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--os", choices=["mac", "win"], required=True)
@@ -39,7 +39,8 @@ else:
     rel["windows_sha256sums_url"] = a.base + "SHA256SUMS"
 steps_p.write_text(json.dumps(steps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-mr = subprocess.run(["bash", (stage / "scripts/make-release.sh").as_posix(), ver, a.base, out.as_posix()], capture_output=True, text=True)  # 윈도우 git-bash 는 역슬래시 경로에서 dirname 이 깨진다 → 슬래시 경로
+BASH = r"C:\Program Files\Git\bin\bash.exe" if os.name == "nt" else "bash"  # 윈도우 CreateProcess 는 PATH 보다 System32 를 먼저 봐 WSL 의 bash.exe(배포판 없음)를 집는다 — Git bash 를 명시
+mr = subprocess.run([BASH, (stage / "scripts/make-release.sh").as_posix(), ver, a.base, out.as_posix()], capture_output=True, text=True)  # 윈도우 git-bash 는 역슬래시 경로에서 dirname 이 깨진다 → 슬래시 경로
 if mr.returncode:
     sys.stderr.write("make-release.sh exit %d\n--- stdout\n%s\n--- stderr\n%s\n" % (mr.returncode, mr.stdout[-3000:], mr.stderr[-3000:])); sys.exit(1)
 shutil.copy2(asset, out / name)

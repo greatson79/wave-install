@@ -3,7 +3,7 @@
 #  --version / auth * / update : 즉시 성공
 #  그 외(좌석 기동): 이 좌석 역할(CYS_ROLE)로 settings.json 에 등록된 SessionStart 훅을 그대로 실행해 stdout 을 ~/.wave/rc/hook_<역할>.out 에 남기고,
 #                    master 이면 결정론 부트(javis_bootstrap.py)를 실행한 뒤, 프로세스 이름 claude 로 대기한다(agent_alive 관측용).
-RC="$HOME/.wave/rc"; mkdir -p "$RC"
+RC="$HOME/.wave/rc"; VF="$HOME/.wave/verify"; mkdir -p "$RC" "$VF"  # 훅 stdout 은 설치기 소비 경로(verify/hook_<역할>.out)에도 둔다
 case "${1:-}" in
   --version) echo "2.1.300 (Claude Code)"; exit 0 ;;
   auth|update) exit 0 ;;
@@ -25,6 +25,7 @@ printf '%s\n' "$cmd" > "$RC/hook_command_${role}.txt"
 if [ -n "$cmd" ] && [ "$role" != none ]; then
   printf '{"source":"startup","cwd":"%s"}\n' "$PWD" | sh -c "$cmd" > "$RC/hook_${role}.out" 2> "$RC/hook_${role}.err"
   echo $? > "$RC/hook_${role}.rc"
+  cp "$RC/hook_${role}.out" "$VF/hook_${role}.out"
 fi
 if [ "$role" = master ]; then
   python3 "${CYS_PACK_DIR:-$HOME/.cys/pack}/bin/javis_bootstrap.py" > "$RC/bootstrap.out" 2> "$RC/bootstrap.err"

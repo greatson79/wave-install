@@ -10,7 +10,7 @@ import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys
 ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["g1", "g2", "g3", "g4", "claude-hash"]); ap.add_argument("--out", required=True)
 ap.add_argument("--wave-home", default=os.path.expanduser("~/.wave")); ap.add_argument("--python", default=sys.executable)
 ap.add_argument("--preflight"); ap.add_argument("--pack", default=os.path.expanduser("~/.cys/pack")); ap.add_argument("--manifest")
-ap.add_argument("--hook-dir", default=os.path.expanduser("~/.wave/rc")); ap.add_argument("--cys", default="cys"); ap.add_argument("--phase", choices=["before", "after"])
+ap.add_argument("--hook-dir", default=os.path.expanduser("~/.wave/verify")); ap.add_argument("--cys", default="cys"); ap.add_argument("--phase", choices=["before", "after"])
 a = ap.parse_args(); out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
 
@@ -43,7 +43,8 @@ elif a.cmd == "g3":
         seg = body if body and body in out_b else out_b
         roles[role] = {"injected_sha256": sha(seg), "pack_sha256": want, "injected_bytes": len(seg),
                        "pack_bytes": len(body) if body and sha(body) == want else None, "hook_stdout_bytes": len(out_b)}
-    new = [str(p) for r in (pack, pathlib.Path(a.wave_home)) if r.exists() for p in r.rglob("*.new")]
+    new = [str(p) for r in (pack,) if r.exists()  # 활성 pack 만 — ~/.wave/backups 의 백업 .new 는 제외(W12 합의)
+            for p in r.rglob("*.new")]
     (out / "G3_inject.json").write_text(json.dumps({"roles": roles, "new_file_count": len(new), "new_files": new, "raw": raws}, ensure_ascii=False), encoding="utf-8")
 elif a.cmd == "g4":
     bl = pathlib.Path(os.path.expanduser("~/.cys/state/boot-last.json")); data = json.loads(bl.read_text(encoding="utf-8"))

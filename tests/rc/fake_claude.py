@@ -6,7 +6,7 @@ import glob, json, os, subprocess, sys, time
 a = sys.argv[1:]
 if a[:1] == ["--version"]: print("2.1.300 (Claude Code)"); sys.exit(0)
 if a[:1] in (["auth"], ["update"]): sys.exit(0)
-home = os.path.expanduser("~"); rc = os.path.join(home, ".wave", "rc"); os.makedirs(rc, exist_ok=True)
+home = os.path.expanduser("~"); rc = os.path.join(home, ".wave", "rc"); vf = os.path.join(home, ".wave", "verify"); os.makedirs(rc, exist_ok=True); os.makedirs(vf, exist_ok=True)
 role = os.environ.get("CYS_ROLE", "none")
 cmd = ""
 cands = [os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "settings.json")]
@@ -20,7 +20,7 @@ for p in cands:
 open(os.path.join(rc, "hook_command_%s.txt" % role), "w", encoding="utf-8").write(cmd + "\n")
 if cmd and role != "none":
     r = subprocess.run(cmd, shell=True, input=('{"source":"startup","cwd":%s}\n' % json.dumps(os.getcwd())).encode(), capture_output=True)
-    open(os.path.join(rc, "hook_%s.out" % role), "wb").write(r.stdout)
+    open(os.path.join(rc, "hook_%s.out" % role), "wb").write(r.stdout); open(os.path.join(vf, "hook_%s.out" % role), "wb").write(r.stdout)
     open(os.path.join(rc, "hook_%s.err" % role), "wb").write(r.stderr)
     open(os.path.join(rc, "hook_%s.rc" % role), "w").write(str(r.returncode))
 if role == "master":

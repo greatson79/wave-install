@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import unittest
 import subprocess
+import shutil
 import sys
 import tempfile
 from unittest.mock import patch
@@ -119,6 +120,17 @@ class IdentityEvidenceTests(unittest.TestCase):
                         self.assertTrue(all(row['bytes'] == 0 and len(row['sha256']) == 64 for row in saved['hook-trace-files.json']['files']))
 
     def test_bash_probes_preserve_quoted_path_arguments_and_failure_code(self):
+        bash = shutil.which('bash')
+        if os.name == 'nt':
+            # PATH bash may be the Windows/WSL launcher; this test requires Git MSYS.
+            git = shutil.which('git')
+            self.assertIsNotNone(git, 'Git for Windows is required for this regression')
+            candidates = [parent / 'usr/bin/bash.exe' for parent in Path(git).resolve().parents]
+            bash = next((str(path) for path in candidates
+                         if path.is_file() and path.with_name('cygpath.exe').is_file()), None)
+        self.assertIsNotNone(bash, 'Git MSYS bash with sibling cygpath was not found')
+        print('Bash regression executable: ' + bash, flush=True)
+        bash_env = dict(os.environ, PATH=str(Path(bash).parent) + os.pathsep + os.environ.get('PATH', ''))
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "space and 'quote"
             root.mkdir()
@@ -131,14 +143,14 @@ class IdentityEvidenceTests(unittest.TestCase):
             def bash_path(path):
                 if os.name != 'nt':
                     return str(path)
-                converted = subprocess.run(['bash', '-c', 'cygpath -u "$1"', '_', str(path)],
-                                           capture_output=True, text=True)
-                self.assertEqual(converted.returncode, 0, converted.stderr)
+                converted = subprocess.run([bash, '-c', 'cygpath -u "$1"', '_', str(path)],
+                                           capture_output=True, text=True, env=bash_env)
+                self.assertEqual(converted.returncode, 0, f'bash={bash} stdout={converted.stdout!r} stderr={converted.stderr!r}')
                 self.assertTrue(converted.stdout.strip(), 'cygpath returned an empty path')
                 return converted.stdout.strip()
             cys_path, timeout_path = bash_path(cys), bash_path(timeout)
             for label, script in m.claim_probe_scripts(cys_path, timeout_path).items():
-                result = subprocess.run(['bash','-c',script],capture_output=True,text=True)
+                result = subprocess.run([bash,'-c',script],capture_output=True,text=True,env=bash_env)
                 self.assertEqual(result.returncode,7,(label,result.stderr))
                 self.assertIn('claim-role:master',result.stdout)
                 self.assertIn('denied',result.stderr if label.endswith('direct') else result.stdout)

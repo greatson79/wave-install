@@ -42,7 +42,11 @@ elif a.cmd == "g3":
         # injected = 훅 stdout 에서 설치된 지침 본문이 그대로 들어 있는 구간(없으면 stdout 전체 → 해시 불일치)
         seg = body if body and body in out_b else out_b
         roles[role] = {"injected_sha256": sha(seg), "pack_sha256": want, "injected_bytes": len(seg),
-                       "pack_bytes": len(body) if body and sha(body) == want else None, "hook_stdout_bytes": len(out_b)}
+                       "pack_bytes": len(body) if body and sha(body) == want else None, "hook_stdout_bytes": len(out_b),
+                       # 원값 진단(정규화 금지): 설치본 sha 가 manifest 와 다를 때 줄바꿈 변환(LF→CRLF) 여부를 그대로 보인다
+                       "installed_sha256": sha(body) if body else None, "installed_bytes": len(body), "installed_crlf": body.count(b"\r\n"),
+                       "stdout_contains_installed": bool(body) and body in out_b,
+                       "stdout_contains_crlf_variant": bool(body) and body.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n") in out_b}
     new = [str(p) for r in (pack,) if r.exists()  # 활성 pack 만 — ~/.wave/backups 의 백업 .new 는 제외(W12 합의)
             for p in r.rglob("*.new")]
     (out / "G3_inject.json").write_text(json.dumps({"roles": roles, "new_file_count": len(new), "new_files": new, "raw": raws}, ensure_ascii=False), encoding="utf-8")

@@ -9,11 +9,11 @@ $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $admin = (New-Object S
 @{ user = $id.Name; administrator = $admin; profile = $h; ps = $PSVersionTable.PSVersion.ToString() } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'identity.json') -Encoding UTF8
 if ($admin) { throw 'administrator token is prohibited' }
 $one = (Get-Content $RcJson -Raw -Encoding UTF8 | ConvertFrom-Json).one_line
-function OneLine([string]$line, [string]$log) {
+function OneLine([string]$line, [string]$log, [int]$sec = 1500) {
   # 로그인 대기로 멈추지 않게: stdin 은 빈 파일, 25분 상한, 시간 초과 시 프로세스 트리 종료(exit 124)
   $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line)); $empty = Join-Path $env:TEMP 'rc-empty.txt'; '' | Set-Content $empty
   $p = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -RedirectStandardInput $empty -PassThru -WindowStyle Hidden
-  if (-not $p.WaitForExit(1500000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; return 124 }
+  if (-not $p.WaitForExit($sec * 1000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Get-Process claude -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; return 124 }
   return $p.ExitCode
 }
 function Reset-Fleet {
@@ -53,7 +53,7 @@ try {
     return
   }
   New-Item -ItemType Directory -Force (Join-Path $e 'phaseA'), (Join-Path $e 'G6') | Out-Null
-  OneLine $one (Join-Path $e 'phaseA\run.log') | Out-Null
+  $env:BROWSER = 'false'; OneLine $one (Join-Path $e 'phaseA\run.log') 300 | Out-Null; Remove-Item Env:BROWSER
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'phaseA\state.json') -ErrorAction SilentlyContinue
   Install-Fake
   OneLine $one (Join-Path $e 'run.log') | Out-Null

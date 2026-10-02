@@ -7,10 +7,18 @@ ONE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["one_line"
 export CURL_CA_BUNDLE="$CA" WAVE_NO_PROGRESS=1
 log() { echo "[rc-mac] $*"; }
 # 고정 한 줄 그대로 실행 — 서브셸에서 bash -c (주소만 시험 서버로 치환된 README 줄)
-oneline() { python3 "$HERE/run_to.py" 1500 "$1" -- bash -c "cd \"\$HOME\" && $ONE"; }
+oneline() { python3 "$HERE/run_to.py" "${2:-1500}" "$1" -- bash -c "cd \"\$HOME\" && $ONE"; }
+# 단계 A 전용: 브라우저를 못 열게(open 무력화 shim · BROWSER=false) 하고 300초 상한 — S02 가 로그인 대기에 들어가면 그 프로세스 그룹만 종료
+phase_a() {
+  local shim="$RUNNER_TEMP/nobrowser"; mkdir -p "$shim"; printf '#!/bin/sh\nexit 0\n' > "$shim/open"; chmod +x "$shim/open"
+  PATH="$shim:$PATH" BROWSER=false oneline "$EV/phaseA/run.log" 300
+  local rc=$?
+  pkill -f 'claude auth login' 2>/dev/null; pkill -x claude 2>/dev/null; true  # 진짜 claude 잔여 프로세스가 합성 좌석 관측(agent_alive)을 오염시키지 않게
+  return $rc
+}
 
 log "A: 로그인 없는 깨끗한 상태 — 실제 S00·S01 후 S02 에서 멈추는 것이 정상"
-oneline "$EV/phaseA/run.log"; echo $? > "$EV/phaseA/exit"
+phase_a; echo $? > "$EV/phaseA/exit"
 cp "$HOME/.wave/install-state.json" "$EV/phaseA/state.json" 2>/dev/null
 
 log "합성 claude 투입(S02 이하 결정론 단계용)"
@@ -40,4 +48,6 @@ bash "$HERE/reset-fleet.sh"
 python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
 collect "$EV/G6"
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase after
-exit 0
+# 증거 없이 성공 처리 금지: 필수 증거가 하나라도 없으면 잡을 실패시킨다(판정은 gate.py 몫 — 여기선 존재만)
+miss=0; for f in G1_state.json G2_preflight.json G3_inject.json G4_boot.json G6/G6_claude_untouched.json G6/G2_preflight.json G6/G3_inject.json G6/G4_boot.json; do [ -s "$EV/$f" ] || { log "증거 없음: $f"; miss=1; }; done
+exit $miss

@@ -19,7 +19,7 @@ print(m.group(1) if m and m.group(1) == v else "mismatch(%s,%s)" % (m and m.grou
 PY
 )"
 echo "[rc-mac-upgrade] 기존 설치기 버전: $FROM"
-[ "$FROM" = "0.2.3" ] || { echo "v0.2.3 이 아님 — G5 측정 불가(증거 미생성)"; exit 0; }
+[ "$FROM" = "0.2.3" ] || { echo "v0.2.3 이 아님($FROM) — G5 측정 불가"; exit 1; }
 SUM="$(shasum -a 256 "$EV/from_v023_state.json" | awk '{print $1}')"
 printf '{"from_version":"%s","raw":[{"path":"from_v023_state.json","sha256":"%s"}]}\n' "$FROM" "$SUM" > "$EV/G5_meta.json"
 bash "$HERE/reset-fleet.sh"
@@ -29,4 +29,5 @@ python3 "$HERE/collect.py" g2 --out "$EV" --preflight "$HOME/.cys/pack/bin/javis
 cys pack-manifest > "$EV/pack-manifest.src.json" 2>/dev/null
 python3 "$HERE/collect.py" g3 --out "$EV" --manifest "$EV/pack-manifest.src.json"
 python3 "$HERE/collect.py" g4 --out "$EV"
-exit 0
+miss=0; for f in G5_meta.json G2_preflight.json G3_inject.json G4_boot.json; do [ -s "$EV/$f" ] || { echo "증거 없음: $f"; miss=1; }; done
+exit $miss

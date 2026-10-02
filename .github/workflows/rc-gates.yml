@@ -173,6 +173,12 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode main -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Fail the job when required evidence is missing
+        if: always()
+        shell: powershell
+        run: |
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -208,6 +214,12 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode upgrade -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Fail the job when required evidence is missing
+        if: always()
+        shell: powershell
+        run: |
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G5\G5_meta.json','G5\G2_preflight.json','G5\G3_inject.json','G5\G4_boot.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

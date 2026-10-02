@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       win_run_id:
-        description: wave-terminal Windows 빌드 run id (artifact cys-windows-x64-nsis) — Windows 잡은 다음 판
+        description: wave-terminal Windows 빌드 run id (artifact cys-windows-x64-nsis)
         required: false
         type: string
       app_repo:
@@ -38,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       mac_run_id: ${{ steps.r.outputs.mac_run_id }}
+      win_run_id: ${{ steps.r.outputs.win_run_id }}
       app_repo: ${{ steps.r.outputs.app_repo }}
       gate_ref: ${{ steps.r.outputs.gate_ref }}
       text_ref: ${{ steps.r.outputs.text_ref }}
@@ -46,6 +47,7 @@ jobs:
       - id: r
         env:
           IN_MAC: ${{ inputs.mac_run_id }}
+          IN_WIN: ${{ inputs.win_run_id }}
           IN_APP: ${{ inputs.app_repo }}
           IN_GATE: ${{ inputs.gate_ref }}
           IN_TEXT: ${{ inputs.text_ref }}
@@ -53,7 +55,7 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os
           d = json.load(open("tests/rc/rc-inputs.json"))
-          for k, e in (("mac_run_id", "IN_MAC"), ("app_repo", "IN_APP"), ("gate_ref", "IN_GATE"), ("text_ref", "IN_TEXT")):
+          for k, e in (("mac_run_id", "IN_MAC"), ("win_run_id", "IN_WIN"), ("app_repo", "IN_APP"), ("gate_ref", "IN_GATE"), ("text_ref", "IN_TEXT")):
               v = os.environ.get(e) or d[k]
               assert v and "\n" not in str(v), k
               print("%s=%s" % (k, v))
@@ -134,9 +136,71 @@ jobs:
           name: rc-evidence-mac-g5-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
+  win-gates:
+    name: Windows G1-CI G2 G3 G4-CI G6 (standard user)
+    needs: cfg
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.win_run_id }}
+          github-token: ${{ github.token }}
+          name: cys-windows-x64-nsis
+          path: app
+      - name: Assemble test release (app pins swapped on a copy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
+          python tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode main -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-gates-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  win-upgrade:
+    name: Windows G5 (public v0.2.3 then test release)
+    needs: cfg
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.win_run_id }}
+          github-token: ${{ github.token }}
+          name: cys-windows-x64-nsis
+          path: app
+      - name: Assemble test release (app pins swapped on a copy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
+          python tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode upgrade -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-upgrade-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
   judge:
     name: gate.py table
-    needs: [cfg, mac-gates, mac-upgrade]
+    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-upgrade]
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -47,7 +47,8 @@ try {
     $old = ((Get-Content (Join-Path $Repo 'README.md') -Encoding UTF8) | Where-Object { $_ -like 'powershell *install-wave.ps1*' } | Select-Object -First 1) -replace 'download/v[0-9.]+/', 'download/v0.2.3/'
     OneLine $old (Join-Path $g5 'from_v023.log') | Out-Null
     Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $g5 'from_v023_state.json') -ErrorAction SilentlyContinue
-    $m = [regex]::Match((Get-Content (Join-Path $g5 'from_v023.log') -Raw -Encoding UTF8), 'wave-install-(\d+\.\d+\.\d+)\.(tar\.gz|zip)'); $from = if ($m.Success) { $m.Groups[1].Value } else { 'unknown' }  # 공개 v0.2.3 상태 파일 installer_version 은 0.1.3 이라 받은 설치팩 주소로 판정
+    # 윈 설치 로그에는 설치팩 주소가 안 찍힌다(13차) → 한 줄이 받아 실행한 ~\install-wave.ps1(릴리스가 주입한 zip 주소 보유)에서 판독
+    $m = [regex]::Match((Get-Content (Join-Path $h 'install-wave.ps1') -Raw -Encoding UTF8), 'wave-install-(\d+\.\d+\.\d+)\.zip'); $from = if ($m.Success) { $m.Groups[1].Value } else { 'unknown' }
     if ($from -ne '0.2.3') { Write-Host "v0.2.3 이 아님($from) — G5 측정 불가"; return }
     $sha = (Get-FileHash (Join-Path $g5 'from_v023_state.json') -Algorithm SHA256).Hash.ToLower()
     "{`"from_version`":`"$from`",`"raw`":[{`"path`":`"from_v023_state.json`",`"sha256`":`"$sha`"}]}" | Set-Content (Join-Path $g5 'G5_meta.json') -Encoding ASCII

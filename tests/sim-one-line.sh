@@ -36,7 +36,7 @@ chmod +x "$ST"/*
 # 실행: 한 줄 명령이 받는 파일 하나만 홈에 둔다
 cp "$ROOT/bootstrap.sh" "$H/install-wave.sh"
 set +e
-HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 \
+HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 WAVE_NO_PROGRESS=1 \
   WAVE_INSTALL_TARBALL_URL="file://$SIM/wave-install-0.2.4.tar.gz" WAVE_INSTALL_TARBALL_SHA256="$TSHA" \
   bash "$H/install-wave.sh" 2>&1 | tee "$SIM/run.log"
 echo "SIM_DIR=$SIM"

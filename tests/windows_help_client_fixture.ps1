@@ -1,5 +1,6 @@
 param([Parameter(Mandatory = $true)][string]$ScenarioFile)
 # R5 PowerShell help-client fixture: scripted fake transport, recorded sleeps/clock/output. No network.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
 . (Join-Path $PSScriptRoot '../lib/install-help.ps1')

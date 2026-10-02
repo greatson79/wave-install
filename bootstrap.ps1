@@ -36,6 +36,9 @@ $InstallDoneFile = Join-Path $WaveHome 'install-done.txt'
 $RerunDoneWindowSec = 600
 $ProgressUrl = 'https://waveainetworks.com/api/progress'
 $ProgressTimeoutSec = 3
+# 진행 신호 시간 상한(맥과 같다): 호출 1회 벽시계 3초(DNS 포함) · 설치 1회 누적 15초(실패는 3초로 계산, 다 쓰면 이번 설치에서는 끈다).
+$ProgressBudgetMs = 15000
+$ProgressSpentMs = 0
 $InstallId = ''
 $ProgressWarned = $false
 $CurrentStep = '1/10'
@@ -99,8 +102,30 @@ function Get-InstallerVersion {
   return 'unknown'
 }
 
+# 진행 POST 1회. Invoke-WebRequest -TimeoutSec 은 DNS 해석 시간을 덮지 못하므로 Task.Wait 로 전체 벽시계를 강제한다.
+# 리다이렉트 금지 · 2xx 외 실패. 시간이 넘으면 요청을 취소하고 실패로 돌려준다(설치 상태와 무관).
+function Invoke-ProgressPost([uri]$Uri, [byte[]]$Body, [int]$TimeoutMs) {
+  Add-Type -AssemblyName System.Net.Http -ErrorAction SilentlyContinue
+  $handler = New-Object System.Net.Http.HttpClientHandler
+  $handler.AllowAutoRedirect = $false
+  $client = New-Object System.Net.Http.HttpClient -ArgumentList $handler
+  $cancel = New-Object System.Threading.CancellationTokenSource
+  try {
+    $content = New-Object System.Net.Http.ByteArrayContent -ArgumentList (,$Body)
+    $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/json; charset=utf-8')
+    $task = $client.PostAsync($Uri, $content, $cancel.Token)
+    if (-not $task.Wait($TimeoutMs)) { $cancel.Cancel(); throw 'progress deadline exceeded' }
+    $status = [int]$task.Result.StatusCode
+    $task.Result.Dispose()
+    if ($status -lt 200 -or $status -ge 300) { throw "progress status $status" }
+  } finally { $client.Dispose(); $cancel.Dispose() }
+}
+
 function Send-Progress([string]$Step, [string]$Event, $Elapsed = $null, [string]$Detail = '') {
   if ($DryRun -or $env:WAVE_NO_PROGRESS -eq '1' -or -not $script:HelpNoticeShown) { return }
+  if ($script:ProgressSpentMs -ge $ProgressBudgetMs) { return }
+  $clock = [Diagnostics.Stopwatch]::StartNew()
+  $failed = $false
   try {
     $url = if ($env:WAVE_PROGRESS_URL) { $env:WAVE_PROGRESS_URL } elseif ($env:WAVE_HELP_BASE_URL) { $env:WAVE_HELP_BASE_URL.TrimEnd('/') + '/api/progress' } else { $ProgressUrl }
     $uri = [uri]$url
@@ -121,12 +146,19 @@ function Send-Progress([string]$Step, [string]$Event, $Elapsed = $null, [string]
     if ([Text.Encoding]::UTF8.GetByteCount($body) -gt 8KB) { throw 'progress body too large' }
     $ProgressPreference = 'SilentlyContinue'
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    $null = Invoke-WebRequest -Uri $uri -Method POST -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing -TimeoutSec $ProgressTimeoutSec -MaximumRedirection 0 -ErrorAction Stop
+    Invoke-ProgressPost $uri ([Text.Encoding]::UTF8.GetBytes($body)) ($ProgressTimeoutSec * 1000)
   } catch {
+    $failed = $true
     if (-not $script:ProgressWarned) {
       $script:ProgressWarned = $true
       try { Write-Log 'progress send failed (fail-open); 설치를 계속합니다.' } catch { }
     }
+  }
+  $used = $clock.ElapsedMilliseconds
+  if ($failed -and $used -lt $ProgressTimeoutSec * 1000) { $used = $ProgressTimeoutSec * 1000 }
+  $script:ProgressSpentMs += $used
+  if ($script:ProgressSpentMs -ge $ProgressBudgetMs) {
+    try { Write-Log "진행 신호 시간 예산($($ProgressBudgetMs / 1000)초)을 다 써서 이번 설치에서는 진행 신호를 보내지 않습니다. 설치는 계속합니다." } catch { }
   }
 }
 
@@ -819,7 +851,10 @@ function Run-S06 {
     $target = Join-Path $PackHome $file.Name
     if (-not (Test-Path -LiteralPath $target -PathType Leaf) -or (Get-ArtifactHash $target) -ne $file.Value.ToLowerInvariant()) { $mismatches += $file.Name }
   }
-  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -ErrorAction Stop)
+  # preflight-product-profile.json 은 앱이 한 번만 심는 사용자 소유 파일이다(없을 때만 쓰고 덮지 않음). 사용자가
+  # 고치거나 되돌린 상태는 정상이므로 그 병치본(.new)은 설치를 막지 않고 두 파일 모두 손대지 않는다. 그 밖의 .new 는 병합 대기다.
+  $seedOnceNew = Join-Path $PackHome 'preflight-product-profile.json.new'
+  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -ErrorAction Stop | Where-Object { $_.FullName -ne $seedOnceNew })
   $script:StepObserved = [ordered]@{ pack_installed = $true; legacy_backed_up = $moved; directive_count = $directives.Count; directive_mismatches = $mismatches; new_files = $pending.Count; directive_bytes_match = ($mismatches.Count -eq 0) }
   if ($mismatches.Count -or $pending.Count) { throw "원본 지침 대조 실패: mismatch=$($mismatches.Count), .new=$($pending.Count); 사용자 파일은 보존했습니다" }
   } finally { $env:CYS_PACK_DIR = $priorPackDir }
@@ -977,7 +1012,9 @@ function Test-OriginalInjection {
     if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -le 0 -or (Get-ArtifactHash $target) -cne $entry.Value) { throw "G3 installed original mismatch: $rel" }
     $verified[$rel] = [ordered]@{ pack_sha256 = $entry.Value; pack_bytes = $file.Length }
   }
-  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -Force -ErrorAction Stop)
+  # S06 과 같은 예외: 사용자 소유 제품 프로필의 병치본만 제외한다.
+  $seedOnceNew = Join-Path $PackHome 'preflight-product-profile.json.new'
+  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -Force -ErrorAction Stop | Where-Object { $_.FullName -ne $seedOnceNew })
   if ($pending.Count -ne 0) { throw "G3 병합 대기 .new 파일 $($pending.Count)건" }
   return [ordered]@{ original_match = $true; new_file_count = 0; roles = $verified; injected_bytes = $null; injection_reason = 'RC 러너 G3_inject.json 판정'; source = 'app-manifest+installed-pack' }
 }

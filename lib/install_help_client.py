@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -25,12 +26,16 @@ from install_help import safe_text  # noqa: E402
 
 DEFAULT_BASE_URL = 'https://waveainetworks.com'
 PROGRESS_TIMEOUT = 3
+# Socket timeouts do not cover DNS (getaddrinfo); this is the whole-call wall clock for one progress POST.
+PROGRESS_DEADLINE = 3.0
 HELP_TIMEOUT = 20
 PROGRESS_MAX_BYTES = 8 * 1024
 HELP_MAX_BYTES = 4 * 1024 * 1024
 ENV_MAX_BYTES = 96 * 1024
 LOG_MAX_BYTES = 128 * 1024
 LOG_MAX_LINES = 40
+# Local files are read whole up to this size, redacted as a whole, and only then cut to the payload limits.
+SOURCE_MAX_BYTES = 4 * 1024 * 1024
 RESPONSE_MAX_BYTES = 256 * 1024
 BUSY_RETRY_SECONDS = 60
 POLL_SECONDS = 20
@@ -86,6 +91,14 @@ class HelpClient:
         except Exception:  # fail-open; never surface raw errors (may contain hosts/paths)
             return None, None
 
+    def _call_within(self, deadline, *args):
+        """Run one call on a daemon thread and stop waiting after `deadline` seconds (fail-open)."""
+        box = {}
+        worker = threading.Thread(target=lambda: box.setdefault('r', self._call(*args)), daemon=True)
+        worker.start()
+        worker.join(deadline)
+        return box.get('r', (None, None))
+
     def _safe(self, text):
         return safe_text(str(text or ''), self.username)
 
@@ -101,7 +114,7 @@ class HelpClient:
             payload['detail'] = detail
         if len(json.dumps(payload).encode('utf-8')) > PROGRESS_MAX_BYTES:
             return False
-        status, _ = self._call('POST', '/api/progress', payload, None, PROGRESS_TIMEOUT)
+        status, _ = self._call_within(PROGRESS_DEADLINE, 'POST', '/api/progress', payload, None, PROGRESS_TIMEOUT)
         ok = isinstance(status, int) and 200 <= status < 300
         if not ok and not self.progress_warned:
             self.progress_warned = True
@@ -109,7 +122,9 @@ class HelpClient:
         return ok
 
     def build_help_payload(self, step, code, env_report, log_tail):
-        lines = re.split(r'\r?\n', str(log_tail or ''))
+        # Order is fixed: redact the whole text first, then cut lines/bytes. Cutting first can leave a half
+        # path or token that no redaction rule recognises any more.
+        lines = self._safe(log_tail).split('\n')
         if lines and lines[-1] == '':
             lines.pop()
         lines = lines[-LOG_MAX_LINES:]
@@ -119,7 +134,7 @@ class HelpClient:
             'code': code if DETAIL_RE.match(str(code)) else 'J-UNK-00',
             'notice_shown': True,
             'env_report': head_bytes(self._safe(env_report), ENV_MAX_BYTES),
-            'log_tail': tail_bytes(self._safe('\n'.join(lines)), LOG_MAX_BYTES),
+            'log_tail': tail_bytes('\n'.join(lines), LOG_MAX_BYTES),
         }
         return payload
 
@@ -222,21 +237,31 @@ def _install_id(wave_home):
     return value
 
 
-def _read_tail(path, limit=LOG_MAX_BYTES * 2):
+def _read_tail(path):
+    """Read a local file for the report, unredacted; the caller redacts the whole text before any cut.
+
+    Files over SOURCE_MAX_BYTES keep their last SOURCE_MAX_BYTES, and the first (possibly cut) line is
+    dropped so a half path/token that redaction can no longer recognise never reaches the payload.
+    """
     try:
         with open(path, 'rb') as handle:
             handle.seek(0, os.SEEK_END)
-            handle.seek(max(0, handle.tell() - limit))
-            return handle.read().decode('utf-8', 'replace')
+            start = max(0, handle.tell() - SOURCE_MAX_BYTES)
+            handle.seek(start)
+            data = handle.read()
     except OSError:
         return ''
+    if start:
+        cut = data.find(b'\n')
+        data = data[cut + 1:] if cut >= 0 else b''
+    return data.decode('utf-8', 'replace')
 
 
 def _env_report(wave_home, version, step):
     lines = ['os=mac', 'installer_version=' + version, 'step=' + step,
              'platform=' + platform.platform(), 'machine=' + platform.machine(),
              'python=' + platform.python_version(), 'shell=' + os.environ.get('SHELL', '')]
-    state = _read_tail(Path(wave_home) / 'install-state.json', ENV_MAX_BYTES)
+    state = _read_tail(Path(wave_home) / 'install-state.json')
     if state:
         lines += ['install-state.json:', state]
     return '\n'.join(lines)

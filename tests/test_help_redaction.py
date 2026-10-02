@@ -43,6 +43,12 @@ class HelpRedactionTests(unittest.TestCase):
             'USERNAME=alice\nwhoami: domain/alice\nalice',
             'a\x1b[31m\x00\x7fb\n다음',
             'aliceSuffix <TOKEN> <USER>',
+            # G8 R1: vendor prefixes, JWT, generic assignments, glued tokens, spaced profile folders.
+            'AIzaSyA1234567890abcdefghijklmnopqrstuv xoxb-1234567890-abcdefghij npm_abcdefghijklmnopqrstuvwxyz0123456789',
+            'AKIAIOSFODNN7EXAMPLE eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
+            'API_KEY=supersecretvalue MY_TOKEN: "abc123def" "client_secret": "hunter2hunter2"',
+            'prefixghp_abcdefghijklmnopqrstuvwxyz API_KEY_sk-abcdefghijklmn',
+            r'C:\Users\Alice Smith\AppData\x.log' + '\n/Users/Alice Smith/Library/x.log',
         ]
         with tempfile.TemporaryDirectory() as td:
             data = Path(td)/'input.json'

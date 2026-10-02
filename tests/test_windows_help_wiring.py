@@ -1,6 +1,6 @@
 """R5 Windows bootstrap wiring: notice gate before Send-Progress, final-failure help, fail-open exit code.
 
-Runs the real bootstrap.ps1 main path under pwsh with Invoke-WebRequest / Invoke-HelpHttp test doubles.
+Runs the real bootstrap.ps1 main path under pwsh with Invoke-ProgressPost / Invoke-HelpHttp test doubles.
 pwsh on macOS proves script logic only, not Windows PowerShell 5.1 networking.
 """
 import json
@@ -21,9 +21,9 @@ function Run-S00 { Say 'ACTION-S00' }
 function Run-S01 { throw 'boom alice@example.com C:\Users\alice\x' }
 if ($env:REAL_TRANSPORT -eq '1' -and $env:WAVE_HELP_BASE_URL -notmatch '^https://127\.0\.0\.1:\d+$') { $env:WAVE_NO_PROGRESS = '1' }
 if ($env:REAL_TRANSPORT -ne '1') {
-function Invoke-WebRequest {
-  param($Uri, $Method, $Body, $ContentType, $TimeoutSec, [switch]$UseBasicParsing, $ErrorAction, $MaximumRedirection)
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'progress'; redirect = $MaximumRedirection; timeout = $TimeoutSec; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
+function Invoke-ProgressPost {
+  param($Uri, $Body, $TimeoutMs)
+  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'network down' }
 }
 function Invoke-HelpHttp([string]$Method, [string]$Path, $Body, [string]$Token, [int]$TimeoutSec) {
@@ -75,7 +75,8 @@ class WindowsHelpWiringTests(unittest.TestCase):
         self.assertLess(out.index('30일'), out.index('ACTION-S00'))
         progress = [json.loads(r['body']) for r in records if r['kind'] == 'progress']
         self.assertEqual([(p['step'], p['event']) for p in progress], [('1/10', 'start'), ('1/10', 'end'), ('2/10', 'start'), ('2/10', 'fail')])
-        self.assertTrue(all(r['redirect'] == 0 and r['timeout'] == 3 for r in records if r['kind'] == 'progress'))
+        # G8 R1: progress goes through Invoke-ProgressPost (wall-clock 3000ms; no-redirect is pinned in test_g8r1_regressions).
+        self.assertTrue(all(r['timeout_ms'] == 3000 for r in records if r['kind'] == 'progress'))
         self.assertEqual(progress[0]['installer_version'], json.loads((ROOT / 'steps.json').read_text())['version'])
         self.assertRegex(progress[-1].get('detail', ''), r'^J-[A-Z0-9]{2,8}-\d{2,3}$')
         helps = [r for r in records if r['kind'] == 'help']

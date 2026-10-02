@@ -9,7 +9,13 @@ $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $admin = (New-Object S
 @{ user = $id.Name; administrator = $admin; profile = $h; ps = $PSVersionTable.PSVersion.ToString() } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'identity.json') -Encoding UTF8
 if ($admin) { throw 'administrator token is prohibited' }
 $one = (Get-Content $RcJson -Raw -Encoding UTF8 | ConvertFrom-Json).one_line
-function OneLine([string]$line, [string]$log) { $o = (Invoke-Expression $line 2>&1 | Out-String); $o | Set-Content $log -Encoding UTF8; return $LASTEXITCODE }
+function OneLine([string]$line, [string]$log) {
+  # 로그인 대기로 멈추지 않게: stdin 은 빈 파일, 25분 상한, 시간 초과 시 프로세스 트리 종료(exit 124)
+  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line)); $empty = Join-Path $env:TEMP 'rc-empty.txt'; '' | Set-Content $empty
+  $p = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -RedirectStandardInput $empty -PassThru -WindowStyle Hidden
+  if (-not $p.WaitForExit(1500000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; return 124 }
+  return $p.ExitCode
+}
 function Reset-Fleet {
   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'fake_claude\.py|cysd' } | ForEach-Object { & taskkill /PID $_.ProcessId /T /F 2>&1 | Out-Null }
   Remove-Item (Join-Path $h '.cys\.master-bootstrapped') -Force -ErrorAction SilentlyContinue
@@ -56,7 +62,7 @@ try {
   Copy-Item (Join-Path $h '.wave\rc') (Join-Path $e 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
   & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase before
   Reset-Fleet
-  (Invoke-Expression "powershell -NoProfile -ExecutionPolicy Bypass -File `"$h\install-wave.ps1`" -Reinstall" 2>&1 | Out-String) | Set-Content (Join-Path $e 'G6\run.log') -Encoding UTF8
+  OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$h\install-wave.ps1`" -Reinstall" (Join-Path $e 'G6\run.log') | Out-Null
   Collect (Join-Path $e 'G6')
   & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after
 } finally { Stop-Transcript | Out-Null }

@@ -7,10 +7,10 @@ ONE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["one_line"
 export CURL_CA_BUNDLE="$CA" WAVE_NO_PROGRESS=1
 log() { echo "[rc-mac] $*"; }
 # 고정 한 줄 그대로 실행 — 서브셸에서 bash -c (주소만 시험 서버로 치환된 README 줄)
-oneline() { ( cd "$HOME" && bash -c "$ONE" ); }
+oneline() { python3 "$HERE/run_to.py" 1500 "$1" -- bash -c "cd \"\$HOME\" && $ONE"; }
 
 log "A: 로그인 없는 깨끗한 상태 — 실제 S00·S01 후 S02 에서 멈추는 것이 정상"
-oneline > "$EV/phaseA/run.log" 2>&1; echo $? > "$EV/phaseA/exit"
+oneline "$EV/phaseA/run.log"; echo $? > "$EV/phaseA/exit"
 cp "$HOME/.wave/install-state.json" "$EV/phaseA/state.json" 2>/dev/null
 
 log "합성 claude 투입(S02 이하 결정론 단계용)"
@@ -19,7 +19,7 @@ cp "$HERE/fake-claude.sh" "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/
 grep -q 'local/bin' "$HOME/.zshenv" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshenv"
 
 log "B: 같은 한 줄 재실행"
-oneline > "$EV/run.log" 2>&1; echo $? > "$EV/exit"
+oneline "$EV/run.log"; echo $? > "$EV/exit"
 
 collect() {  # collect <대상 폴더>
   local d="$1"; mkdir -p "$d"
@@ -37,7 +37,7 @@ cp -R "$HOME/.wave/rc" "$EV/rc-synthetic-logs" 2>/dev/null
 log "G6: ~/.claude 기준선 → 재설치(--reinstall) → 재측정"
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase before
 bash "$HERE/reset-fleet.sh"
-( cd "$HOME" && bash "$HOME/install-wave.sh" --reinstall ) > "$EV/G6/run.log" 2>&1; echo $? > "$EV/G6/exit"
+python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
 collect "$EV/G6"
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase after
 exit 0

@@ -8,7 +8,7 @@ OLD='curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.
 export WAVE_NO_PROGRESS=1
 mkdir -p "$HOME/.local/bin"; cp "$HERE/fake-claude.sh" "$HOME/.local/bin/claude"; chmod +x "$HOME/.local/bin/claude"
 grep -q 'local/bin' "$HOME/.zshenv" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshenv"
-( cd "$HOME" && bash -c "$OLD" ) > "$EV/from_v023.log" 2>&1; echo $? > "$EV/from_v023.exit"
+python3 "$HERE/run_to.py" 1500 "$EV/from_v023.log" -- bash -c "cd \"\$HOME\" && $OLD"; echo $? > "$EV/from_v023.exit"
 cp "$HOME/.wave/install-state.json" "$EV/from_v023_state.json"
 # 공개 v0.2.3 의 상태 파일 installer_version 은 0.1.3 으로 안 올려진 채 배포됐다(10/3 실측) → 받은 설치팩 주소·팩 steps.json 의 version 으로 판정
 FROM="$(python3 - "$EV/from_v023.log" "$HOME/.wave/src/pack/steps.json" <<'PY'
@@ -23,7 +23,7 @@ echo "[rc-mac-upgrade] 기존 설치기 버전: $FROM"
 SUM="$(shasum -a 256 "$EV/from_v023_state.json" | awk '{print $1}')"
 printf '{"from_version":"%s","raw":[{"path":"from_v023_state.json","sha256":"%s"}]}\n' "$FROM" "$SUM" > "$EV/G5_meta.json"
 bash "$HERE/reset-fleet.sh"
-CURL_CA_BUNDLE="$CA" bash -c "cd \"\$HOME\" && $ONE" > "$EV/run.log" 2>&1; echo $? > "$EV/exit"
+CURL_CA_BUNDLE="$CA" python3 "$HERE/run_to.py" 1500 "$EV/run.log" -- bash -c "cd \"\$HOME\" && $ONE"; echo $? > "$EV/exit"
 PATH="$HOME/.wave/bin:$PATH"
 python3 "$HERE/collect.py" g2 --out "$EV" --preflight "$HOME/.cys/pack/bin/javis_preflight.py"
 cys pack-manifest > "$EV/pack-manifest.src.json" 2>/dev/null

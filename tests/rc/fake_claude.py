@@ -25,6 +25,11 @@ if cmd and role != "none":
     open(os.path.join(rc, "hook_%s.rc" % role), "w").write(str(r.returncode))
 if role == "master":
     import shutil
+    if os.name != "nt":
+        # 13차: round/ 의 *_TODO.md 가 어떤 run 은 0개(11차)·4개(12차)·1개(13차: CSO 만)로 달랐다 — 생성·삭제 순서를 0.3초 간격으로 기록한다(부트 시작 전부터 180초)
+        _w = ("import os,time,glob\nd=os.path.expanduser('~/.cys/pack/round');o=os.path.expanduser('~/.wave/rc/todo_watch.txt');prev=None;t0=time.time()\n"
+              "while time.time()-t0<180:\n s=sorted(os.path.basename(f) for f in glob.glob(d+'/*_TODO.md'))\n if s!=prev:\n  open(o,'a').write('%.1f %s\\n'%(time.time()-t0,s));prev=s\n time.sleep(0.3)\n")
+        subprocess.Popen([sys.executable, "-c", _w], start_new_session=True)
     diag = "PATH=%s\nuvx=%s\npython3=%s\n" % (os.environ.get("PATH", ""), shutil.which("uvx"), shutil.which("python3"))
     if os.name != "nt":
         link = os.path.join(home, ".wave", "bin", "cysd")

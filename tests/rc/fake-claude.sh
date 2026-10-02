@@ -34,4 +34,5 @@ if [ "$role" = master ]; then
 fi
 # launch-agent 는 agents.json 의 ready_marker(❯)가 화면에 보일 때까지 최대 60초 기다린 뒤 지침을 주입한다 — 합성 claude 도 같은 표지를 출력해야 한다(5차: 미확인 60s)
 printf '\n❯ \n'
-exec -a claude sleep 86400
+# 프로세스 자신이 살아 있어야 명령줄(bash <경로>/claude …)이 cysd 의 agent_alive 매칭(토큰 basename==claude)에 잡힌다 — exec -a 로 바꾸면 7차처럼 미기동으로 관측됨
+while true; do sleep 3600; done

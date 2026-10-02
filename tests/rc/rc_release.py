@@ -39,7 +39,9 @@ else:
     rel["windows_sha256sums_url"] = a.base + "SHA256SUMS"
 steps_p.write_text(json.dumps(steps, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-subprocess.run(["bash", str(stage / "scripts/make-release.sh"), ver, a.base, str(out)], check=True, stdout=subprocess.DEVNULL)
+mr = subprocess.run(["bash", (stage / "scripts/make-release.sh").as_posix(), ver, a.base, out.as_posix()], capture_output=True, text=True)  # 윈도우 git-bash 는 역슬래시 경로에서 dirname 이 깨진다 → 슬래시 경로
+if mr.returncode:
+    sys.stderr.write("make-release.sh exit %d\n--- stdout\n%s\n--- stderr\n%s\n" % (mr.returncode, mr.stdout[-3000:], mr.stderr[-3000:])); sys.exit(1)
 shutil.copy2(asset, out / name)
 with open(out / "SHA256SUMS", "a", encoding="utf-8") as f:  # make-release 가 쓴 줄 뒤에 자산 줄 추가(자산 줄은 정확히 1개)
     f.write("%s  %s\n" % (sha, name))

@@ -80,15 +80,15 @@ jobs:
           github-token: ${{ github.token }}
           pattern: w3-macos-arm64-*
           path: app
-      - name: Find DMG, read CDHash, assemble test release
+      - name: Find DMG, ad-hoc re-sign for the test (not Developer ID), assemble test release
         run: |
           set -euo pipefail
           DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
-          MP="$RUNNER_TEMP/mnt"; mkdir -p "$MP"; hdiutil attach -nobrowse -readonly -mountpoint "$MP" "$DMG" >/dev/null
-          APP="$(find "$MP" -maxdepth 2 -type d -name '*.app' -print -quit)"
-          CDH="$(codesign -dvvv "$APP" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"; hdiutil detach "$MP" >/dev/null
+          mkdir -p "$RUNNER_TEMP/resigned" "$RUNNER_TEMP/ev/common"
+          bash tests/rc/mac-resign.sh "$DMG" "$RUNNER_TEMP/resigned/$(basename "$DMG")" "$RUNNER_TEMP/ev/common/mac_resign.txt" || { cat "$RUNNER_TEMP/ev/common/mac_resign.txt"; exit 1; }
+          CDH="$(sed -n 's/^cdhash=//p' "$RUNNER_TEMP/ev/common/mac_resign.txt")"; test -n "$CDH"
           echo "dmg=$DMG cdhash=$CDH"
-          python3 tests/rc/rc_release.py --os mac --asset "$DMG" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" ${CDH:+--cdhash "$CDH"}
+          python3 tests/rc/rc_release.py --os mac --asset "$RUNNER_TEMP/resigned/$(basename "$DMG")" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" --cdhash "$CDH"
       - name: Self-signed https test server (runner-local, discarded)
         run: |
           set -euo pipefail
@@ -125,14 +125,14 @@ jobs:
           github-token: ${{ github.token }}
           pattern: w3-macos-arm64-*
           path: app
-      - name: Assemble test release and https server
+      - name: Ad-hoc re-sign for the test (not Developer ID), assemble test release and https server
         run: |
           set -euo pipefail
           DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
-          MP="$RUNNER_TEMP/mnt"; mkdir -p "$MP"; hdiutil attach -nobrowse -readonly -mountpoint "$MP" "$DMG" >/dev/null
-          APP="$(find "$MP" -maxdepth 2 -type d -name '*.app' -print -quit)"
-          CDH="$(codesign -dvvv "$APP" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"; hdiutil detach "$MP" >/dev/null
-          python3 tests/rc/rc_release.py --os mac --asset "$DMG" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" ${CDH:+--cdhash "$CDH"}
+          mkdir -p "$RUNNER_TEMP/resigned" "$RUNNER_TEMP/ev/common"
+          bash tests/rc/mac-resign.sh "$DMG" "$RUNNER_TEMP/resigned/$(basename "$DMG")" "$RUNNER_TEMP/ev/common/mac_resign.txt" || { cat "$RUNNER_TEMP/ev/common/mac_resign.txt"; exit 1; }
+          CDH="$(sed -n 's/^cdhash=//p' "$RUNNER_TEMP/ev/common/mac_resign.txt")"; test -n "$CDH"
+          python3 tests/rc/rc_release.py --os mac --asset "$RUNNER_TEMP/resigned/$(basename "$DMG")" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" --cdhash "$CDH"
           D="$RUNNER_TEMP/tls"; mkdir -p "$D"
           openssl req -x509 -newkey rsa:2048 -nodes -keyout "$D/k.pem" -out "$D/c.pem" -days 1 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
           nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
@@ -166,6 +166,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # git-bash 의 python3 는 Windows 스토어 별칭(조용히 실패)일 수 있어 python 으로 연결
+          mkdir -p "$RUNNER_TEMP/shim"; printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/shim/python3"; chmod +x "$RUNNER_TEMP/shim/python3"; export PATH="$RUNNER_TEMP/shim:$PATH"
           EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
           python tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
       - name: Trust test cert, serve https, run as a fresh standard user
@@ -207,6 +209,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # git-bash 의 python3 는 Windows 스토어 별칭(조용히 실패)일 수 있어 python 으로 연결
+          mkdir -p "$RUNNER_TEMP/shim"; printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/shim/python3"; chmod +x "$RUNNER_TEMP/shim/python3"; export PATH="$RUNNER_TEMP/shim:$PATH"
           EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
           python tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
       - name: Trust test cert, serve https, run as a fresh standard user

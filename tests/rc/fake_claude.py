@@ -24,6 +24,8 @@ if cmd and role != "none":
     open(os.path.join(rc, "hook_%s.err" % role), "wb").write(r.stderr)
     open(os.path.join(rc, "hook_%s.rc" % role), "w").write(str(r.returncode))
 if role == "master":
+    import shutil
+    open(os.path.join(rc, "preflight_path.txt"), "w", encoding="utf-8").write("PATH=%s\nuvx=%s\npython3=%s\n" % (os.environ.get("PATH", ""), shutil.which("uvx"), shutil.which("python3")))
     pack = os.environ.get("CYS_PACK_DIR") or os.path.join(home, ".cys", "pack")
     r = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)

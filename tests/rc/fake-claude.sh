@@ -28,6 +28,7 @@ if [ -n "$cmd" ] && [ "$role" != none ]; then
   cp "$RC/hook_${role}.out" "$VF/hook_${role}.out"
 fi
 if [ "$role" = master ]; then
+  { echo "PATH=$PATH"; echo "uvx=$(command -v uvx)"; echo "python3=$(command -v python3)"; } > "$RC/preflight_path.txt"  # 부트 ①(preflight --fix)이 상속하는 좌석 PATH 원문
   python3 "${CYS_PACK_DIR:-$HOME/.cys/pack}/bin/javis_bootstrap.py" > "$RC/bootstrap.out" 2> "$RC/bootstrap.err"
   echo $? > "$RC/bootstrap.rc"
 fi

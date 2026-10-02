@@ -26,7 +26,18 @@ ROLE_FILE = {"master": "MASTER_DIRECTIVE.md", "cso": "CSO_DIRECTIVE.md", "worker
 if a.cmd == "g1":
     shutil.copy2(pathlib.Path(a.wave_home) / "install-state.json", out / "G1_state.json")
 elif a.cmd == "g2":
-    r = subprocess.run([a.python, a.preflight, "--json"], capture_output=True, text=True, timeout=300)
+    # 앱은 좌석(cysd PTY 자식)마다 동봉 runtime 을 PATH 선두에 넣는다(wave-terminal src/lib.rs runtime_bin_dirs). 러너 셸은 그 PATH 를 받지 않으므로 같은 규칙으로 선두 주입하고 원문을 증거에 남긴다.
+    home = pathlib.Path(os.path.expanduser("~"))
+    if sys.platform == "darwin":
+        rt = home / ".wave/apps/Wave Terminal.app/Contents/Resources/runtime"
+        dirs = [rt / "python/bin", rt / "git/bin", rt / "uv", rt / "node/bin"]
+    else:
+        rt = home / ".wave/bin/runtime"
+        dirs = [rt / "python", rt / "git/cmd", rt / "git/usr/bin", rt / "node"]
+    dirs = [str(d) for d in dirs if d.is_dir()]
+    env = dict(os.environ, PATH=os.pathsep.join(dirs + [os.environ.get("PATH", "")]))
+    (out / "G2_path.txt").write_text("runtime_dirs_prepended=%s\nPATH=%s\nuvx=%s\n" % (dirs, env["PATH"], shutil.which("uvx", path=env["PATH"])), encoding="utf-8")
+    r = subprocess.run([a.python, a.preflight, "--json"], capture_output=True, text=True, timeout=300, env=env)
     json.loads(r.stdout)  # 깨진 JSON 이면 여기서 실패 — 증거를 만들지 않는다
     (out / "G2_preflight.json").write_text(r.stdout, encoding="utf-8")
     (out / "G2_preflight.exit").write_text(str(r.returncode))

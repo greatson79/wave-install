@@ -87,7 +87,40 @@ if a.surface_probes:
         os.environ['CYS_ROLE'] = 'master'
         bash = shutil.which('bash')
         if bash:
-            run('session-start-master', [bash, str(pack/'hooks/session-start.sh')], 60, b'{}\n', observe_identity=True)
+            # Baseline is always untraced; the opt-in rerun has separate output files.
+            prior_trace = os.environ.pop('CYS_HOOK_IDENTITY_TRACE', None)
+            try:
+                run('session-start-master', [bash, str(pack/'hooks/session-start.sh')], 60, b'{}\n', observe_identity=True)
+                trace_prefix = str(out / 'session-start-master-trace')
+                converted = run('hook-trace-path', [bash, '-c', 'cygpath -u "$1"', '_', trace_prefix], 15)
+                trace_path = ((out/'hook-trace-path.stdout').read_text(encoding='utf-8', errors='replace').strip()
+                              if converted.get('exit_code') == 0 else '')
+                if trace_path and '\n' not in trace_path:
+                    os.environ['CYS_HOOK_IDENTITY_TRACE'] = trace_path
+                    run('session-start-master-traced', [bash, str(pack/'hooks/session-start.sh')],
+                        60, b'{}\n', observe_identity=True)
+                    trace_files = []
+                    for suffix in ('.pid', '.ps.stdout', '.ps.stderr', '.ps.exit'):
+                        path = Path(trace_prefix + suffix)
+                        item = {'path': str(path), 'exists': path.is_file()}
+                        if item['exists']:
+                            try:
+                                raw = path.read_bytes()
+                                item.update(bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+                            except OSError as exc:
+                                item['read_error'] = repr(exc)
+                        trace_files.append(item)
+                    save('hook-trace-files.json', {
+                        'files': trace_files,
+                        'trace_available': all(item['exists'] and 'sha256' in item for item in trace_files),
+                        'note': 'Missing trace files mean unmeasured; traced hook exit alone is not trace evidence. Empty files are valid captured output.'})
+                else:
+                    save('hook-trace-unmeasured.json', {'reason': 'Bash cygpath failed to resolve one trace prefix'})
+            finally:
+                if prior_trace is None:
+                    os.environ.pop('CYS_HOOK_IDENTITY_TRACE', None)
+                else:
+                    os.environ['CYS_HOOK_IDENTITY_TRACE'] = prior_trace
             # Keep the unmodified hook baseline first, then compare Bash invocation forms.
             path_probe = run('bash-cys-path', [bash, '-c', 'command -v cys'], 15)
             if path_probe.get('exit_code') == 0:

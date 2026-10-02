@@ -79,6 +79,45 @@ class IdentityEvidenceTests(unittest.TestCase):
         self.assertEqual(len(result['unassociated_cys_processes']),1)
         self.assertEqual(result['root_sample_count'],0)
 
+    def test_hook_trace_baseline_is_separate_and_environment_restored(self):
+        import textwrap
+        source = (ROOT/'scripts/ci/p0-measure.py').read_text()
+        start = source.index("            prior_trace =")
+        end = source.index("            # Keep the unmodified hook baseline", start)
+        block = textwrap.dedent(source[start:end])
+        for fail_traced, files_present in ((False, False), (False, True), (True, False)):
+            with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'CYS_HOOK_IDENTITY_TRACE': 'prior'}):
+                out = Path(tmp)
+                labels = []
+                saved = {}
+                def run(label, *args, **kwargs):
+                    labels.append(label)
+                    if label == 'session-start-master':
+                        self.assertNotIn('CYS_HOOK_IDENTITY_TRACE', os.environ)
+                    if label == 'hook-trace-path':
+                        (out/'hook-trace-path.stdout').write_text('/converted/trace prefix\n')
+                    if label == 'session-start-master-traced':
+                        self.assertEqual(os.environ['CYS_HOOK_IDENTITY_TRACE'], '/converted/trace prefix')
+                        self.assertTrue(kwargs['observe_identity'])
+                        if fail_traced:
+                            raise RuntimeError('fixture interruption')
+                        if files_present:
+                            for suffix in ('.pid', '.ps.stdout', '.ps.stderr', '.ps.exit'):
+                                (out/('session-start-master-trace' + suffix)).write_bytes(b'')
+                    return {'exit_code': 0}
+                scope = dict(os=os, run=run, bash='bash', pack=out, out=out, Path=Path, hashlib=__import__('hashlib'), save=lambda name, value: saved.update({name: value}))
+                if fail_traced:
+                    with self.assertRaises(RuntimeError):
+                        exec(block, scope)
+                else:
+                    exec(block, scope)
+                self.assertEqual(labels, ['session-start-master', 'hook-trace-path', 'session-start-master-traced'])
+                self.assertEqual(os.environ['CYS_HOOK_IDENTITY_TRACE'], 'prior')
+                if not fail_traced:
+                    self.assertEqual(saved['hook-trace-files.json']['trace_available'], files_present)
+                    if files_present:
+                        self.assertTrue(all(row['bytes'] == 0 and len(row['sha256']) == 64 for row in saved['hook-trace-files.json']['files']))
+
     def test_bash_probes_preserve_quoted_path_arguments_and_failure_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "space and 'quote"

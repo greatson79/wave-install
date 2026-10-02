@@ -27,8 +27,11 @@ if role == "master":
     import shutil
     if os.name != "nt":
         # 13차: round/ 의 *_TODO.md 가 어떤 run 은 0개(11차)·4개(12차)·1개(13차: CSO 만)로 달랐다 — 생성·삭제 순서를 0.3초 간격으로 기록한다(부트 시작 전부터 180초)
-        _w = ("import os,time,glob\nd=os.path.expanduser('~/.cys/pack/round');o=os.path.expanduser('~/.wave/rc/todo_watch.txt');prev=None;t0=time.time()\n"
-              "while time.time()-t0<180:\n s=sorted(os.path.basename(f) for f in glob.glob(d+'/*_TODO.md'))\n if s!=prev:\n  open(o,'a').write('%.1f %s\\n'%(time.time()-t0,s));prev=s\n time.sleep(0.3)\n")
+        _w = ("import os,time,glob,subprocess\n"
+              "d=os.path.expanduser('~/.cys/pack/round');pv=os.path.expanduser('~/.cys/pack.prev/round');mk=os.path.expanduser('~/.cys/.gui-onboarded');o=os.path.expanduser('~/.wave/rc/todo_watch.txt');prev=None;t0=time.time()\n"
+              "def ls(x): return sorted(os.path.basename(f) for f in glob.glob(x+'/*_TODO.md'))\n"
+              "def ip(): return sorted(l.strip()[:140] for l in subprocess.run(\"ps -axo pid,command | grep 'init-pack' | grep -v grep | grep -v 'python'\",shell=True,capture_output=True,text=True).stdout.splitlines())\n"
+              "while time.time()-t0<180:\n s=(ls(d),ls(pv),os.path.exists(mk),ip())\n if s!=prev:\n  open(o,'a').write('%.1f round=%s pack.prev/round=%s gui_onboarded=%s init_pack_procs=%s\\n'%((time.time()-t0,)+s));prev=s\n time.sleep(0.3)\n")
         subprocess.Popen([sys.executable, "-c", _w], start_new_session=True)
     diag = "PATH=%s\nuvx=%s\npython3=%s\n" % (os.environ.get("PATH", ""), shutil.which("uvx"), shutil.which("python3"))
     if os.name != "nt":

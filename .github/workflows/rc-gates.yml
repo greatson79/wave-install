@@ -145,9 +145,35 @@ jobs:
           name: rc-evidence-mac-g5-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
+  assemble-win:
+    name: Assemble Windows test release (ubuntu — POSIX tools live here)
+    needs: cfg
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.win_run_id }}
+          github-token: ${{ github.token }}
+          name: cys-windows-x64-nsis
+          path: app
+      - name: Assemble (steps.json release pins swapped on a copy; asset bytes unchanged)
+        run: |
+          set -euo pipefail
+          EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
+          python3 tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
+          ls -l "$RUNNER_TEMP/rcrel"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+          if-no-files-found: error
+          retention-days: 3
   win-gates:
     name: Windows G1-CI G2 G3 G4-CI G6 (standard user)
-    needs: cfg
+    needs: [cfg, assemble-win]
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -156,23 +182,11 @@ jobs:
       - name: Bind the measured installer version
         shell: bash
         run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
-      - uses: actions/download-artifact@v4
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
         with:
-          repository: ${{ needs.cfg.outputs.app_repo }}
-          run-id: ${{ needs.cfg.outputs.win_run_id }}
-          github-token: ${{ github.token }}
-          name: cys-windows-x64-nsis
-          path: app
-      - name: Assemble test release (app pins swapped on a copy)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # git-bash 의 python3 는 Windows 스토어 별칭(조용히 실패)일 수 있어 python 으로 연결
-          mkdir -p "$RUNNER_TEMP/shim"; printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/shim/python3"; chmod +x "$RUNNER_TEMP/shim/python3"
-          # 러너 Git for Windows 에는 shasum 이 없다(7차: shasum: command not found) → make-release.sh 가 쓰는 「shasum -a 256 파일」 형식을 sha256sum 으로 연결
-          printf '#!/bin/sh\n[ "$1" = "-a" ] && shift 2\nexec sha256sum "$@"\n' > "$RUNNER_TEMP/shim/shasum"; chmod +x "$RUNNER_TEMP/shim/shasum"; export PATH="$RUNNER_TEMP/shim:$PATH"
-          EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
-          python tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
       - name: Trust test cert, serve https, run as a fresh standard user
         shell: powershell
         run: |
@@ -192,7 +206,7 @@ jobs:
           if-no-files-found: error
   win-upgrade:
     name: Windows G5 (public v0.2.3 then test release)
-    needs: cfg
+    needs: [cfg, assemble-win]
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -201,23 +215,11 @@ jobs:
       - name: Bind the measured installer version
         shell: bash
         run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
-      - uses: actions/download-artifact@v4
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
         with:
-          repository: ${{ needs.cfg.outputs.app_repo }}
-          run-id: ${{ needs.cfg.outputs.win_run_id }}
-          github-token: ${{ github.token }}
-          name: cys-windows-x64-nsis
-          path: app
-      - name: Assemble test release (app pins swapped on a copy)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # git-bash 의 python3 는 Windows 스토어 별칭(조용히 실패)일 수 있어 python 으로 연결
-          mkdir -p "$RUNNER_TEMP/shim"; printf '#!/bin/sh\nexec python "$@"\n' > "$RUNNER_TEMP/shim/python3"; chmod +x "$RUNNER_TEMP/shim/python3"
-          # 러너 Git for Windows 에는 shasum 이 없다(7차: shasum: command not found) → make-release.sh 가 쓰는 「shasum -a 256 파일」 형식을 sha256sum 으로 연결
-          printf '#!/bin/sh\n[ "$1" = "-a" ] && shift 2\nexec sha256sum "$@"\n' > "$RUNNER_TEMP/shim/shasum"; chmod +x "$RUNNER_TEMP/shim/shasum"; export PATH="$RUNNER_TEMP/shim:$PATH"
-          EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
-          python tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
       - name: Trust test cert, serve https, run as a fresh standard user
         shell: powershell
         run: |

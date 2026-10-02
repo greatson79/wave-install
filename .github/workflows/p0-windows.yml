@@ -27,11 +27,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $run = gh api repos/greatson79/wave-terminal/actions/runs/37035255777 | ConvertFrom-Json
+          $run = gh api repos/greatson79/wave-terminal/actions/runs/37042167491 | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Source run API failed' }
           if ($run.status -ne 'completed' -or $run.conclusion -ne 'success') { throw 'Pinned build not successfully complete; do not substitute another build' }
-          if ($run.head_sha -ne '635f75824574776f2edc9cbae407d4a60f5763e7') { throw 'Pinned commit mismatch' }
-          $all = gh api repos/greatson79/wave-terminal/actions/runs/37035255777/artifacts | ConvertFrom-Json
+          if ($run.head_sha -ne '0ac7e98f1f1623953de0bb8e32e852b59165e29c') { throw 'Pinned commit mismatch' }
+          $all = gh api repos/greatson79/wave-terminal/actions/runs/37042167491/artifacts | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Artifact API failed' }
           $artifact = @($all.artifacts | Where-Object { $_.name -eq 'cys-windows-x64-nsis' -and -not $_.expired })
           if ($artifact.Count -ne 1) { throw 'Expected one unexpired pinned NSIS artifact' }
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           repository: greatson79/wave-terminal
-          run-id: 37035255777
+          run-id: 37042167491
           name: cys-windows-x64-nsis
           github-token: ${{ github.token }}
           path: p0-input

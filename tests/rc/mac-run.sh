@@ -28,6 +28,7 @@ collect() {  # collect <대상 폴더>
   cys pack-manifest > "$d/pack-manifest.src.json" 2>/dev/null
   python3 "$HERE/collect.py" g3 --out "$d" --manifest "$d/pack-manifest.src.json" || log "g3 수집 실패"
   python3 "$HERE/collect.py" g4 --out "$d" || log "g4 수집 실패"
+  cp "$HOME/.wave/verify/G3_inject.json" "$d/installer_G3_inject.json" 2>/dev/null  # 설치기 S08 이 쓴 값(대조용 · 판정기 입력 아님)
 }
 python3 "$HERE/collect.py" g1 --out "$EV"
 collect "$EV"

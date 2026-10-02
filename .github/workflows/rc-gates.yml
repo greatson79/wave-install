@@ -67,6 +67,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python3 tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.cfg.outputs.text_ref }}', path: textref }
       - uses: actions/download-artifact@v4
@@ -110,6 +114,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python3 tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
       - uses: actions/download-artifact@v4
         with:
           repository: ${{ needs.cfg.outputs.app_repo }}
@@ -143,6 +151,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
       - uses: actions/download-artifact@v4
         with:
           repository: ${{ needs.cfg.outputs.app_repo }}
@@ -174,6 +186,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
       - uses: actions/download-artifact@v4
         with:
           repository: ${{ needs.cfg.outputs.app_repo }}

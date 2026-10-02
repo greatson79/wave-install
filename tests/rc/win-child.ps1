@@ -29,6 +29,7 @@ function Collect([string]$d) {
   cmd /c "`"$wb\cys.exe`" pack-manifest > `"$d\pack-manifest.src.json`""
   & $Py (Join-Path $rc 'collect.py') g3 --out $d --manifest "$d\pack-manifest.src.json"
   & $Py (Join-Path $rc 'collect.py') g4 --out $d --cys "$wb\cys.exe"
+  Copy-Item (Join-Path $h '.wave\verify\G3_inject.json') (Join-Path $d 'installer_G3_inject.json') -ErrorAction SilentlyContinue
 }
 $e = Join-Path $Evidence 'win'; New-Item -ItemType Directory -Force $e | Out-Null
 try {

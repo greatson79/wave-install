@@ -1,8 +1,8 @@
-name: P0 Windows measurements only
+name: W3 Windows hook identity measurements only
 on:
   workflow_dispatch:
   push:
-    branches: [measure/p0-windows]
+    branches: [measure/w3-windows-hook]
 permissions:
   contents: read
   actions: read
@@ -12,10 +12,30 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Identity observation regression tests
+        shell: pwsh
+        run: |
+          python -B tests/test_process_identity.py
+          if ($LASTEXITCODE -ne 0) { throw 'Identity observation regressions failed' }
+      - name: Verify pinned source run and artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $run = gh api repos/greatson79/wave-terminal/actions/runs/37035255777 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Source run API failed' }
+          if ($run.status -ne 'completed' -or $run.conclusion -ne 'success') { throw 'Pinned build not successfully complete; do not substitute another build' }
+          if ($run.head_sha -ne '635f75824574776f2edc9cbae407d4a60f5763e7') { throw 'Pinned commit mismatch' }
+          $all = gh api repos/greatson79/wave-terminal/actions/runs/37035255777/artifacts | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact API failed' }
+          $artifact = @($all.artifacts | Where-Object { $_.name -eq 'cys-windows-x64-nsis' -and -not $_.expired })
+          if ($artifact.Count -ne 1) { throw 'Expected one unexpired pinned NSIS artifact' }
+          New-Item -ItemType Directory -Force p0-input | Out-Null
+          @{ repository='greatson79/wave-terminal'; run_id=$run.id; commit=$run.head_sha; artifact_id=$artifact[0].id; artifact_digest=$artifact[0].digest; status=$run.status; conclusion=$run.conclusion } | ConvertTo-Json | Set-Content p0-input/source.json -Encoding UTF8
       - uses: actions/download-artifact@v4
         with:
           repository: greatson79/wave-terminal
-          run-id: 36884497676
+          run-id: 37035255777
           name: cys-windows-x64-nsis
           github-token: ${{ github.token }}
           path: p0-input

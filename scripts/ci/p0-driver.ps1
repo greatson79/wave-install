@@ -6,7 +6,7 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $setup = @(Get-ChildItem (Join-Path $root 'p0-input') -Filter '*setup.exe' -Recurse)
 if ($setup.Count -ne 1) { throw 'Expected exactly one pinned setup.exe' }
 Get-FileHash $setup[0].FullName -Algorithm SHA256 | ConvertTo-Json | Set-Content (Join-Path $out 'setup-sha256.json') -Encoding UTF8
-@{ repository='greatson79/wave-terminal'; run_id=36884497676; commit='d7b354d74af04cfaed3aa9ef8f926d825091085b'; artifact_id=11174272542 } | ConvertTo-Json | Set-Content (Join-Path $out 'source.json') -Encoding UTF8
+Copy-Item (Join-Path $root 'p0-input/source.json') (Join-Path $out 'source.json')
 $name = 'wavep0' + (Get-Random -Minimum 10000 -Maximum 99999)
 $pass = ConvertTo-SecureString ('P0!' + [guid]::NewGuid().ToString('N') + 'Aa9') -AsPlainText -Force
 $user = New-LocalUser -Name $name -Password $pass

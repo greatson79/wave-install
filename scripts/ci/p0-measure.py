@@ -9,6 +9,9 @@ import shutil
 import subprocess
 import sys
 import time
+# Windows embeddable Python ._pth may omit the script directory. Resolve our sibling explicitly.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from process_identity import ProcessObserver, parent_chain, windows_snapshot
 
 p = argparse.ArgumentParser()
 p.add_argument('--app', required=True)
@@ -30,12 +33,16 @@ def save(name, value):
     temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
     os.replace(temp, out/name)
 
-def run(label, command, timeout=60, stdin=b''):
+def run(label, command, timeout=60, stdin=b'', observe_identity=False):
     started = time.time()
     result = dict(label=label, command=list(map(str, command)), timeout_seconds=timeout)
     result.update(state='started', started_at=started)
     results.append(result)
     save('surface-executions.json' if a.surface_probes else 'executions.json', results)
+    observer = ProcessObserver() if observe_identity else None
+    proc = None
+    if observer:
+        observer.start()
     try:
         with (out/(label+'.stdout')).open('wb') as stdout_file, (out/(label+'.stderr')).open('wb') as stderr_file:
             proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=stdout_file, stderr=stderr_file)
@@ -51,6 +58,12 @@ def run(label, command, timeout=60, stdin=b''):
         result.update(stdout_bytes=len(stdout), stderr_bytes=len(stderr), stdout_sha256=hashlib.sha256(stdout).hexdigest())
     except Exception as exc:
         result.update(exit_code=None, error=repr(exc), unmeasured=True, state='unmeasured')
+    if observer:
+        observed = observer.finish(proc.pid if proc else None)
+        observed['inherited_environment'] = {key: os.environ.get(key) for key in
+                                             ('CYS_SURFACE_ID', 'AITERM_SURFACE_ID', 'CYS_SOCKET', 'CYS_ROLE')}
+        observed['command'] = list(map(str, command))
+        save(label+'-identity.json', observed)
     result['elapsed_seconds'] = round(time.time()-started, 3)
     save('surface-executions.json' if a.surface_probes else 'executions.json', results)
     print(json.dumps(result), flush=True)
@@ -58,12 +71,21 @@ def run(label, command, timeout=60, stdin=b''):
 
 if a.surface_probes:
     # This process is a real PTY descendant; daemon caller identity comes from its ancestry.
-    claim = run('phase-3-claim-role', [cys, 'claim-role', 'master'], 15)
+    identity = {'pid': os.getpid(), 'parent_pid': os.getppid(),
+                'environment': {key: os.environ.get(key) for key in
+                                ('CYS_SURFACE_ID', 'AITERM_SURFACE_ID', 'CYS_SOCKET', 'CYS_ROLE')},
+                'collection': 'Actual PTY descendant; environment captured without overriding identity'}
+    try:
+        identity['parent_chain'] = parent_chain(os.getpid(), windows_snapshot())
+    except Exception as exc:
+        identity['parent_chain_unmeasured'] = repr(exc)
+    save('surface-identity.json', identity)
+    claim = run('phase-3-claim-role', [cys, 'claim-role', 'master'], 15, observe_identity=True)
     if claim.get('exit_code') == 0:
         os.environ['CYS_ROLE'] = 'master'
         bash = shutil.which('bash')
         if bash:
-            run('session-start-master', [bash, str(pack/'hooks/session-start.sh')], 60, b'{}\n')
+            run('session-start-master', [bash, str(pack/'hooks/session-start.sh')], 60, b'{}\n', observe_identity=True)
     else:
         save('hook-unmeasured.json', {'reason':'Real-surface claim failed; directive bytes unavailable'})
     run('phase-2-ping', [cys, 'ping'], 15)

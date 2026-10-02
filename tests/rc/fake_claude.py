@@ -30,4 +30,5 @@ if role == "master":
     r = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)
     open(os.path.join(rc, "bootstrap.rc"), "w").write(str(r.returncode))
+sys.stdout.write("\n❯ \n"); sys.stdout.flush()  # agents.json ready_marker — launch-agent 가 이 표지를 볼 때까지 대기한다
 while True: time.sleep(3600)

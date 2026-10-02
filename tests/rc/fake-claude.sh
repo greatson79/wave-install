@@ -32,4 +32,6 @@ if [ "$role" = master ]; then
   python3 "${CYS_PACK_DIR:-$HOME/.cys/pack}/bin/javis_bootstrap.py" > "$RC/bootstrap.out" 2> "$RC/bootstrap.err"
   echo $? > "$RC/bootstrap.rc"
 fi
+# launch-agent 는 agents.json 의 ready_marker(❯)가 화면에 보일 때까지 최대 60초 기다린 뒤 지침을 주입한다 — 합성 claude 도 같은 표지를 출력해야 한다(5차: 미확인 60s)
+printf '\n❯ \n'
 exec -a claude sleep 86400

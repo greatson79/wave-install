@@ -37,6 +37,8 @@ elif a.cmd == "g2":
     dirs = [str(d) for d in dirs if d.is_dir()]
     env = dict(os.environ, PATH=os.pathsep.join(dirs + [os.environ.get("PATH", "")]))
     (out / "G2_path.txt").write_text("runtime_dirs_prepended=%s\nPATH=%s\nuvx=%s\n" % (dirs, env["PATH"], shutil.which("uvx", path=env["PATH"])), encoding="utf-8")
+    if os.name != "nt":
+        (out / "G2_todo_files.txt").write_text(subprocess.run("ls -la ~/.cys/pack/round/*_TODO.md ~/.cys/pack/round 2>&1 | head -30", shell=True, capture_output=True, text=True).stdout, encoding="utf-8")
     r = subprocess.run([a.python, a.preflight, "--json"], capture_output=True, text=True, timeout=300, env=env)
     json.loads(r.stdout)  # 깨진 JSON 이면 여기서 실패 — 증거를 만들지 않는다
     (out / "G2_preflight.json").write_text(r.stdout, encoding="utf-8")

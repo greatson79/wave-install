@@ -35,6 +35,8 @@ if role == "master":
     r = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)
     open(os.path.join(rc, "bootstrap.rc"), "w").write(str(r.returncode))
+    if os.name != "nt":  # 10차: 첫 설치 직후 G2 에서 C10(TODO 파일 4개 부재)이 FAIL — 부트 직후 시점의 실제 목록을 남긴다
+        open(os.path.join(rc, "todo_files_after_bootstrap.txt"), "w", encoding="utf-8").write(subprocess.run("ls -la ~/.cys/pack/round/*_TODO.md ~/.cys/pack/round 2>&1 | head -30", shell=True, capture_output=True, text=True).stdout)
 sys.stdout.write("\n❯ \n"); sys.stdout.flush()  # agents.json ready_marker — launch-agent 가 이 표지를 볼 때까지 대기한다
 if os.name != "nt":
     # 9차 확정(ps_claude_*.txt + sysinfo 0.33.1 소스): cysd 워치독은 refresh_processes() 를 쓰는데 이 호출은 명령줄(cmd)을 갱신하지 않는다
@@ -42,7 +44,9 @@ if os.name != "nt":
     # 해법: 마지막에 파일 이름이 claude 인 네이티브 실행파일(sleep 복사본)로 exec — comm 이 "claude" 가 된다.
     # 해법: 파일 이름이 claude 인 **네이티브** 실행파일로 exec — comm 이 "claude" 가 된다. (복사한 /bin/sleep 은 arm64e 플랫폼 바이너리라 SIGKILL(137),
     # 심링크는 커널이 실제 파일 이름(python3.12)을 comm 으로 써서 안 된다 → 러너에 있는 clang 으로 아주 작은 대기 프로그램을 claude 라는 이름으로 컴파일)
-    _bin = os.path.join(rc, "claude"); _src = os.path.join(rc, "claude_idle.c")
+    # 역할마다 따로 컴파일한다: 같은 경로를 덮어쓰면 먼저 뜬 좌석(cso)의 실행파일이 교체되어 cysd 가 그 프로세스의 이름을 못 읽는다(10차: cso 만 agent_alive=False)
+    _d = os.path.join(rc, "bin_" + role); os.makedirs(_d, exist_ok=True)
+    _bin = os.path.join(_d, "claude"); _src = os.path.join(_d, "claude_idle.c")
     open(_src, "w").write("#include <unistd.h>\nint main(void){for(;;)sleep(3600);}\n")
     if subprocess.run(["cc", "-O0", "-o", _bin, _src], capture_output=True).returncode == 0:
         subprocess.Popen("sleep 8; ps -axo pid,ppid,ucomm,command | grep -i '[c]laude' | head -20 > %s" % os.path.join(rc, "ps_claude_%s.txt" % role), shell=True, start_new_session=True)

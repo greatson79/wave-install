@@ -58,6 +58,11 @@ class T(unittest.TestCase):
         self.assertEqual(set(verdicts(self.d).values()), {gate.PASS})
         self.assertEqual(gate.main([str(self.d), "--json"]), 0)
 
+    def test_d1_tag_on_c20_warn_and_g3_ignores_20kb(self):
+        r = {x["id"]: x for x in gate.judge(self.d)}
+        self.assertIn("D1 잠정", r["G2"]["mac"][1])
+        self.assertEqual(r["G3"]["mac"][0], gate.PASS)  # 30000B 주입이어도 원본 일치면 PASS
+
     def test_missing_file_is_unmeasured_not_pass(self):
         (self.d / "mac" / "G3_inject.json").unlink()
         v = verdicts(self.d)

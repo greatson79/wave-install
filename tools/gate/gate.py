@@ -7,6 +7,7 @@ import hashlib, json, pathlib, sys
 
 PASS, FAIL, NA = "PASS", "FAIL", "미측정"
 ROLES = {"master", "cso", "worker"}
+D1_IDS = {"C20", "C21", "C24"}  # 테오 0140 잠정: NotebookLM·harness-creator·korean-law-mcp = 제품 기준 경고(판정만 · 지침 불변)
 
 
 def load(p):
@@ -67,7 +68,9 @@ def g2(b, c=None):
         return NA, "FAIL 0 · WARN %d 이지만 허용 WARN 목록(common/warn_allowlist.json) 없음" % len(warns)
     ok = set(load(allow).get(b.name if b.name in ("mac", "win") else b.parent.name, []))
     new = sorted(set(warns) - ok)
-    return (FAIL, "새 WARN %d: %s" % (len(new), ",".join(new))) if new else (PASS, "FAIL 0 · WARN %d 전부 허용 목록 안" % len(warns))
+    d1 = sorted(set(warns) & D1_IDS)
+    tag = " · D1 잠정(테오 대결 · 주인님 확인 대기): %s 제품 기준 경고" % ",".join(d1) if d1 else ""
+    return (FAIL, "새 WARN %d: %s%s" % (len(new), ",".join(new), tag)) if new else (PASS, "FAIL 0 · WARN %d 전부 허용 목록 안%s" % (len(warns), tag))
 
 
 def g3(b, c=None):
@@ -76,7 +79,7 @@ def g3(b, c=None):
     roles = d.get("roles", {})
     diff = sorted(r for r, v in roles.items() if v.get("injected_sha256") != v.get("pack_sha256"))
     mx = max([v.get("injected_bytes", 0) for v in roles.values()] or [0])
-    note = " · 최대 주입 %dB (20KB 상한 존폐=결재 대기, 판정 제외)" % mx
+    note = " · 최대 주입 %dB (참고용 — 20KB 상한은 폐기, 기준=팩 원본 일치)" % mx
     if not roles: return NA, "역할별 측정 없음"
     if diff or d.get("new_file_count") != 0:
         return FAIL, "원본 불일치 %s · .new %s%s" % (diff or "-", d.get("new_file_count"), note)

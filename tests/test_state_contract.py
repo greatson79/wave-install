@@ -74,7 +74,7 @@ try {
         for entry in state["steps"].values():
             entry.update(status="passed", exit_code=0, error_id=None, observed={})
         state["steps"]["S07_INITIAL_FLEET"]["observed"] = {"fleet_started": True}
-        state["steps"]["S08_VERIFY"]["observed"] = {"max_injected_bytes": 10, "injection_measured": True}
+        state["steps"]["S08_VERIFY"]["observed"] = {"original_match": True, "new_file_count": 0}
         return state
 
     def test_passed_with_error_is_rejected_before_write(self):
@@ -99,11 +99,14 @@ try {
     def test_summary_is_nonblocking_and_reports_every_exception(self):
         mutations = ["clean", "error", "bypass_observed", "bypass_entry", "bypass_root",
                      "skipped", "unmeasured", "missing_measurement", "legacy_zero", "missing_step",
-                     "fleet_unmeasured", "fleet_missing", "nonzero_exit", "failed"]
+                     "fleet_unmeasured", "fleet_missing", "nonzero_exit", "failed", "original_mismatch", "pending_new", "string_zero"]
         for engine in ("bash", "powershell"):
             for mutation in mutations:
                 with self.subTest(engine=engine, mutation=mutation):
                     state = self.clean_state()
+                    if mutation == "original_mismatch": state["steps"]["S08_VERIFY"]["observed"]["original_match"] = False
+                    if mutation == "pending_new": state["steps"]["S08_VERIFY"]["observed"]["new_file_count"] = 1
+                    if mutation == "string_zero": state["steps"]["S08_VERIFY"]["observed"]["new_file_count"] = "0"
                     if mutation == "error": state["steps"]["S02_CLAUDE_LOGIN"]["error_id"] = "WT-S02-AUTH"
                     if mutation == "bypass_observed": state["steps"]["S02_CLAUDE_LOGIN"]["observed"]["TEST_SYNTHETIC_BYPASS"] = True
                     if mutation == "bypass_entry": state["steps"]["S02_CLAUDE_LOGIN"]["TEST_SYNTHETIC_BYPASS"] = True
@@ -130,39 +133,23 @@ try {
                     for entry in result["steps"].values():
                         self.assertFalse(entry["status"] == "passed" and entry.get("error_id"))
 
-    def test_s08_unmeasured_is_null_and_nonblocking(self):
-        for engine in ("bash", "powershell"):
-            for values in [(None, None), (None, 10), (0, 10), (20481, 10)]:
-                with self.subTest(engine=engine, values=values):
-                    doctor = {"identify_exit": 0, "seats": [{"injected_bytes": x} for x in values]}
-                    proc, state, _, _ = self.run_unit(engine, self.clean_state(),
-                        'step_s08; state_patch S08_VERIFY passed 0 "" "$STEP_OBSERVED"',
-                        "Run-S08; Update-Step 'S08_VERIFY' 'passed' 0 '' $StepObserved", doctor=doctor)
-                    if 20481 in values:
-                        self.assertNotEqual(proc.returncode, 0)
-                        continue
-                    self.assertEqual(proc.returncode, 0, proc.stderr)
-                    observed = state["steps"]["S08_VERIFY"]["observed"]
-                    measured = None not in values
-                    self.assertEqual(observed["injection_measured"], measured)
-                    self.assertEqual(observed["max_injected_bytes"], max(values) if measured else None)
-
     def test_doctor_producer_emits_null_not_fabricated_zero(self):
         for engine in ("bash", "powershell"):
             with self.subTest(engine=engine):
                 proc, _, _, _ = self.run_unit(engine, self.clean_state(), "", "", producer=True)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 doctor = json.loads(proc.stdout)
-                self.assertEqual(len(doctor["seats"]), 2)
+                self.assertEqual(len(doctor["seats"]), 3)
                 self.assertTrue(all(seat.get("injected_bytes") is None for seat in doctor["seats"]))
 
-    def test_bytes_contract_and_display_copies_are_preserved(self):
+    def test_original_contract_and_display_copies_are_preserved(self):
         steps = json.loads((ROOT / "steps.json").read_text())
         s08 = next(step for step in steps["steps"] if step["id"] == "S08_VERIFY")
-        condition = next(item for item in s08["pass"] if item["kind"] == "bytes_lte")
-        self.assertEqual(condition["max"], 20480)
-        self.assertEqual(condition["json_path"], "max_injected_bytes")
-        self.assertIn("미측정", s08["title"])
+        self.assertFalse(any(item['kind']=='bytes_lte' for item in s08['pass']))
+        self.assertNotIn('max_injected_bytes_per_seat',steps['tooling'])
+        conditions={v.get('json_path'):v.get('equals') for v in s08['pass']}
+        self.assertIs(conditions['steps.S08_VERIFY.observed.original_match'],True)
+        self.assertEqual(conditions['steps.S08_VERIFY.observed.new_file_count'],0)
         self.assertEqual((ROOT / "steps.json").read_bytes(), (ROOT / "site/steps.json").read_bytes())
 
 

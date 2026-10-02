@@ -904,14 +904,65 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
 
 function Set-S08Timeout([string]$Command, [int]$TimeoutMs, [string]$KillError = '') {
   $script:StepStatus = 'unmeasured'
-  $script:StepObserved = [ordered]@{ reason = 'timeout'; timed_out_command = $Command; timeout_ms = $TimeoutMs; identify_exit = $null; seats = $null; injection_measured = $false; max_injected_bytes = $null; kill_error = $KillError }
+  $script:StepObserved = [ordered]@{ reason = 'timeout'; timed_out_command = $Command; timeout_ms = $TimeoutMs; identify_exit = $null; seats = $null; original_match = $null; new_file_count = $null; kill_error = $KillError }
   Say "S08 $Command 시간 제한 ${TimeoutMs}ms 초과 — unmeasured로 기록하고 S09로 진행합니다."
 }
 
 function Set-S08CallFailure([string]$Command, $ExitCode, [string]$Detail) {
   $script:StepStatus = 'unmeasured'
-  $script:StepObserved = [ordered]@{ reason = 'call_failed'; command = $Command; command_exit = $ExitCode; detail = $Detail; identify_exit = $null; seats = $null; injection_measured = $false; max_injected_bytes = $null }
+  $script:StepObserved = [ordered]@{ reason = 'call_failed'; command = $Command; command_exit = $ExitCode; detail = $Detail; identify_exit = $null; seats = $null; original_match = $null; new_file_count = $null }
   Say "S08 $Command 확인 실패 — unmeasured로 기록하고 S09로 진행합니다: $Detail"
+}
+
+function Test-OriginalInjection {
+  $receiptPath = Join-Path $WaveHome 'verify\G3_inject.json'
+  if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $null }
+  foreach ($directory in @($PackHome, (Join-Path $PackHome 'directives'))) {
+    if ((Get-Item -LiteralPath $directory -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'G3 linked pack refused' }
+  }
+  $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+  $result = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('pack-manifest') 'g3-pack-manifest' 30000
+  if ($result.timed_out -or $result.exit_code -ne 0) { throw 'G3 앱 원본 manifest 조회 실패' }
+  $manifest = $result.stdout | ConvertFrom-Json
+  $paths = [ordered]@{ master = 'directives/MASTER_DIRECTIVE.md'; cso = 'directives/CSO_DIRECTIVE.md'; worker = 'directives/WORKER_DIRECTIVE.md' }
+  $rows = Get-StateField $receipt 'roles'
+  if ($null -eq $rows -or @($rows.PSObject.Properties).Count -ne 3) { throw 'G3 역할 증거는 master/cso/worker 각 1건이어야 합니다' }
+  $verified = [ordered]@{}
+  foreach ($role in $paths.Keys) {
+    $row = Get-StateField $rows $role
+    if ($null -eq $row) { throw "G3 역할 증거 누락: $role" }
+    $injectedHash = Get-StateField $row 'injected_sha256'
+    $packHash = Get-StateField $row 'pack_sha256'
+    $injectedBytes = Get-StateField $row 'injected_bytes'
+    $packBytes = Get-StateField $row 'pack_bytes'
+    if ($injectedHash -isnot [string] -or $packHash -isnot [string] -or $injectedHash -notmatch '^[a-fA-F0-9]{64}$' -or $packHash -notmatch '^[a-fA-F0-9]{64}$' -or $injectedHash.ToLowerInvariant() -cne $packHash.ToLowerInvariant()) { throw "G3 주입/팩 지문 불일치: $role" }
+    if (-not (Test-ByteCount $injectedBytes) -or -not (Test-ByteCount $packBytes) -or $packBytes -le 0 -or $injectedBytes -ne $packBytes) { throw "G3 주입/팩 바이트 불일치: $role" }
+    $expected = Get-StateField (Get-StateField $manifest 'files') $paths[$role]
+    if ($expected -isnot [string] -or $expected -notmatch '^[a-fA-F0-9]{64}$' -or $expected.ToLowerInvariant() -cne $packHash.ToLowerInvariant()) { throw "G3 앱 원본/영수증 지문 불일치: $role" }
+    $target = Join-Path $PackHome $paths[$role]
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "G3 설치 지침 없음: $role" }
+    $file = Get-Item -LiteralPath $target -Force -ErrorAction Stop
+    if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -ne $packBytes -or (Get-ArtifactHash $target) -cne $packHash.ToLowerInvariant()) { throw "G3 설치 팩/영수증 불일치: $role" }
+    $snapshot = Join-Path (Split-Path -Parent $receiptPath) ('hook_' + $role + '.out')
+    if (-not (Test-Path -LiteralPath $snapshot -PathType Leaf)) { throw "G3 실제 SessionStart stdout 없음: $role" }
+    $stdoutBytes = [IO.File]::ReadAllBytes($snapshot)
+    $directiveBytes = [IO.File]::ReadAllBytes($target)
+    # 디코딩·줄바꿈 변환 없이 원본 본문 바이트 포함을 검사한다.
+    $found = $false
+    for ($offset = 0; $offset -le ($stdoutBytes.Length - $directiveBytes.Length); $offset++) {
+      if ($stdoutBytes[$offset] -ne $directiveBytes[0]) { continue }
+      $equal = $true
+      for ($index = 1; $index -lt $directiveBytes.Length; $index++) {
+        if ($stdoutBytes[$offset + $index] -ne $directiveBytes[$index]) { $equal = $false; break }
+      }
+      if ($equal) { $found = $true; break }
+    }
+    if (-not $found) { throw "G3 실제 SessionStart stdout에 원본 지침 바이트 없음: $role" }
+    $verified[$role] = [ordered]@{ role = $role; directive = $paths[$role]; injected_sha256 = $injectedHash; pack_sha256 = $packHash; injected_bytes = $injectedBytes; pack_bytes = $packBytes; stdout_path = $snapshot; directive_in_stdout = $true }
+  }
+  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -Force -ErrorAction Stop)
+  if ($pending.Count -ne 0) { throw "G3 병합 대기 .new 파일 $($pending.Count)건" }
+  return [ordered]@{ original_match = $true; new_file_count = 0; roles = $verified; source = 'hook-stdout+receipt-hashes+app-manifest+installed-pack'; receipt_path = $receiptPath }
 }
 
 function Run-S08 {
@@ -920,12 +971,30 @@ function Run-S08 {
   catch { Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
   if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
   if ($identify.exit_code -ne 0) { Set-S08CallFailure 'cys identify' $identify.exit_code $identify.stderr; return }
-  try { $status = Get-LiveFleet }
+  try { $result = Invoke-BoundedCheck $cys @('status', '--json') 'fleet-status' 5000 }
   catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
-  $status | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WaveHome 'verify\status.json') -Encoding UTF8
-  if (-not (Test-AwakenedFleet $status)) { Set-S08CallFailure 'cys status --json' $null '마스터·자식 각성 증거 없음'; return }
-  # 각성 표지는 주입 바이트 실측을 대체하지 않는다. 미측정은 null로 유지한다.
-  $script:StepObserved = [ordered]@{ identify_exit = 0; seats = @($status.surfaces | Where-Object { $_.exited -eq $false }).Count; fleet_verified = $true; injection_measured = $false; max_injected_bytes = $null }
+  if ($result.timed_out) { Set-S08Timeout 'cys status --json' $result.timeout_ms $result.kill_error; return }
+  if ($result.exit_code -ne 0) { Set-S08CallFailure 'cys status --json' $result.exit_code $result.stderr; return }
+  try {
+    $status = $result.stdout | ConvertFrom-Json
+    $verify = Join-Path $WaveHome 'verify'
+    New-Item -ItemType Directory -Force -Path $verify | Out-Null
+    Set-Content -LiteralPath (Join-Path $verify 'status.json') -Value ($status | ConvertTo-Json -Depth 20) -Encoding UTF8
+    if (-not (Test-AwakenedFleet $status)) { throw '마스터·CSO·worker 각성 증거 없음' }
+  } catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
+  try { $evidence = Test-OriginalInjection }
+  catch {
+    $script:StepObserved = [ordered]@{ original_match = $false; new_file_count = $null; source = 'hook-stdout+receipt-hashes+app-manifest+installed-pack'; reason = $_.Exception.Message }
+    throw
+  }
+  if ($null -eq $evidence) {
+    $script:StepStatus = 'unmeasured'
+    $script:StepObserved = [ordered]@{ original_match = $null; new_file_count = $null; reason = 'G3_receipt_missing'; source = 'verify/G3_inject.json' }
+    return
+  }
+  $script:StepObserved = $evidence
+  $script:StepObserved['identify_exit'] = 0
+  $script:StepObserved['fleet_verified'] = $true
 }
 
 function Test-SyntheticBypass([object]$Value) {
@@ -970,10 +1039,10 @@ function Summarize-State([bool]$Final) {
       $fleet = Get-StateField $observed "fleet_started"
       if ($step.id -eq "S07_INITIAL_FLEET" -and ($fleet -isnot [bool] -or -not $fleet)) { $reasons += "fleet_unmeasured" }
       if ($step.id -eq "S08_VERIFY") {
-        $measured = Get-StateField $observed "injection_measured"
-        $value = Get-StateField $observed "max_injected_bytes"
-        if ($measured -isnot [bool] -or -not $measured -or -not (Test-ByteCount $value)) { $reasons += "injection_unmeasured" }
-        elseif ($value -gt $Config.tooling.max_injected_bytes_per_seat) { $reasons += "injection_limit_exceeded" }
+        $original = Get-StateField $observed 'original_match'
+        $newCount = Get-StateField $observed 'new_file_count'
+        if ($original -isnot [bool] -or -not $original) { $reasons += 'original_injection_unverified' }
+        if (-not (Test-ByteCount $newCount) -or $newCount -ne 0) { $reasons += 'pending_new_unverified' }
       }
     }
     foreach ($reason in $reasons) { $exceptions += [ordered]@{ step_id = $step.id; reason = $reason } }
@@ -995,7 +1064,7 @@ function Mark-RequiredComplete {
 function Run-S09 {
   $start = Join-Path $WaveHome "START-HERE.md"
   $message = if ($State.required_steps_passed) { "필수 단계 검증을 통과했습니다." } else { "설치 절차를 마무리했습니다. 예외·미검증 항목이 있으므로 전체 검증 완료가 아닙니다." }
-  @("# Wave Terminal 시작하기", "", $message, "", "install-state.json의 required_steps_passed·exceptions와 install.log를 확인하세요. 주입량 미측정은 0바이트 통과를 뜻하지 않습니다.") | Set-Content -LiteralPath $start -Encoding UTF8
+  @("# Wave Terminal 시작하기", "", $message, "", "install-state.json의 required_steps_passed·exceptions와 install.log를 확인하세요. 주입 원본 대조 영수증이 없거나 병합 대기 파일이 있으면 검증 완료가 아닙니다.") | Set-Content -LiteralPath $start -Encoding UTF8
   if (-not (Test-Path -LiteralPath $start)) { throw "START-HERE 없음" }
   $script:StepObserved = [ordered]@{ required_steps_passed = $State.required_steps_passed; start_here = $true; silent_completion = $false }
 }

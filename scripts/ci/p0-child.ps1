@@ -33,4 +33,5 @@ try {
   if (-not(Test-Path $python)) { throw 'Bundled Python missing; remaining measurements unavailable' }
   & $python (Join-Path $PSScriptRoot 'p0-measure.py') --app $dir --evidence $Evidence
   if ($LASTEXITCODE -ne 0) { throw 'Measurement script failed' }
+  @{ exit_code=0; source='child explicit completion marker' } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'child-result.json') -Encoding UTF8
 } finally { Stop-Transcript | Out-Null }

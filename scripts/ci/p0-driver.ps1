@@ -28,4 +28,6 @@ Get-CimInstance Win32_Process | ForEach-Object {
     & taskkill /PID $_.ProcessId /T /F 2>&1 | Out-File (Join-Path $out 'cleanup.log') -Append
   }
 }
-if (-not $finished -or $p.ExitCode -ne 0) { throw 'Measurement harness incomplete; inspect artifacts, not product PASS/FAIL' }
+$childResult = Join-Path $out 'child-result.json'
+if (-not $finished -or -not (Test-Path $childResult)) { throw 'Measurement child completion evidence missing' }
+if ((Get-Content $childResult -Raw | ConvertFrom-Json).exit_code -ne 0) { throw 'Measurement child failed' }

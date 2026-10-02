@@ -2,6 +2,7 @@
 #  win-child.ps1 -Mode main|upgrade -RcJson <rc-release.json> -Evidence <폴더> -Repo <체크아웃> -Py <러너 python.exe>
 [CmdletBinding()] param([string]$Mode, [string]$RcJson, [string]$Evidence, [string]$Repo, [string]$Py)
 $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'
+$env:WAVE_NO_PROGRESS = '1'   # 실서버(waveainetworks.com) 진행 신호 전송 0 — 새 계정 환경은 러너 env 를 물려받지 않는다
 Start-Transcript -Path (Join-Path $Evidence 'child.log') -Force | Out-Null
 $rc = Join-Path $Repo 'tests\rc'; $h = $env:USERPROFILE
 $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $admin = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

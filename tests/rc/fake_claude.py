@@ -36,7 +36,15 @@ if role == "master":
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)
     open(os.path.join(rc, "bootstrap.rc"), "w").write(str(r.returncode))
 sys.stdout.write("\n❯ \n"); sys.stdout.flush()  # agents.json ready_marker — launch-agent 가 이 표지를 볼 때까지 대기한다
-if os.name != "nt":  # 8차 진단: cysd 가 보는 자기 프로세스 명령줄(agent_alive 매칭 근거) 원문
-    time.sleep(8)
-    open(os.path.join(rc, "ps_claude_%s.txt" % role), "w", encoding="utf-8").write(subprocess.run("ps -axo pid,ppid,command | grep -i '[c]laude' | head -20", shell=True, capture_output=True, text=True).stdout)
+if os.name != "nt":
+    # 9차 확정(ps_claude_*.txt + sysinfo 0.33.1 소스): cysd 워치독은 refresh_processes() 를 쓰는데 이 호출은 명령줄(cmd)을 갱신하지 않는다
+    # → 프로세스 이름(comm)으로만 에이전트를 찾는다. python 스크립트는 comm 이 "Python" 이라 ps 에는 …/claude 가 보여도 agent_alive=False.
+    # 해법: 마지막에 파일 이름이 claude 인 네이티브 실행파일(sleep 복사본)로 exec — comm 이 "claude" 가 된다.
+    # 해법: 파일 이름이 claude 인 **네이티브** 실행파일로 exec — comm 이 "claude" 가 된다. (복사한 /bin/sleep 은 arm64e 플랫폼 바이너리라 SIGKILL(137),
+    # 심링크는 커널이 실제 파일 이름(python3.12)을 comm 으로 써서 안 된다 → 러너에 있는 clang 으로 아주 작은 대기 프로그램을 claude 라는 이름으로 컴파일)
+    _bin = os.path.join(rc, "claude"); _src = os.path.join(rc, "claude_idle.c")
+    open(_src, "w").write("#include <unistd.h>\nint main(void){for(;;)sleep(3600);}\n")
+    if subprocess.run(["cc", "-O0", "-o", _bin, _src], capture_output=True).returncode == 0:
+        subprocess.Popen("sleep 8; ps -axo pid,ppid,ucomm,command | grep -i '[c]laude' | head -20 > %s" % os.path.join(rc, "ps_claude_%s.txt" % role), shell=True, start_new_session=True)
+        sys.stdout.flush(); os.execv(_bin, [_bin])
 while True: time.sleep(3600)

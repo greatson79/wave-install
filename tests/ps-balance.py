@@ -5,6 +5,7 @@ Not a parser: string interpolation is opaque. Native PS 5.1/7 parsing remains
 required in CI. Both quoted strings may span lines; unclosed quotes/comments fail.
 """
 from pathlib import Path
+import subprocess
 import sys
 
 PAIRS = {')': '(', '}': '{', ']': '['}
@@ -94,12 +95,19 @@ def check(path):
     return errors
 
 
+def shipped_ps1():
+    """Every tracked .ps1 outside tests/ — a hand-kept list missed lib/install-help.ps1 once."""
+    out = subprocess.run(['git', 'ls-files', '*.ps1'], capture_output=True, text=True, check=True).stdout
+    return [p for p in out.split() if not p.startswith('tests/')]
+
+
 def main():
     if len(sys.argv) < 2:
-        print('usage: ps-balance.py file.ps1 [...]', file=sys.stderr)
+        print('usage: ps-balance.py --all | file.ps1 [...]', file=sys.stderr)
         return 2
+    paths = shipped_ps1() if sys.argv[1:] == ['--all'] else sys.argv[1:]
     errors = []
-    for path in sys.argv[1:]:
+    for path in paths:
         try:
             problems = check_bom(path) + check(path)
         except (OSError, UnicodeError) as exc:

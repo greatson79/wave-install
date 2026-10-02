@@ -11,7 +11,7 @@ import sys
 import time
 # Windows embeddable Python ._pth may omit the script directory. Resolve our sibling explicitly.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from process_identity import ProcessObserver, parent_chain, windows_snapshot
+from process_identity import ProcessObserver, parent_chain, windows_snapshot, claim_probe_scripts
 
 p = argparse.ArgumentParser()
 p.add_argument('--app', required=True)
@@ -46,6 +46,8 @@ def run(label, command, timeout=60, stdin=b'', observe_identity=False):
     try:
         with (out/(label+'.stdout')).open('wb') as stdout_file, (out/(label+'.stderr')).open('wb') as stderr_file:
             proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=stdout_file, stderr=stderr_file)
+            if observer:
+                observer.set_root(proc.pid)
             try:
                 proc.communicate(stdin, timeout=timeout)
                 result.update(exit_code=proc.returncode, timed_out=False, state='completed')
@@ -61,7 +63,7 @@ def run(label, command, timeout=60, stdin=b'', observe_identity=False):
     if observer:
         observed = observer.finish(proc.pid if proc else None)
         observed['inherited_environment'] = {key: os.environ.get(key) for key in
-                                             ('CYS_SURFACE_ID', 'AITERM_SURFACE_ID', 'CYS_SOCKET', 'CYS_ROLE')}
+                                             ('CYS_SURFACE_ID', 'AITERM_SURFACE_ID', 'CYS_SOCKET', 'AITERM_SOCKET', 'CYS_ROLE')}
         observed['command'] = list(map(str, command))
         save(label+'-identity.json', observed)
     result['elapsed_seconds'] = round(time.time()-started, 3)
@@ -73,7 +75,7 @@ if a.surface_probes:
     # This process is a real PTY descendant; daemon caller identity comes from its ancestry.
     identity = {'pid': os.getpid(), 'parent_pid': os.getppid(),
                 'environment': {key: os.environ.get(key) for key in
-                                ('CYS_SURFACE_ID', 'AITERM_SURFACE_ID', 'CYS_SOCKET', 'CYS_ROLE')},
+                                ('CYS_SURFACE_ID', 'AITERM_SURFACE_ID', 'CYS_SOCKET', 'AITERM_SOCKET', 'CYS_ROLE')},
                 'collection': 'Actual PTY descendant; environment captured without overriding identity'}
     try:
         identity['parent_chain'] = parent_chain(os.getpid(), windows_snapshot())
@@ -86,6 +88,33 @@ if a.surface_probes:
         bash = shutil.which('bash')
         if bash:
             run('session-start-master', [bash, str(pack/'hooks/session-start.sh')], 60, b'{}\n', observe_identity=True)
+            # Keep the unmodified hook baseline first, then compare Bash invocation forms.
+            path_probe = run('bash-cys-path', [bash, '-c', 'command -v cys'], 15)
+            if path_probe.get('exit_code') == 0:
+                bash_cys = (out/'bash-cys-path.stdout').read_text(encoding='utf-8', errors='replace').strip()
+                run('bash-cys-details', [bash, '-c', 'p=$(command -v cys) || exit; printf "resolved=%s\\n" "$p"; if command -v cygpath >/dev/null 2>&1; then cygpath -w "$p"; fi; if command -v sha256sum >/dev/null 2>&1; then sha256sum "$p"; fi'], 15)
+                save('direct-cys-binary.json', {'path': cys, 'sha256': hashlib.sha256(Path(cys).read_bytes()).hexdigest(),
+                                              'comparison': 'Compare bash-cys-details.stdout; unresolved path/hash equality remains unverified'})
+                timeout_probe = run('bash-timeout-path', [bash, '-c', 'command -v timeout'], 15)
+                bash_timeout = ((out/'bash-timeout-path.stdout').read_text(encoding='utf-8', errors='replace').strip()
+                                if timeout_probe.get('exit_code') == 0 else None)
+                if bash_cys and '\n' not in bash_cys:
+                    for label, script in claim_probe_scripts(bash_cys, bash_timeout).items():
+                        run(label, [bash, '-c', script], 15, observe_identity=True)
+                    if not bash_timeout:
+                        save('bash-timeout-unmeasured.json', {'reason': 'This Bash has no timeout command'})
+                else:
+                    save('bash-probes-unmeasured.json', {'reason': 'command -v cys did not return one path'})
+            else:
+                save('bash-probes-unmeasured.json', {'reason': 'This Bash could not resolve cys'})
+            events = run('claim-denied-events', [cys, 'events', '--after-seq', '0', '--name', 'role.claim_denied'], 3)
+            save('claim-denied-events-collection.json', {
+                'expected_timeout': True, 'timed_out': events.get('timed_out'),
+                'stdout_bytes': events.get('stdout_bytes'),
+                'note': 'Bounded stream capture. Timeout is the intended stop, not a successful probe verdict. Raw events may include earlier claims; correlate timestamps and caller_pid.'})
+
+        else:
+            save('hook-unmeasured.json', {'reason': 'Bash unavailable; original hook and Bash comparison probes were not executed'})
     else:
         save('hook-unmeasured.json', {'reason':'Real-surface claim failed; directive bytes unavailable'})
     run('phase-2-ping', [cys, 'ping'], 15)

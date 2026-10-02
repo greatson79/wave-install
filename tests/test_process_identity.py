@@ -1,8 +1,10 @@
 import importlib.util
+import os
 from pathlib import Path
 import unittest
 import subprocess
 import sys
+import tempfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +38,8 @@ class IdentityEvidenceTests(unittest.TestCase):
             result = observer.finish(8)
         self.assertEqual([r['caller_pid'] for r in result['cys_processes']], [7])
         self.assertEqual(result['state'],'observed')
+        self.assertEqual([r['caller_pid'] for r in result['unassociated_cys_processes']], [9])
+        self.assertIn('no relationship', result['unassociated_note'])
 
     def test_missed_short_lived_caller_is_unmeasured(self):
         observer = m.ProcessObserver()
@@ -49,6 +53,57 @@ class IdentityEvidenceTests(unittest.TestCase):
         with patch.object(m,'windows_snapshot',side_effect=OSError('snapshot denied')):
             observer.collect()
         self.assertIn('snapshot denied',observer.errors[0])
+
+    def test_root_presence_snapshots_keep_missing_and_seen_states(self):
+        observer = m.ProcessObserver()
+        observer.set_root(20)
+        observer.record_snapshot({})
+        observer.record_snapshot({20: dict(pid=20,parent_pid=1,executable='bash.exe')})
+        observer.record_snapshot({20: dict(pid=20,parent_pid=1,executable='bash.exe')})
+        observer.record_snapshot({})
+        with patch.object(observer.thread,'join'):
+            result = observer.finish(20)
+        self.assertEqual(result['snapshot_count'],4)
+        self.assertEqual(result['root_sample_count'],4)
+        self.assertEqual(result['root_seen_count'],2)
+        self.assertEqual([r['present'] for r in result['root_snapshots']], [False,True,False])
+        self.assertEqual(result['root_snapshots'][1]['parent_chain'][0]['pid'],20)
+        self.assertEqual(result['state'],'unmeasured')
+
+    def test_unassociated_only_observation_is_not_promoted_to_associated(self):
+        observer = m.ProcessObserver()
+        observer.record_snapshot({7:dict(pid=7,parent_pid=9,executable='cys.exe')})
+        with patch.object(observer.thread,'join'):
+            result = observer.finish(20)
+        self.assertEqual(result['state'],'unmeasured')
+        self.assertEqual(len(result['unassociated_cys_processes']),1)
+        self.assertEqual(result['root_sample_count'],0)
+
+    def test_bash_probes_preserve_quoted_path_arguments_and_failure_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "space and 'quote"
+            root.mkdir()
+            cys = root / 'cys-probe.sh'
+            cys.write_text('#!/bin/sh\nprintf "%s:%s\\n" "$1" "$2"\necho denied >&2\nexit 7\n', newline='\n')
+            cys.chmod(0o755)
+            timeout = root / 'timeout-probe.sh'
+            timeout.write_text('#!/bin/sh\nshift\nexec "$@"\n', newline='\n')
+            timeout.chmod(0o755)
+            def bash_path(path):
+                if os.name != 'nt':
+                    return str(path)
+                converted = subprocess.run(['bash', '-c', 'cygpath -u "$1"', '_', str(path)],
+                                           capture_output=True, text=True)
+                self.assertEqual(converted.returncode, 0, converted.stderr)
+                self.assertTrue(converted.stdout.strip(), 'cygpath returned an empty path')
+                return converted.stdout.strip()
+            cys_path, timeout_path = bash_path(cys), bash_path(timeout)
+            for label, script in m.claim_probe_scripts(cys_path, timeout_path).items():
+                result = subprocess.run(['bash','-c',script],capture_output=True,text=True)
+                self.assertEqual(result.returncode,7,(label,result.stderr))
+                self.assertIn('claim-role:master',result.stdout)
+                self.assertIn('denied',result.stderr if label.endswith('direct') else result.stdout)
+            self.assertNotIn('bash-claim-timeout-substitution',m.claim_probe_scripts(cys_path))
 
 if __name__ == '__main__':
     unittest.main()

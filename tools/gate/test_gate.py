@@ -11,15 +11,28 @@ def put(base, name, doc, raw=True):
     (base / name).write_text(json.dumps(doc), encoding="utf-8")
 
 
+SCAN_FILES = {"boot-last.json": "{}", "bootstrap.out": "ok", "hook_master.out": "MASTER 지침"}
+
+
+def g4_scan_targets(b):
+    """G4 raw 에 부트·첫 출력 검사 대상(boot-last.json·bootstrap 출력·훅 stdout)을 해시와 함께 넣는다."""
+    doc = json.loads((b / "G4_boot.json").read_text())
+    for n, c in SCAN_FILES.items():
+        (b / n).write_text(c, encoding="utf-8")
+        doc["raw"].append({"path": n, "sha256": hashlib.sha256(c.encode()).hexdigest()})
+    (b / "G4_boot.json").write_text(json.dumps(doc), encoding="utf-8")
+
+
 def os_set(b):
     put(b, "G1_state.json", {"status": "complete", "required_steps_passed": True, "steps": {"S%02d" % i: {"status": "passed"} for i in range(10)}}, raw=False)
     put(b, "G2_preflight.json", {"checks": [{"id": "C20", "status": "WARN"}, {"id": "C01", "status": "PASS"}]}, raw=False)
     put(b, "G3_inject.json", {"new_file_count": 0, "roles": {r: {"injected_sha256": "a" * 64, "pack_sha256": "a" * 64, "injected_bytes": 30000, "pack_bytes": 30000} for r in ("master", "cso", "worker")}})
     put(b, "G4_boot.json", {"steps": [{"n": n, "exit": 0} for n in range(1, 6)], "seats": [{"role": r, "alive": True} for r in ("master", "cso", "worker")]})
+    g4_scan_targets(b)
     for g, extra in (("G5", ("G5_meta.json", {"from_version": "0.2.3"})), ("G6", ("G6_claude_untouched.json", {"before_sha256": "x", "after_sha256": "x"}))):
         s = b / g
         shutil.copy(b / "G2_preflight.json", s / "G2_preflight.json") if s.mkdir() is None else None
-        for n in ("G3_inject.json", "G4_boot.json"):
+        for n in ("G3_inject.json", "G4_boot.json", *SCAN_FILES):
             shutil.copy(b / n, s / n)
             for f in b.glob(n + ".raw"): shutil.copy(f, s / f.name)
         put(s, extra[0], dict(extra[1]))
@@ -81,6 +94,33 @@ class T(unittest.TestCase):
         self.assertEqual(g3(h(roles=bad)), gate.FAIL)
         self.assertEqual(g3(h(new_file_count=1)), gate.FAIL)
         self.assertEqual(g3(good), gate.PASS)
+
+    def test_g4_fails_when_boot_output_asks_user_to_install_or_approve(self):
+        b = self.d / "mac"
+        (b / "hook_master.out").write_text("선택 도구를 설치할까요?", encoding="utf-8")
+        doc = json.loads((b / "G4_boot.json").read_text())
+        for r in doc["raw"]:
+            if r["path"] == "hook_master.out": r["sha256"] = hashlib.sha256("선택 도구를 설치할까요?".encode()).hexdigest()
+        (b / "G4_boot.json").write_text(json.dumps(doc))
+        v = gate.g4(b)
+        self.assertEqual(v[0], gate.FAIL); self.assertIn("설치할까요", v[1])
+
+    def test_g4_unmeasured_without_scan_targets(self):
+        b = self.d / "mac"; doc = json.loads((b / "G4_boot.json").read_text())
+        doc["raw"] = [r for r in doc["raw"] if r["path"] != "bootstrap.out"]; (b / "G4_boot.json").write_text(json.dumps(doc))
+        self.assertEqual(gate.g4(b)[0], gate.NA)
+
+    def test_g2_full_ids_upgrade_only_and_blocker(self):
+        c = self.d / "common"; b = self.d / "mac"
+        (c / "warn_allowlist.json").write_text(json.dumps({"mac": ["C13.claude-md"], "upgrade_only": {"mac": ["C62.pack-heal-ledger"]}}))
+        def run(folder, ids):
+            (folder / "G2_preflight.json").write_text(json.dumps({"checks": [{"id": i, "status": "WARN"} for i in ids]}))
+            return gate.g2(folder, c)
+        self.assertEqual(run(b, ["C13.claude-md"])[0], gate.PASS)
+        self.assertEqual(run(b, ["C20"])[0], gate.FAIL)  # 짧은 ID 는 전체 ID 와 다르다
+        self.assertEqual(run(b, ["C62.pack-heal-ledger"])[0], gate.FAIL)  # 업그레이드 경로 밖에서는 불허
+        self.assertEqual(run(b / "G5", ["C62.pack-heal-ledger"])[0], gate.PASS)
+        v = run(b, ["C60.gate-wiring"]); self.assertEqual(v[0], gate.FAIL); self.assertIn("릴리스 차단", v[1])
 
     def test_g1_ci_scope(self):
         f = self.d / "mac" / "G1_state.json"; d = json.loads(f.read_text())

@@ -7,6 +7,12 @@ import hashlib, json, pathlib, re, sys
 
 PASS, FAIL, NA = "PASS", "FAIL", "미측정"
 ROLES = {"master", "cso", "worker"}
+APPROVAL = "승인 테오 잠정·주인님 확인 대기"
+RELEASE_BLOCKERS = {"C60": "skillscan 미승인 8건 — 허용 아님 · 별도 릴리스 차단 항목(테오 0437)"}
+# 허용 WARN 이 사용자에게 「설치할까요/승인해 주세요」류 질문을 만들면 FAIL (G4-CI 결정론 검사 · 대상 = javis_bootstrap 출력 · boot-last.json · 훅 stdout)
+# 좁게 잡는다: 지침 본문(에이전트에게 하는 말)의 「승인」 일반어를 오탐하지 않도록 사용자에게 묻는 문형만.
+QUESTION_PATTERNS = ("설치할까요", "설치하시겠", "설치해도 되", "승인해 주세요", "승인해주세요", "허용해 주세요", "허용하시겠", "진행하시겠", "진행할까요",
+                     "동의하십니까", "동의해 주세요", "(y/n)", "[y/N]", "[Y/n]", "(Y/n)")
 D1_IDS = {"C20", "C21", "C24"}  # 테오 0140 잠정: NotebookLM·harness-creator·korean-law-mcp = 제품 기준 경고(판정만 · 지침 불변)
 
 
@@ -70,11 +76,17 @@ def g2(b, c=None):
     allow = (c / "warn_allowlist.json") if c else None
     if not allow or not allow.is_file():
         return NA, "FAIL 0 · WARN %d 이지만 허용 WARN 목록(common/warn_allowlist.json) 없음" % len(warns)
-    ok = set(load(allow).get(b.name if b.name in ("mac", "win") else b.parent.name, []))
+    data = load(allow); osk = b.name if b.name in ("mac", "win") else b.parent.name
+    ok = set(data.get(osk, []))
+    if b.name == "G5": ok |= set(data.get("upgrade_only", {}).get(osk, []))  # C62 는 업그레이드 경로 한정(테오 0437)
     new = sorted(set(warns) - ok)
-    d1 = sorted(set(warns) & D1_IDS)
+    d1 = sorted(w for w in warns if w.split(".")[0] in D1_IDS)
     tag = " · D1 잠정(테오 대결 · 주인님 확인 대기): %s 제품 기준 경고" % ",".join(d1) if d1 else ""
-    return (FAIL, "새 WARN %d: %s%s" % (len(new), ",".join(new), tag)) if new else (PASS, "FAIL 0 · WARN %d 전부 허용 목록 안%s" % (len(warns), tag))
+    blk = [w for w in new if w.split(".")[0] in RELEASE_BLOCKERS]
+    if new:
+        note = "".join(" · %s: %s" % (w, RELEASE_BLOCKERS[w.split(".")[0]]) for w in blk)
+        return FAIL, "새 WARN %d: %s%s%s" % (len(new), ",".join(new), note, tag)
+    return PASS, "FAIL 0 · WARN %d 전부 허용 목록 안 (%s)%s" % (len(warns), APPROVAL, tag)
 
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -118,7 +130,16 @@ def g4(b, c=None):
     rev = sorted(r for r in live if r.startswith("reviewer"))
     if live - set(rev) != ROLES or rev:
         return FAIL, "패인 %s · 리뷰어 %s (기대: master·cso·worker + 리뷰어 0)" % (sorted(live - set(rev)), rev or 0)
-    return PASS, "①~⑤ exit 0 · 패인 master·cso·worker · 리뷰어 0"
+    names = [r["path"] for r in d.get("raw", [])]
+    tg = [n for n in names if n == "boot-last.json" or n.startswith("bootstrap.") or (n.startswith("hook_") and n.endswith(".out"))]
+    if not ("boot-last.json" in tg and any(n.startswith("bootstrap.") for n in tg) and any(n.startswith("hook_") for n in tg)):
+        return NA, "부트·첫 출력 문자열 검사 대상(boot-last.json·bootstrap 출력·훅 stdout)이 증거에 없음"
+    hits = []
+    for n in tg:
+        t = (b / n).read_text(encoding="utf-8", errors="replace")
+        hits += ["%s:%s" % (n, q) for q in QUESTION_PATTERNS if q in t]
+    if hits: return FAIL, "사용자에게 설치·승인을 묻는 문구 검출: %s" % ", ".join(hits)
+    return PASS, "①~⑤ exit 0 · 패인 master·cso·worker · 리뷰어 0 · 설치·승인 질문 문구 0(%d파일)" % len(tg)
 
 
 def sub(b, name, extra):

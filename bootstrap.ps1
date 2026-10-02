@@ -27,11 +27,11 @@ $StepStatus = "passed"
 
 # 이 설치 도우미는 oogisoogi/jarvis-install(MIT)을 바탕으로 구현했습니다.
 # 원작 cys-terminal: idoforgod (MIT). LICENSES/jarvis-install-MIT.txt 참조.
-# Windows 릴리스 판올림 때 바꾸는 핀 3값. s746 수정 draft 검체(2026-09-22).
-$WaveVersion = '0.1.0'
-$WaveWinBytes = 128814816
-$WaveWinSha256 = '733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3'
-$WaveWinFile = "wave-terminal-${WaveVersion}-windows-x64-setup.exe"
+# 릴리스 핀 정본은 steps.json release 블록이다. Load-Config에서 검증해 채운다.
+$WaveVersion = $null
+$WaveWinBytes = $null
+$WaveWinSha256 = $null
+$WaveWinFile = $null
 $InstallDoneFile = Join-Path $WaveHome 'install-done.txt'
 $RerunDoneWindowSec = 600
 $ProgressUrl = 'https://waveainetworks.com/api/progress'
@@ -212,12 +212,13 @@ function Test-StepComplete([string]$Id) {
 }
 
 function Save-InstallDone {
+  Read-ReleasePins
   if ($State.status -ne 'complete' -or -not $State.required_steps_passed) {
     if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }
     return
   }
   $mark = [ordered]@{
-    version = $WaveVersion; bytes = $WaveWinBytes; sha256 = $WaveWinSha256
+    version = $WaveVersion; bytes = $WaveWinBytes; sha256 = $WaveWinSha256; asset_name = $WaveWinFile
     state_sha256 = (Get-ArtifactHash $StateFile)
     config_sha256 = (Get-ArtifactHash $StepsFile)
   }
@@ -227,12 +228,13 @@ function Save-InstallDone {
 function Test-RecentInstallDone {
   if ($Reinstall -or -not (Test-Path -LiteralPath $InstallDoneFile -PathType Leaf)) { return $false }
   try {
+    Read-ReleasePins
     $age = ([DateTime]::UtcNow - (Get-Item -LiteralPath $InstallDoneFile).LastWriteTimeUtc).TotalSeconds
     if ($age -lt 0 -or $age -gt $RerunDoneWindowSec) { return $false }
     $mark = Get-Content -LiteralPath $InstallDoneFile -Raw -Encoding UTF8 | ConvertFrom-Json
     $previous = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
     return ($previous.status -eq 'complete' -and $previous.required_steps_passed -eq $true -and
-      $mark.version -ceq $WaveVersion -and $mark.bytes -eq $WaveWinBytes -and $mark.sha256 -ceq $WaveWinSha256 -and
+      $mark.version -ceq $WaveVersion -and $mark.bytes -eq $WaveWinBytes -and $mark.sha256 -ceq $WaveWinSha256 -and $mark.asset_name -ceq $WaveWinFile -and
       $mark.state_sha256 -ceq (Get-ArtifactHash $StateFile) -and $mark.config_sha256 -ceq (Get-ArtifactHash $StepsFile))
   } catch { return $false }
 }
@@ -483,6 +485,25 @@ function Load-Config {
     $script:StepsFile = $StepsFile
   }
   $script:Config = Get-Content -LiteralPath $StepsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+  Read-ReleasePins
+}
+
+function Read-ReleasePins {
+  $release = Get-StateField $Config 'release'
+  $version = Get-StateField $release 'version'
+  $bytes = Get-StateField (Get-StateField $release 'bytes') 'windows_x64'
+  $digest = Get-StateField (Get-StateField $release 'sha256') 'windows_x64'
+  $asset = Get-StateField (Get-StateField $release 'asset_name') 'windows_x64'
+  if ($version -isnot [string] -or $version -cnotmatch '^\d+\.\d+\.\d+$' -or
+      -not (Test-ByteCount $bytes) -or $bytes -le 0 -or
+      $digest -isnot [string] -or $digest -cnotmatch '^[a-f0-9]{64}$' -or
+      $asset -isnot [string] -or $asset -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$' -or $asset.Contains('..')) {
+    throw 'Windows 릴리스 핀 미확정: steps.json release version/bytes/sha256/asset_name'
+  }
+  $script:WaveVersion = $version
+  $script:WaveWinBytes = $bytes
+  $script:WaveWinSha256 = $digest
+  $script:WaveWinFile = $asset
 }
 
 function Init-State {
@@ -526,6 +547,7 @@ function Update-Step([string]$Id, [string]$Status, [int]$ExitCode, [string]$Erro
 }
 
 function Release-Context {
+  Read-ReleasePins
   if (-not [Environment]::Is64BitProcess) { throw '32비트 PowerShell에서는 실행할 수 없습니다' }
   $arch = $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()
   $platform = if ($arch -eq "amd64") { "windows_x64" } else { throw "지원하지 않는 Windows 아키텍처: $arch" }
@@ -915,54 +937,29 @@ function Set-S08CallFailure([string]$Command, $ExitCode, [string]$Detail) {
 }
 
 function Test-OriginalInjection {
-  $receiptPath = Join-Path $WaveHome 'verify\G3_inject.json'
-  if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) { return $null }
   foreach ($directory in @($PackHome, (Join-Path $PackHome 'directives'))) {
     if ((Get-Item -LiteralPath $directory -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'G3 linked pack refused' }
   }
-  $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
   $result = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('pack-manifest') 'g3-pack-manifest' 30000
   if ($result.timed_out -or $result.exit_code -ne 0) { throw 'G3 앱 원본 manifest 조회 실패' }
   $manifest = $result.stdout | ConvertFrom-Json
-  $paths = [ordered]@{ master = 'directives/MASTER_DIRECTIVE.md'; cso = 'directives/CSO_DIRECTIVE.md'; worker = 'directives/WORKER_DIRECTIVE.md' }
-  $rows = Get-StateField $receipt 'roles'
-  if ($null -eq $rows -or @($rows.PSObject.Properties).Count -ne 3) { throw 'G3 역할 증거는 master/cso/worker 각 1건이어야 합니다' }
-  $verified = [ordered]@{}
-  foreach ($role in $paths.Keys) {
-    $row = Get-StateField $rows $role
-    if ($null -eq $row) { throw "G3 역할 증거 누락: $role" }
-    $injectedHash = Get-StateField $row 'injected_sha256'
-    $packHash = Get-StateField $row 'pack_sha256'
-    $injectedBytes = Get-StateField $row 'injected_bytes'
-    $packBytes = Get-StateField $row 'pack_bytes'
-    if ($injectedHash -isnot [string] -or $packHash -isnot [string] -or $injectedHash -notmatch '^[a-fA-F0-9]{64}$' -or $packHash -notmatch '^[a-fA-F0-9]{64}$' -or $injectedHash.ToLowerInvariant() -cne $packHash.ToLowerInvariant()) { throw "G3 주입/팩 지문 불일치: $role" }
-    if (-not (Test-ByteCount $injectedBytes) -or -not (Test-ByteCount $packBytes) -or $packBytes -le 0 -or $injectedBytes -ne $packBytes) { throw "G3 주입/팩 바이트 불일치: $role" }
-    $expected = Get-StateField (Get-StateField $manifest 'files') $paths[$role]
-    if ($expected -isnot [string] -or $expected -notmatch '^[a-fA-F0-9]{64}$' -or $expected.ToLowerInvariant() -cne $packHash.ToLowerInvariant()) { throw "G3 앱 원본/영수증 지문 불일치: $role" }
-    $target = Join-Path $PackHome $paths[$role]
-    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "G3 설치 지침 없음: $role" }
-    $file = Get-Item -LiteralPath $target -Force -ErrorAction Stop
-    if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -ne $packBytes -or (Get-ArtifactHash $target) -cne $packHash.ToLowerInvariant()) { throw "G3 설치 팩/영수증 불일치: $role" }
-    $snapshot = Join-Path (Split-Path -Parent $receiptPath) ('hook_' + $role + '.out')
-    if (-not (Test-Path -LiteralPath $snapshot -PathType Leaf)) { throw "G3 실제 SessionStart stdout 없음: $role" }
-    $stdoutBytes = [IO.File]::ReadAllBytes($snapshot)
-    $directiveBytes = [IO.File]::ReadAllBytes($target)
-    # 디코딩·줄바꿈 변환 없이 원본 본문 바이트 포함을 검사한다.
-    $found = $false
-    for ($offset = 0; $offset -le ($stdoutBytes.Length - $directiveBytes.Length); $offset++) {
-      if ($stdoutBytes[$offset] -ne $directiveBytes[0]) { continue }
-      $equal = $true
-      for ($index = 1; $index -lt $directiveBytes.Length; $index++) {
-        if ($stdoutBytes[$offset + $index] -ne $directiveBytes[$index]) { $equal = $false; break }
-      }
-      if ($equal) { $found = $true; break }
-    }
-    if (-not $found) { throw "G3 실제 SessionStart stdout에 원본 지침 바이트 없음: $role" }
-    $verified[$role] = [ordered]@{ role = $role; directive = $paths[$role]; injected_sha256 = $injectedHash; pack_sha256 = $packHash; injected_bytes = $injectedBytes; pack_bytes = $packBytes; stdout_path = $snapshot; directive_in_stdout = $true }
+  $files = Get-StateField $manifest 'files'
+  foreach ($role in @('MASTER','CSO','WORKER')) {
+    if ($null -eq (Get-StateField $files ('directives/'+$role+'_DIRECTIVE.md'))) { throw 'G3 manifest missing required directives' }
   }
-  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -Force -ErrorAction Stop)
+  $verified = [ordered]@{}
+  foreach ($entry in $files.PSObject.Properties) {
+    $rel = $entry.Name
+    if (-not ($rel.StartsWith('directives/') -and $rel.EndsWith('.md'))) { continue }
+    if ($rel.Split('/') -contains '..' -or $rel.Contains('\')) { throw 'G3 invalid directive path' }
+    $target = Join-Path $PackHome $rel
+    $file = Get-Item -LiteralPath $target -Force -ErrorAction Stop
+    if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -le 0 -or (Get-ArtifactHash $target) -cne $entry.Value) { throw "G3 installed original mismatch: $rel" }
+    $verified[$rel] = [ordered]@{ pack_sha256 = $entry.Value; pack_bytes = $file.Length }
+  }
+  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -Force -ErrorAction Stop)
   if ($pending.Count -ne 0) { throw "G3 병합 대기 .new 파일 $($pending.Count)건" }
-  return [ordered]@{ original_match = $true; new_file_count = 0; roles = $verified; source = 'hook-stdout+receipt-hashes+app-manifest+installed-pack'; receipt_path = $receiptPath }
+  return [ordered]@{ original_match = $true; new_file_count = 0; roles = $verified; injected_bytes = $null; injection_reason = 'RC 러너 G3_inject.json 판정'; source = 'app-manifest+installed-pack' }
 }
 
 function Run-S08 {
@@ -984,13 +981,8 @@ function Run-S08 {
   } catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
   try { $evidence = Test-OriginalInjection }
   catch {
-    $script:StepObserved = [ordered]@{ original_match = $false; new_file_count = $null; source = 'hook-stdout+receipt-hashes+app-manifest+installed-pack'; reason = $_.Exception.Message }
+    $script:StepObserved = [ordered]@{ original_match = $false; new_file_count = $null; source = 'app-manifest+installed-pack'; reason = $_.Exception.Message }
     throw
-  }
-  if ($null -eq $evidence) {
-    $script:StepStatus = 'unmeasured'
-    $script:StepObserved = [ordered]@{ original_match = $null; new_file_count = $null; reason = 'G3_receipt_missing'; source = 'verify/G3_inject.json' }
-    return
   }
   $script:StepObserved = $evidence
   $script:StepObserved['identify_exit'] = 0

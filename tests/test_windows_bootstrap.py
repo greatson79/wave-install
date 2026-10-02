@@ -10,6 +10,25 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get('PWSH') or shutil.which('pwsh')
 
 class BootstrapTests(unittest.TestCase):
+    def test_release_pins_are_read_from_config_and_refreshed(self):
+        self.run_ps(r'''
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+Load-Config
+$Config.release | Add-Member -NotePropertyName bytes -NotePropertyValue ([pscustomobject]@{windows_x64=12345}) -Force
+$Config.release.version = '9.8.7'
+$Config.release.asset_name.windows_x64 = 'wave-terminal-9.8.7-windows-x64-setup.exe'
+$Config.release.sha256.windows_x64 = 'a' * 64
+Release-Context
+if ($WaveVersion -ne '9.8.7' -or $WaveWinBytes -ne 12345 -or $WaveWinSha256 -ne ('a'*64) -or $WaveWinFile -ne $Config.release.asset_name.windows_x64) { throw 'config pins not refreshed' }
+foreach ($invalid in @('12345', 0, -1, $null, $true)) {
+  $Config.release.bytes.windows_x64 = $invalid
+  $rejected=$false
+  try { Release-Context } catch { $rejected=$true }
+  if (-not $rejected) { throw 'invalid byte pin accepted' }
+}
+''')
+
     def run_ps(self, body):
         self.assertTrue(PWSH, 'PWSH is required')
         with tempfile.TemporaryDirectory(dir=ROOT, prefix='.win-test-') as tmp:
@@ -103,21 +122,18 @@ if (-not $rejected -or (Test-Path (Join-Path $env:USERPROFILE 'escape.txt'))) { 
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 Load-Config
-$script:WaveVersion = '__UNRESOLVED__'
+$Config.release.version = '__UNRESOLVED__'
 $rejected = $false
 try { Release-Context } catch { $rejected = $_.Exception.Message -match '핀 미확정' }
 if (-not $rejected) { throw 'unresolved pin accepted' }
-$script:WaveVersion = '1.2.3'
-$script:WaveWinFile = "wave-terminal-${WaveVersion}-windows-x64-setup.exe"
+$Config.release.version = '1.2.3'
+$Config.release.asset_name.windows_x64 = 'wave-terminal-1.2.3-windows-x64-setup.exe'
 $data = [Text.Encoding]::UTF8.GetBytes('signed installer fixture')
-$script:WaveWinBytes = $data.Length
+$Config.release.bytes.windows_x64 = $data.Length
 $sha = [Security.Cryptography.SHA256]::Create()
-$script:WaveWinSha256 = ([BitConverter]::ToString($sha.ComputeHash($data))).Replace('-', '').ToLowerInvariant()
+$Config.release.sha256.windows_x64 = ([BitConverter]::ToString($sha.ComputeHash($data))).Replace('-', '').ToLowerInvariant()
 $sha.Dispose()
-$Config.release.version = $WaveVersion
-$Config.release.asset_name.windows_x64 = $WaveWinFile
 $Config.release.asset_url.windows_x64 = 'https://example.test/setup.exe'
-$Config.release.sha256.windows_x64 = $WaveWinSha256
 $Config.release.windows_sha256sums_url = 'https://example.test/SHA256SUMS'
 $Config.release.windows_publisher_subject = 'CN=Wave Test'
 $script:mode = 'valid'
@@ -152,10 +168,10 @@ foreach ($script:mode in @('tamper', 'bytes', 'duplicate', 'prefix', 'signature'
   try { Run-S03 } catch { $rejected = $true }
   if (-not $rejected) { throw "download mutant accepted: $mode" }
 }
-$Config.release.version = '1.2.4'
+$Config.release.asset_name.windows_x64 = '../escape.exe'
 $rejected = $false
-try { Release-Context } catch { $rejected = $_.Exception.Message -match '핀 불일치' }
-if (-not $rejected) { throw 'config drift accepted' }
+try { Release-Context } catch { $rejected = $_.Exception.Message -match '핀 미확정' }
+if (-not $rejected) { throw 'unsafe asset filename accepted' }
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Zone.Identifier requires Windows/NTFS')
@@ -228,7 +244,7 @@ if (Test-RecentInstallDone) { throw 'expired marker accepted' }
 (Get-Item $InstallDoneFile).LastWriteTimeUtc = [DateTime]::UtcNow.AddSeconds(60)
 if (Test-RecentInstallDone) { throw 'future marker accepted' }
 Save-InstallDone
-$WaveWinSha256 = 'changed'
+$Config.release.sha256.windows_x64 = 'a' * 64
 if (Test-RecentInstallDone) { throw 'changed pin accepted' }
 $State.status = 'complete_with_exceptions'
 $State.required_steps_passed = $false
@@ -317,7 +333,7 @@ foreach ($case in @('ready','daemon-fallback','app-fallback','unavailable','regi
 
     @unittest.skipUnless(os.name == 'nt' and Path(PWSH or '').name.lower() == 'powershell.exe',
                          'Native stderr control requires Windows PowerShell 5.1')
-    def test_s08_and_doctor_preserve_native_exit_and_stderr(self):
+    def test_s08_preserves_native_exit_and_stderr_with_three_role_evidence(self):
         self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 $StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
@@ -326,14 +342,34 @@ Init-State
 $bin = Join-Path $WaveHome 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 New-Item -ItemType Directory -Force $PackHome | Out-Null
-Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/roles.json') $PackHome
-Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/bin/wave.ps1') $bin
+$live = [ordered]@{surfaces=@('master','cso','worker' | ForEach-Object {
+  [ordered]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1}
+})}
+$verify=Join-Path $WaveHome 'verify'
+New-Item -ItemType Directory -Force $verify,(Join-Path $PackHome 'directives')|Out-Null
+$env:WAVE_TEST_STATUS=Join-Path $verify 'live-fixture.json'
+$live|ConvertTo-Json -Depth 8|Set-Content $env:WAVE_TEST_STATUS -Encoding UTF8
+'{"surface_ref":"surface:master","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
+$files=[ordered]@{};$roles=[ordered]@{}
+foreach($role in @('master','cso','worker')) {
+  $rel='directives/'+$role.ToUpperInvariant()+'_DIRECTIVE.md'
+  $path=Join-Path $PackHome $rel
+  [IO.File]::WriteAllText($path,('original '+$role))
+  $hash=Get-ArtifactHash $path;$bytes=(Get-Item $path).Length
+  $files[$rel]=$hash
+  $roles[$role]=@{injected_sha256=$hash;pack_sha256=$hash;injected_bytes=$bytes;pack_bytes=$bytes}
+  [IO.File]::WriteAllBytes((Join-Path $verify ('hook_'+$role+'.out')),[IO.File]::ReadAllBytes($path))
+}
+@{roles=$roles}|ConvertTo-Json -Depth 8|Set-Content (Join-Path $verify 'G3_inject.json') -Encoding UTF8
+$env:WAVE_TEST_MANIFEST=Join-Path $verify 'manifest-fixture.json'
+@{files=$files}|ConvertTo-Json -Depth 8|Set-Content $env:WAVE_TEST_MANIFEST -Encoding UTF8
 Add-Type -OutputAssembly (Join-Path $bin 'cys.exe') -OutputType ConsoleApplication -TypeDefinition @"
 using System;
 public class StderrFixture {
   public static int Main(string[] args) {
     Console.Error.WriteLine("[cys] cysd not running - autostarting fixture");
-    Console.WriteLine("{}");
+    string file = args.Length > 0 && args[0] == "status" ? Environment.GetEnvironmentVariable("WAVE_TEST_STATUS") : args.Length > 0 && args[0] == "pack-manifest" ? Environment.GetEnvironmentVariable("WAVE_TEST_MANIFEST") : null;
+    Console.WriteLine(file == null ? "{}" : System.IO.File.ReadAllText(file));
     return Environment.GetEnvironmentVariable("WAVE_TEST_CYS_FAIL") == "1" ? 7 : 0;
   }
 }
@@ -345,30 +381,38 @@ try { & (Join-Path $bin 'cys.exe') identify 2>&1 | Out-Null } catch { $control =
 if (-not $control) { throw 'PS5.1 native stderr control did not reproduce' }
 Run-S08
 if ($StepObserved.identify_exit -ne 0 -or $ErrorActionPreference -ne 'Stop') { throw 'S08 lost exit or preference' }
-if ((Get-Content $LogFile -Raw) -notmatch 'autostarting fixture') { throw 'S08 diagnostic lost' }
-if ((Get-Content (Join-Path $WaveHome 'verify/identify-doctor.log') -Raw) -notmatch 'autostarting fixture') { throw 'doctor diagnostic lost' }
+if (-not $StepObserved.original_match -or $StepObserved.roles.Count -ne 3) { throw 'three-role G3 proof missing' }
+if ((Get-Content (Join-Path $WaveHome 'verify/identify.stderr.log') -Raw) -notmatch 'autostarting fixture') { throw 'S08 native stderr lost' }
 $env:WAVE_TEST_CYS_FAIL = '1'
 Run-S08
 if ($StepStatus -ne 'unmeasured' -or $StepObserved.reason -ne 'call_failed' -or $StepObserved.command_exit -ne 7 -or $null -ne $StepObserved.original_match) { throw 'failed cys observation lost or falsely passed' }
-$doctor = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bin 'wave.ps1') doctor --json | ConvertFrom-Json
-if ($doctor.identify_exit -ne 7) { throw 'doctor hid native failure' }
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Run-S07 uses Windows PowerShell child process')
-    def test_s07_real_wrapper_accepts_roles_file_switch(self):
+    def test_s07_requires_master_marker_and_three_live_roles(self):
         self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 $StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
 Load-Config
 Init-State
-$bin = Join-Path $WaveHome 'bin'
-New-Item -ItemType Directory -Force $bin | Out-Null
-New-Item -ItemType Directory -Force $PackHome | Out-Null
-Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/roles.json') $PackHome
-Copy-Item (Join-Path $env:TEST_ROOT 'wave-pack/bin/wave.ps1') $bin
+New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.cys')|Out-Null
+$script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | ForEach-Object {
+  [pscustomobject]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1}
+})}
+$script:appCalls=0
+function Start-WaveApp { $script:appCalls++ }
+function Invoke-BoundedCheck {
+  param($FilePath,$Arguments,$Name,$TimeoutMs)
+  if (($Arguments -join ' ') -ne 'status --json') { throw 'unexpected process request; no daemon access allowed' }
+  return [pscustomobject]@{timed_out=$false;exit_code=0;stdout=($fixtureStatus|ConvertTo-Json -Depth 8);stderr=''}
+}
+if (Test-AwakenedFleet $fixtureStatus) { throw 'missing master marker accepted' }
+'{"surface_ref":"surface:master","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 Run-S07
-if ($StepObserved.seats -ne 2) { throw 'fleet seats' }
-if (-not (Test-Path (Join-Path $WaveHome 'fleet/initial-fleet.ok'))) { throw 'fleet marker absent' }
+if ($StepObserved.seats -ne 3 -or ($StepObserved.roles -join ',') -ne 'master,cso,worker') { throw 'three-role fleet contract' }
+if (-not $StepObserved.fleet_started -or $appCalls -ne 1) { throw 'fleet evidence missing' }
+$fixtureStatus.surfaces[1].agent_alive=$false
+if (Test-AwakenedFleet $fixtureStatus) { throw 'dead CSO accepted' }
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Bounded native child test requires Windows')

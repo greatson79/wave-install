@@ -8,7 +8,7 @@ Wave AI Networks의 Wave Terminal 라이트 설치 GitHub 배포와 설치 가�
 - `bootstrap.sh`, `bootstrap.ps1`: macOS·Windows 설치기
 - `steps.json`: 릴리스 URL·SHA256·macOS CDHash·10단계 정본
 - `site/`: 설치 한 줄, 단계별 안내, 릴리스 무결성 안내
-- `wave-pack/`: 초기 master 1석 + 부서 1석 편성 팩
+- `wave-pack/`: 초기 master·cso·worker 3석 편성 메타데이터
 
 ## 출처와 라이선스
 
@@ -151,3 +151,19 @@ Windows 설치기는 핀 3값, `[1/10]`~`[10/10]` 출력, 검증 뒤 웹 표식 
 Windows 핀은 s746 수정 검체(0.1.0, 128814816바이트, SHA256 733a595c…)로 확정했습니다.
 공개 릴리스 대조와 실제 러너 결과는 아래 검증 기록에 구분해 남깁니다.
 [핀 갱신·재실행·검증 절차](docs/windows-bootstrap.md)와 [진단 코드](docs/help-codes.md)를 참고하세요.
+
+## 재설치 — 운영체제별 한 줄
+
+설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일을 모두 삭제하는 명령은 아닙니다.
+
+macOS:
+```bash
+curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh" --reinstall
+```
+
+Windows PowerShell:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1') -Reinstall"
+```
+
+압축 해제한 설치팩에는 `reinstall.sh`·`reinstall.ps1`도 동봉합니다. 이 보조 스크립트의 옛 환경/Run 정리는 위 bootstrap 명령과 별도 경로입니다.

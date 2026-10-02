@@ -27,7 +27,7 @@ class WindowsReleaseTests(unittest.TestCase):
             with zipfile.ZipFile(zip_path) as archive:
                 names = archive.namelist()
                 self.assertEqual({name.split('/')[0] for name in names}, {'wave-install-0.2.4'})
-                for required in ('bootstrap.ps1', 'steps.json', 'install-state.json', 'wave-pack/manifest.json'):
+                for required in ('bootstrap.ps1', 'steps.json', 'install-state.json', 'wave-pack/manifest.json', 'LICENSE', 'reinstall.sh', 'reinstall.ps1'):
                     self.assertIn('wave-install-0.2.4/' + required, names)
                 self.assertIn(b'__WAVE_INSTALL_ZIP_SHA256__', archive.read('wave-install-0.2.4/bootstrap.ps1'))
             checksums = (out / 'SHA256SUMS').read_text()

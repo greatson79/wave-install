@@ -7,8 +7,8 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 
 ## Windows 릴리스 핀
 
-`bootstrap.ps1` 상단의 `WaveVersion`, `WaveWinBytes`, `WaveWinSha256`이 판올림 시 수정할 3값입니다.
-`WaveWinFile`은 버전에서 파생합니다. s746 수정 검체의 확정값은 다음과 같습니다.
+판올림 정본은 `steps.json.release` 한 곳입니다: `version`, `bytes.windows_x64`, `sha256.windows_x64`, `asset_name.windows_x64`.
+설치기와 공개 핀 검사기가 이 값을 읽습니다. 아래는 기존 s746 검체의 이력값입니다.
 
 - 버전: `0.1.0`
 - 파일: `wave-terminal-0.1.0-windows-x64-setup.exe`
@@ -20,15 +20,15 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 
 배포 담당자는 실제 게시 자산과 SHA256SUMS를 확보한 뒤 다음을 함께 갱신합니다.
 
-1. 핀 3값을 독립 측정한 값으로 교체합니다. 선언은 값 하나만 있는 한 줄을 유지합니다.
-2. `steps.json`의 Windows 이름·URL·SHA256·windows_sha256sums_url·windows_publisher_subject를 맞춥니다.
+1. `steps.json.release`의 버전·바이트·SHA256·파일명을 독립 측정값으로 교체합니다. bootstrap.ps1에 핀을 다시 선언하지 않습니다.
+2. 같은 release 블록의 Windows URL·windows_sha256sums_url·windows_publisher_subject를 맞추고 site/steps.json 배포 사본을 동기화합니다.
    Mac 릴리스 매핑도 함께 검사합니다. Windows 실행 경로는 minisign을 사용하지 않습니다.
 3. `bash tests/win-pin-release.sh`로 해당 공개 릴리스의 실제 파일 바이트·지문·체크섬 정확한 1행을 대조합니다.
 4. Windows workflow_dispatch에서 `release_smoke=true`를 선택하고 같은 태그와 독립 SHA256을 넣습니다.
    공개 핀 대조 또는 OS 매트릭스 실패 시 NSIS 스모크로 가지 않습니다.
 
 `--release-dir <폴더>`는 로컬 후보/픽스처 대조 옵션입니다. 폴더에는 `SHA256SUMS`와
-`wave-terminal-<버전>-windows-x64-setup.exe`가 있어야 합니다. 없는 파일·중복 선언·중복 체크섬 행·
+`wave-terminal-<버전>-windows-x64-setup.exe`가 있어야 합니다. 없는 파일·중복 JSON 키·중복 체크섬 행·
 측정 실패는 모두 실패입니다. 핀 변조 테스트에는 정상 측정 검체 1개와 거부해야 할 변형 12개가 있습니다.
 
 

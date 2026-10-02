@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Read exactly one literal declaration per pin; compare version/name/bytes/hash to release."""
+"""Read release pins from steps.json; compare version/name/bytes/hash to release."""
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import re
 import sys
@@ -12,24 +13,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def pins(path):
-    source = path.read_text(encoding='utf-8-sig')
-    values = {}
-    for name, expression in (
-        ('WaveVersion', r"'([0-9]+\.[0-9]+\.[0-9]+)'"),
-        ('WaveWinBytes', r'([1-9][0-9]*)'),
-        ('WaveWinSha256', r"'([a-f0-9]{64})'"),
-        ('WaveWinFile', r'"(wave-terminal-\$\{WaveVersion\}-windows-x64-setup\.exe)"'),
-    ):
-        declarations = re.findall(r'^\s*\$' + name + r'\s*=([^\r\n]*)$', source, re.M)
-        if len(declarations) != 1:
-            raise ValueError(f'{name}: exactly one declaration required')
-        match = re.fullmatch(r'\s*' + expression + r'\s*', declarations[0])
-        if not match:
-            raise ValueError(f'{name}: unresolved or nonliteral pin')
-        values[name] = match[1]
-    values['WaveWinFile'] = values['WaveWinFile'].replace('${WaveVersion}', values['WaveVersion'])
-    values['WaveWinBytes'] = int(values['WaveWinBytes'])
-    return values
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate JSON key: ' + key)
+            result[key] = value
+        return result
+    release = json.loads(path.read_text(encoding='utf-8-sig'), object_pairs_hook=unique)['release']
+    version = release['version']
+    size = release['bytes']['windows_x64']
+    digest = release['sha256']['windows_x64']
+    name = release['asset_name']['windows_x64']
+    if not isinstance(version,str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+        raise ValueError('unresolved version')
+    if type(size) is not int or size <= 0:
+        raise ValueError('invalid bytes')
+    if not isinstance(digest,str) or not re.fullmatch('[a-f0-9]{64}', digest):
+        raise ValueError('invalid SHA256')
+    if name != f'wave-terminal-{version}-windows-x64-setup.exe':
+        raise ValueError('filename-version mismatch')
+    return dict(WaveVersion=version,WaveWinBytes=size,WaveWinSha256=digest,WaveWinFile=name)
 
 
 def verify(values, directory):
@@ -59,10 +63,10 @@ def verify(values, directory):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--installer', type=Path, default=ROOT/'bootstrap.ps1')
+    parser.add_argument('--steps', type=Path, default=ROOT/'steps.json')
     parser.add_argument('--release-dir', type=Path, help='local release layout; no claim of public release verification')
     args = parser.parse_args()
-    values = pins(args.installer)
+    values = pins(args.steps)
     if args.release_dir:
         verify(values, args.release_dir)
         print('PASS: local release/fixture pin matches (not public release evidence)')

@@ -25,11 +25,16 @@ class WindowsInstallTests(unittest.TestCase):
             source = (ROOT / "bootstrap.ps1").read_text().split("\nLoad-Config\nif ($DryRun)")[0]
             harness = root / "harness.ps1"
             harness.write_text(source + r'''
-function Release-Context {
-  $script:ArtifactPath = $env:TEST_ASSET
-  $script:ReleaseExpectedSha256 = $env:TEST_DIGEST
-  $script:WaveWinBytes = 17
-}
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+$script:Config = [pscustomobject]@{ release = [pscustomobject]@{
+  version = '0.1.1'
+  bytes = [pscustomobject]@{windows_x64=17}
+  asset_name = [pscustomobject]@{windows_x64='wave-terminal-0.1.1-windows-x64-setup.exe'}
+  sha256 = [pscustomobject]@{windows_x64=$env:TEST_DIGEST}
+  asset_url = [pscustomobject]@{windows_x64='https://example.test/setup.exe'}
+  windows_sha256sums_url='https://example.test/SHA256SUMS'
+  windows_publisher_subject=''
+}}
 function Start-Process {
   param($FilePath, $ArgumentList, [switch]$Wait, [switch]$PassThru)
   @{ file = $FilePath; args = $ArgumentList; wait = [bool]$Wait; pass = [bool]$PassThru } | ConvertTo-Json | Set-Content $env:TEST_CALL

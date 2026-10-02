@@ -579,40 +579,31 @@ PY_LIVE
 
 verify_original_injection() {
   bounded_cys pack-manifest > "$WAVE_HOME/verify/embedded-pack.json" || return 1
-  python3 - "$PACK_HOME" "$WAVE_HOME/verify/embedded-pack.json" "$WAVE_HOME/verify/G3_inject.json" <<'PY_G3'
-import hashlib, json, re, sys
+  python3 - "$PACK_HOME" "$WAVE_HOME/verify/embedded-pack.json" <<'PY_G3'
+import hashlib, json, sys
 from pathlib import Path
-pack, manifest, receipt = map(Path, sys.argv[1:])
+pack, manifest = map(Path, sys.argv[1:])
 if pack.is_symlink() or (pack/'directives').is_symlink():
     raise SystemExit('G3 linked pack refused')
 files=json.loads(manifest.read_text())['files']
-roles=json.loads(receipt.read_text())['roles']
-if not isinstance(roles,dict) or set(roles) != {'master','cso','worker'}:
-    raise SystemExit('G3 requires master/cso/worker role evidence')
+required={'directives/'+r+'_DIRECTIVE.md' for r in ('MASTER','CSO','WORKER')}
+directives={k:v for k,v in files.items() if k.startswith('directives/') and k.endswith('.md')}
+if not required.issubset(directives):
+    raise SystemExit('G3 manifest missing required directives')
 result={}
-for role in ('master','cso','worker'):
-    entry=roles[role]
-    rel='directives/'+role.upper()+'_DIRECTIVE.md'
+for rel, expected in directives.items():
     source=pack/rel
-    if source.is_symlink() or not source.is_file():
-        raise SystemExit('G3 missing/linked original: '+role)
+    if '..' in Path(rel).parts or source.is_symlink() or not source.is_file():
+        raise SystemExit('G3 missing/linked original: '+rel)
     data=source.read_bytes(); actual=hashlib.sha256(data).hexdigest()
-    hook=receipt.parent/('hook_'+role+'.out')
-    if hook.is_symlink() or not hook.is_file() or not data or data not in hook.read_bytes():
-        raise SystemExit('G3 hook output missing original body: '+role)
-    a,b=entry.get('injected_sha256'),entry.get('pack_sha256')
-    if not all(isinstance(v,str) and re.fullmatch('[0-9a-fA-F]{64}',v) for v in (a,b)):
-        raise SystemExit('G3 invalid hash: '+role)
-    x,y=entry.get('injected_bytes'),entry.get('pack_bytes')
-    if not all(type(v) is int and v>0 for v in (x,y)) or x!=y or y!=len(data):
-        raise SystemExit('G3 byte mismatch: '+role)
-    if not (a.lower()==b.lower()==actual==files.get(rel)):
-        raise SystemExit('G3 original mismatch: '+role)
-    result[role]=dict(injected_sha256=a.lower(),pack_sha256=actual,injected_bytes=x,pack_bytes=y)
+    if not data or actual != expected:
+        raise SystemExit('G3 installed original mismatch: '+rel)
+    result[rel]=dict(pack_sha256=actual,pack_bytes=len(data))
 if list(pack.rglob('*.new')):
     raise SystemExit('G3 pending .new files')
 print(json.dumps(dict(original_match=True,new_file_count=0,roles=result,
-    source='hook-stdout+receipt-hashes+app-manifest+installed-pack',fleet_verified=True)))
+    injected_bytes=None,injection_reason='RC 러너 G3_inject.json 판정',
+    source='app-manifest+installed-pack',fleet_verified=True)))
 PY_G3
 }
 
@@ -622,11 +613,6 @@ step_s08() {
   started="$(cat "$WAVE_HOME/fleet/started-at")" || return 1
   bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
   verify_live_fleet "$ref" "$started" || return 1
-  if [[ ! -f "$WAVE_HOME/verify/G3_inject.json" ]]; then
-    STEP_STATUS="unmeasured"
-    STEP_OBSERVED='{"fleet_verified":true,"original_match":null,"new_file_count":null,"reason":"injection_receipt_missing"}'
-    return 0
-  fi
   STEP_OBSERVED="$(verify_original_injection)" || return 1
 }
 

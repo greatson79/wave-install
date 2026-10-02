@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the actual release checker, including a positive measured fixture."""
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -12,12 +13,8 @@ with tempfile.TemporaryDirectory(dir=ROOT, prefix='.pin-mutate-') as td:
     artifact = directory/'wave-terminal-1.2.3-windows-x64-setup.exe'
     data = b'fixture, not an installer\n'
     digest = hashlib.sha256(data).hexdigest()
-    installer = directory/'bootstrap.ps1'
-    baseline = f'''$WaveVersion = '1.2.3'
-$WaveWinBytes = {len(data)}
-$WaveWinSha256 = '{digest}'
-$WaveWinFile = "wave-terminal-${{WaveVersion}}-windows-x64-setup.exe"
-'''
+    installer = directory/'steps.json'
+    baseline = json.dumps({'release':{'version':'1.2.3','bytes':{'windows_x64':len(data)},'sha256':{'windows_x64':digest},'asset_name':{'windows_x64':artifact.name}}})
     manifest = directory/'SHA256SUMS'
     manifest_text = f'{digest}  {artifact.name}\n'
     cases = [
@@ -25,9 +22,9 @@ $WaveWinFile = "wave-terminal-${{WaveVersion}}-windows-x64-setup.exe"
         ('version', baseline.replace('1.2.3', '1.2.4'), data, manifest_text, False, 'exact asset'),
         ('bytes', baseline.replace(str(len(data)), str(len(data)+1)), data, manifest_text, False, 'bytes mismatch'),
         ('sha256', baseline.replace(digest, '0'*64), data, manifest_text, False, 'SHA256 mismatch'),
-        ('duplicate', baseline + "$WaveVersion = '1.2.3'\n", data, manifest_text, False, 'one declaration'),
-        ('computed-pin', baseline.replace(f'= {len(data)}', '= (12 + 12)'), data, manifest_text, False, 'nonliteral'),
-        ('filename-version', baseline.replace('${WaveVersion}', '1.2.3'), data, manifest_text, False, 'nonliteral'),
+        ('duplicate', baseline.replace('"version":', '"version":"1.2.3","version":'), data, manifest_text, False, 'duplicate JSON key'),
+        ('computed-pin', baseline.replace(str(len(data)), '"12 + 12"'), data, manifest_text, False, 'invalid bytes'),
+        ('filename-version', baseline.replace(artifact.name, 'wave-terminal-9.9.9-windows-x64-setup.exe'), data, manifest_text, False, 'filename-version'),
         ('file-mutated', baseline, b'X'*len(data), manifest_text, False, 'SHA256 mismatch'),
         ('duplicate-sums', baseline, data, manifest_text*2, False, 'exact asset'),
         ('prefix-match', baseline, data, manifest_text.replace(artifact.name, artifact.name+'.other'), False, 'exact asset'),
@@ -45,7 +42,7 @@ $WaveWinFile = "wave-terminal-${{WaveVersion}}-windows-x64-setup.exe"
             manifest.unlink(missing_ok=True)
         else:
             manifest.write_text(sums)
-        result = subprocess.run([sys.executable, str(ROOT/'tests/win-pin-check.py'), '--installer', str(installer), '--release-dir', str(directory)], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, str(ROOT/'tests/win-pin-check.py'), '--steps', str(installer), '--release-dir', str(directory)], capture_output=True, text=True)
         if (result.returncode == 0) != accepted or (not accepted and reason not in result.stderr):
             raise SystemExit(f'FAIL mutant {name}: {result.stdout}{result.stderr}')
         print(f'PASS: {name}')

@@ -10,6 +10,25 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get('PWSH') or shutil.which('pwsh')
 
 class BootstrapTests(unittest.TestCase):
+    def test_release_pins_are_read_from_config_and_refreshed(self):
+        self.run_ps(r'''
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'
+$StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+Load-Config
+$Config.release | Add-Member -NotePropertyName bytes -NotePropertyValue ([pscustomobject]@{windows_x64=12345}) -Force
+$Config.release.version = '9.8.7'
+$Config.release.asset_name.windows_x64 = 'wave-terminal-9.8.7-windows-x64-setup.exe'
+$Config.release.sha256.windows_x64 = 'a' * 64
+Release-Context
+if ($WaveVersion -ne '9.8.7' -or $WaveWinBytes -ne 12345 -or $WaveWinSha256 -ne ('a'*64) -or $WaveWinFile -ne $Config.release.asset_name.windows_x64) { throw 'config pins not refreshed' }
+foreach ($invalid in @('12345', 0, -1, $null, $true)) {
+  $Config.release.bytes.windows_x64 = $invalid
+  $rejected=$false
+  try { Release-Context } catch { $rejected=$true }
+  if (-not $rejected) { throw 'invalid byte pin accepted' }
+}
+''')
+
     def run_ps(self, body):
         self.assertTrue(PWSH, 'PWSH is required')
         with tempfile.TemporaryDirectory(dir=ROOT, prefix='.win-test-') as tmp:
@@ -103,21 +122,18 @@ if (-not $rejected -or (Test-Path (Join-Path $env:USERPROFILE 'escape.txt'))) { 
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 Load-Config
-$script:WaveVersion = '__UNRESOLVED__'
+$Config.release.version = '__UNRESOLVED__'
 $rejected = $false
 try { Release-Context } catch { $rejected = $_.Exception.Message -match '핀 미확정' }
 if (-not $rejected) { throw 'unresolved pin accepted' }
-$script:WaveVersion = '1.2.3'
-$script:WaveWinFile = "wave-terminal-${WaveVersion}-windows-x64-setup.exe"
+$Config.release.version = '1.2.3'
+$Config.release.asset_name.windows_x64 = 'wave-terminal-1.2.3-windows-x64-setup.exe'
 $data = [Text.Encoding]::UTF8.GetBytes('signed installer fixture')
-$script:WaveWinBytes = $data.Length
+$Config.release.bytes.windows_x64 = $data.Length
 $sha = [Security.Cryptography.SHA256]::Create()
-$script:WaveWinSha256 = ([BitConverter]::ToString($sha.ComputeHash($data))).Replace('-', '').ToLowerInvariant()
+$Config.release.sha256.windows_x64 = ([BitConverter]::ToString($sha.ComputeHash($data))).Replace('-', '').ToLowerInvariant()
 $sha.Dispose()
-$Config.release.version = $WaveVersion
-$Config.release.asset_name.windows_x64 = $WaveWinFile
 $Config.release.asset_url.windows_x64 = 'https://example.test/setup.exe'
-$Config.release.sha256.windows_x64 = $WaveWinSha256
 $Config.release.windows_sha256sums_url = 'https://example.test/SHA256SUMS'
 $Config.release.windows_publisher_subject = 'CN=Wave Test'
 $script:mode = 'valid'
@@ -152,10 +168,10 @@ foreach ($script:mode in @('tamper', 'bytes', 'duplicate', 'prefix', 'signature'
   try { Run-S03 } catch { $rejected = $true }
   if (-not $rejected) { throw "download mutant accepted: $mode" }
 }
-$Config.release.version = '1.2.4'
+$Config.release.asset_name.windows_x64 = '../escape.exe'
 $rejected = $false
-try { Release-Context } catch { $rejected = $_.Exception.Message -match '핀 불일치' }
-if (-not $rejected) { throw 'config drift accepted' }
+try { Release-Context } catch { $rejected = $_.Exception.Message -match '핀 미확정' }
+if (-not $rejected) { throw 'unsafe asset filename accepted' }
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Zone.Identifier requires Windows/NTFS')
@@ -228,7 +244,7 @@ if (Test-RecentInstallDone) { throw 'expired marker accepted' }
 (Get-Item $InstallDoneFile).LastWriteTimeUtc = [DateTime]::UtcNow.AddSeconds(60)
 if (Test-RecentInstallDone) { throw 'future marker accepted' }
 Save-InstallDone
-$WaveWinSha256 = 'changed'
+$Config.release.sha256.windows_x64 = 'a' * 64
 if (Test-RecentInstallDone) { throw 'changed pin accepted' }
 $State.status = 'complete_with_exceptions'
 $State.required_steps_passed = $false

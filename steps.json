@@ -17,6 +17,7 @@
       "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.1/wave-terminal-0.1.1-macos-x64.dmg",
       "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-windows-x64-setup.exe"
     },
+    "bytes": {"windows_x64": 128814816},
     "sha256": {
       "macos_arm64": "c46aac889c1dfb84827a580f83cb2098eceba30c85b98c961dd74cff6fc0cadc",
       "macos_x64": "aaee7fb8745e16e02e64f95bb698e7695742e7db906fdf1a53c99d88134cbf48",
@@ -35,6 +36,13 @@
       "macos_arm64": "86bdbce54748b3fabeecd4cfa22a73648867e23d",
       "macos_x64": "2bdc189e25310de485de8639412b96e9aa68280b"
     }
+  },
+  "reinstall": {
+    "command": {
+      "macos": "curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\" --reinstall",
+      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
+    },
+    "description": "설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일 전체 삭제는 하지 않습니다."
   },
   "tooling": {
     "claude_code_version": "2.1.278",

@@ -1,0 +1,130 @@
+name: RC gates (clean runner, one-line install, evidence for gate.py)
+# 릴리스 후보 관문 — 태그·릴리스·서명키·latest.json·홈페이지 무접촉. 시험 서버는 러너 안 자체서명 https(비밀값 없음).
+# 로그인이 필요한 S02·S07·S08·S09 는 G9(실기) 몫: 여기서는 합성 claude 로 결정론 단계만(「합성 · 관문 미산입」).
+on:
+  workflow_dispatch:
+    inputs:
+      mac_run_id:
+        description: wave-terminal macOS 빌드 run id (artifact w3-macos-arm64-*)
+        required: true
+        type: string
+      win_run_id:
+        description: wave-terminal Windows 빌드 run id (artifact cys-windows-x64-nsis) — Windows 잡은 다음 판
+        required: false
+        type: string
+      app_repo:
+        description: 앱 저장소
+        default: greatson79/wave-terminal
+        type: string
+      gate_ref:
+        description: 판정기(tools/gate) 가지
+        default: feat/p3-gate
+        type: string
+      text_ref:
+        description: 문구 생성기(tools/release-text) 가지
+        default: feat/w4-release-text
+        type: string
+permissions:
+  contents: read
+env:
+  WAVE_NO_PROGRESS: '1'
+  RC_BASE: https://127.0.0.1:8443/
+jobs:
+  mac-gates:
+    name: macOS G1-CI G2 G3 G4-CI G6 G7
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: '${{ inputs.text_ref }}', path: textref }
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ inputs.app_repo }}
+          run-id: ${{ inputs.mac_run_id }}
+          github-token: ${{ github.token }}
+          pattern: w3-macos-arm64-*
+          path: app
+      - name: Find DMG, read CDHash, assemble test release
+        run: |
+          set -euo pipefail
+          DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
+          MP="$RUNNER_TEMP/mnt"; mkdir -p "$MP"; hdiutil attach -nobrowse -readonly -mountpoint "$MP" "$DMG" >/dev/null
+          APP="$(find "$MP" -maxdepth 2 -type d -name '*.app' -print -quit)"
+          CDH="$(codesign -dvvv "$APP" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"; hdiutil detach "$MP" >/dev/null
+          echo "dmg=$DMG cdhash=$CDH"
+          python3 tests/rc/rc_release.py --os mac --asset "$DMG" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" ${CDH:+--cdhash "$CDH"}
+      - name: Self-signed https test server (runner-local, discarded)
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/tls"; mkdir -p "$D"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$D/k.pem" -out "$D/c.pem" -days 1 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
+          nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
+          sleep 2; CURL_CA_BUNDLE="$D/c.pem" curl -fsS "${RC_BASE}rc-release.json" >/dev/null
+      - name: One-line install and evidence (phase A boundary, phase B, G6 reinstall)
+        run: bash tests/rc/mac-run.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - name: G7 release text and package licenses
+        if: always()
+        run: python3 tests/rc/g7.py --gen textref/tools/release-text/gen.py --tar "$RUNNER_TEMP"/rcrel/wave-install-*.tar.gz --out "$RUNNER_TEMP/ev/common"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-mac-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  mac-upgrade:
+    name: macOS G5 (public v0.2.3 then test release)
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ inputs.app_repo }}
+          run-id: ${{ inputs.mac_run_id }}
+          github-token: ${{ github.token }}
+          pattern: w3-macos-arm64-*
+          path: app
+      - name: Assemble test release and https server
+        run: |
+          set -euo pipefail
+          DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
+          MP="$RUNNER_TEMP/mnt"; mkdir -p "$MP"; hdiutil attach -nobrowse -readonly -mountpoint "$MP" "$DMG" >/dev/null
+          APP="$(find "$MP" -maxdepth 2 -type d -name '*.app' -print -quit)"
+          CDH="$(codesign -dvvv "$APP" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"; hdiutil detach "$MP" >/dev/null
+          python3 tests/rc/rc_release.py --os mac --asset "$DMG" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" ${CDH:+--cdhash "$CDH"}
+          D="$RUNNER_TEMP/tls"; mkdir -p "$D"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$D/k.pem" -out "$D/c.pem" -days 1 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
+          nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
+          sleep 2
+      - run: bash tests/rc/mac-upgrade.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-mac-g5-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  judge:
+    name: gate.py table
+    needs: [mac-gates, mac-upgrade]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: '${{ inputs.gate_ref }}', path: gateref }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'rc-evidence-*', path: evidence, merge-multiple: true }
+      - name: Judge (exit 1 = some gate is FAIL or unmeasured; Windows and G8/G9 stay unmeasured here)
+        run: |
+          set -u
+          mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
+          python3 gateref/tools/gate/gate.py evidence | tee "$GITHUB_STEP_SUMMARY"
+          python3 gateref/tools/gate/gate.py evidence --json > gate-result.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-gate-table-${{ github.run_id }}
+          path: |
+            gate-result.json
+            evidence

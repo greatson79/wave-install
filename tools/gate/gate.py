@@ -49,9 +49,10 @@ def g1(b, c=None):
     d, bad = need(b, "G1_state.json", raw=False)
     if bad: return bad
     steps = d.get("steps", {})
-    st = sorted(k for k, v in steps.items() if v.get("status") != "completed")
-    if len(steps) == 10 and not st and d.get("required_steps_passed") is True and d.get("status") == "completed":
-        return PASS, "10/10 completed"
+    # 설치기 실제 어휘(bootstrap.sh/ps1): 단계 status=passed · 전체 status=complete (예외 있으면 complete_with_exceptions=FAIL)
+    st = sorted(k for k, v in steps.items() if v.get("status") != "passed")
+    if len(steps) == 10 and not st and d.get("required_steps_passed") is True and d.get("status") == "complete":
+        return PASS, "10/10 passed"
     return FAIL, "completed %d/10 · 미완 %s · status=%s" % (len(steps) - len(st), ",".join(st) or "-", d.get("status"))
 
 

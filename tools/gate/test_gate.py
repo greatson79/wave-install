@@ -12,7 +12,7 @@ def put(base, name, doc, raw=True):
 
 
 def os_set(b):
-    put(b, "G1_state.json", {"status": "completed", "required_steps_passed": True, "steps": {"S%02d" % i: {"status": "completed"} for i in range(10)}}, raw=False)
+    put(b, "G1_state.json", {"status": "complete", "required_steps_passed": True, "steps": {"S%02d" % i: {"status": "passed"} for i in range(10)}}, raw=False)
     put(b, "G2_preflight.json", {"checks": [{"id": "C20", "status": "WARN"}, {"id": "C01", "status": "PASS"}]}, raw=False)
     put(b, "G3_inject.json", {"new_file_count": 0, "roles": {"master": {"injected_sha256": "a", "pack_sha256": "a", "injected_bytes": 30000}}})
     put(b, "G4_boot.json", {"steps": [{"n": n, "exit": 0} for n in range(1, 6)], "seats": [{"role": r, "alive": True} for r in ("master", "cso", "worker")]})

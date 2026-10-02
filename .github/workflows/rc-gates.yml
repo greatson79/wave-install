@@ -2,11 +2,14 @@ name: RC gates (clean runner, one-line install, evidence for gate.py)
 # 릴리스 후보 관문 — 태그·릴리스·서명키·latest.json·홈페이지 무접촉. 시험 서버는 러너 안 자체서명 https(비밀값 없음).
 # 로그인이 필요한 S02·S07·S08·S09 는 G9(실기) 몫: 여기서는 합성 claude 로 결정론 단계만(「합성 · 관문 미산입」).
 on:
+  push:
+    branches: [feat/rc-e2e]
+    paths: ['tests/rc/**', '.github/workflows/rc-gates.yml']
   workflow_dispatch:
     inputs:
       mac_run_id:
         description: wave-terminal macOS 빌드 run id (artifact w3-macos-arm64-*)
-        required: true
+        required: false
         type: string
       win_run_id:
         description: wave-terminal Windows 빌드 run id (artifact cys-windows-x64-nsis) — Windows 잡은 다음 판
@@ -30,18 +33,44 @@ env:
   WAVE_NO_PROGRESS: '1'
   RC_BASE: https://127.0.0.1:8443/
 jobs:
+  cfg:
+    name: resolve inputs (dispatch input wins, else tests/rc/rc-inputs.json)
+    runs-on: ubuntu-latest
+    outputs:
+      mac_run_id: ${{ steps.r.outputs.mac_run_id }}
+      app_repo: ${{ steps.r.outputs.app_repo }}
+      gate_ref: ${{ steps.r.outputs.gate_ref }}
+      text_ref: ${{ steps.r.outputs.text_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: r
+        env:
+          IN_MAC: ${{ inputs.mac_run_id }}
+          IN_APP: ${{ inputs.app_repo }}
+          IN_GATE: ${{ inputs.gate_ref }}
+          IN_TEXT: ${{ inputs.text_ref }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          d = json.load(open("tests/rc/rc-inputs.json"))
+          for k, e in (("mac_run_id", "IN_MAC"), ("app_repo", "IN_APP"), ("gate_ref", "IN_GATE"), ("text_ref", "IN_TEXT")):
+              v = os.environ.get(e) or d[k]
+              assert v and "\n" not in str(v), k
+              print("%s=%s" % (k, v))
+          PY
   mac-gates:
+    needs: cfg
     name: macOS G1-CI G2 G3 G4-CI G6 G7
     runs-on: macos-latest
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
-        with: { ref: '${{ inputs.text_ref }}', path: textref }
+        with: { ref: '${{ needs.cfg.outputs.text_ref }}', path: textref }
       - uses: actions/download-artifact@v4
         with:
-          repository: ${{ inputs.app_repo }}
-          run-id: ${{ inputs.mac_run_id }}
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.mac_run_id }}
           github-token: ${{ github.token }}
           pattern: w3-macos-arm64-*
           path: app
@@ -73,6 +102,7 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   mac-upgrade:
+    needs: cfg
     name: macOS G5 (public v0.2.3 then test release)
     runs-on: macos-latest
     timeout-minutes: 75
@@ -80,8 +110,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          repository: ${{ inputs.app_repo }}
-          run-id: ${{ inputs.mac_run_id }}
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.mac_run_id }}
           github-token: ${{ github.token }}
           pattern: w3-macos-arm64-*
           path: app
@@ -106,13 +136,13 @@ jobs:
           if-no-files-found: error
   judge:
     name: gate.py table
-    needs: [mac-gates, mac-upgrade]
+    needs: [cfg, mac-gates, mac-upgrade]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
-        with: { ref: '${{ inputs.gate_ref }}', path: gateref }
+        with: { ref: '${{ needs.cfg.outputs.gate_ref }}', path: gateref }
       - uses: actions/download-artifact@v4
         with: { pattern: 'rc-evidence-*', path: evidence, merge-multiple: true }
       - name: Judge (exit 1 = some gate is FAIL or unmeasured; Windows and G8/G9 stay unmeasured here)

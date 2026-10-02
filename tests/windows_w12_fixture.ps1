@@ -23,7 +23,14 @@ if(-not $StepObserved.directive_bytes_match -or $StepObserved.legacy_backed_up.C
 $live=[pscustomobject]@{surfaces=@([pscustomobject]@{surface_ref='surface:1';role='master';exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1},[pscustomobject]@{surface_ref='surface:2';role='worker-1';exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1})}
 $marker=Join-Path $env:USERPROFILE '.cys/.master-bootstrapped'
 '{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker
-if(-not(Test-AwakenedFleet $live)){throw 'valid fleet rejected'}
+if(Test-AwakenedFleet $live){throw 'missing CSO accepted'}
+$live.surfaces += [pscustomobject]@{surface_ref='surface:3';role='cso';exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1}
+if(-not(Test-AwakenedFleet $live)){throw 'valid three-seat fleet rejected'}
+$live.surfaces[2].agent_alive=$false
+if(Test-AwakenedFleet $live){throw 'dead CSO accepted'}
+$live.surfaces[2].agent_alive=$true
+$live.surfaces += [pscustomobject]@{surface_ref='surface:4';role='reviewer';exited=$true;agent_alive=$false;directive_verified=$false;awakened_at=$null}
+if(-not(Test-AwakenedFleet $live)){throw 'reviewer incorrectly required'}
 $live.surfaces[1].agent_alive=$false
 if(Test-AwakenedFleet $live){throw 'dead child accepted'}
 Write-Host 'PASS parser; S06 exact stub backup + app hash; live marker; dead child rejected'
@@ -40,3 +47,19 @@ $blocked=$false
 try {Run-S06} catch {$blocked=$true}
 if(-not $blocked -or [IO.File]::ReadAllText($target) -ne 'custom user text'){throw 'custom preservation fail'}
 Write-Host 'PASS stale marker rejected; custom directive preserved; mismatch/new blocked'
+
+if((Get-AwakeningBudgetMs 0) -ne 5000){throw 'initial status budget wrong'}
+if((Get-AwakeningBudgetMs 419999) -ne 1){throw 'remaining budget not enforced'}
+if((Get-AwakeningBudgetMs 420000) -ne 0){throw 'deadline not enforced'}
+if((Get-AwakeningBudgetMs 420001) -ne 0){throw 'expired deadline became negative'}
+$runText=($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Run-S07'},$false))[0].Extent.Text
+if($runText -match 'for \(\$attempt' -or $runText -notmatch 'Stopwatch.*StartNew' -or $runText -notmatch 'Get-LiveFleet \(Get-AwakeningBudgetMs'){throw 'deadline wiring absent'}
+Write-Host 'PASS CSO required/alive; reviewer excluded; 420-second remaining budget boundaries'
+function Start-WaveApp { }
+function Get-LiveFleet([int]$TimeoutMs=5000) {
+  if($TimeoutMs -le 0 -or $TimeoutMs -gt 5000){throw 'invalid status timeout budget'}
+  return $live
+}
+Run-S07
+if(-not $StepObserved.fleet_started -or $StepObserved.seats -ne 3 -or ($StepObserved.roles -join ',') -ne 'master,cso,worker'){throw 'three-seat observed contract mismatch'}
+Write-Host 'PASS S07 observed roles and live status timeout budget'

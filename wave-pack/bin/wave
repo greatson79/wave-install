@@ -28,7 +28,7 @@ case "${1:-}" in
     case "${2:-}" in
       bootstrap)
         mkdir -p "${WAVE_HOME}/fleet"
-        printf '%s\n' "initial_fleet=master+worker-dept-1" > "${WAVE_HOME}/fleet/bootstrap-result"
+        printf '%s\n' "initial_fleet=master+cso+worker" > "${WAVE_HOME}/fleet/bootstrap-result"
         : > "${WAVE_HOME}/fleet/initial-fleet.ok"
         ;;
       status)

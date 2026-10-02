@@ -147,8 +147,29 @@
       "optional": false
     },
     {
-      "id": "S05_DAEMON_REGISTER",
+      "id": "S06_PACK_INSTALL",
       "index": 5,
+      "total": 10,
+      "title": "앱 원본 팩 설치·임베드 지침 지문 검증",
+      "command": {
+        "macos": "cys init-pack && cys pack-manifest (지침 SHA256 대조)",
+        "windows": "cys init-pack; cys pack-manifest (지침 SHA256 대조)"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.cys/pack/manifest.json"},
+        {"kind": "file_exists", "path": "~/.cys/pack/SHA256SUMS"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S06-PACK",
+        "message": "wave-pack이 없거나 manifest/SHA256 검증을 통과하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S05_DAEMON_REGISTER",
+      "index": 6,
       "total": 10,
       "title": "데몬 등록(선택·기본 on)",
       "command": {
@@ -167,43 +188,43 @@
       "optional": true
     },
     {
-      "id": "S06_PACK_INSTALL",
-      "index": 6,
-      "total": 10,
-      "title": "wave-pack 배치·manifest/SHA256 검증",
-      "command": {
-        "macos": "cp -R wave-pack/. ~/.cys/pack/ && (cd ~/.cys/pack && shasum -a 256 -c SHA256SUMS)",
-        "windows": "Copy-Item wave-pack\\* $env:USERPROFILE\\.cys\\pack -Recurse -Force; Get-FileHash .\\manifest.json -Algorithm SHA256"
-      },
-      "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.cys/pack/manifest.json"},
-        {"kind": "file_exists", "path": "~/.cys/pack/SHA256SUMS"}
-      ],
-      "on_fail": {
-        "error_id": "WT-S06-PACK",
-        "message": "wave-pack이 없거나 manifest/SHA256 검증을 통과하지 못했습니다.",
-        "next": "stop"
-      },
-      "optional": false
-    },
-    {
       "id": "S07_INITIAL_FLEET",
       "index": 7,
       "total": 10,
-      "title": "초기 편성 정의 확인(마스터 1+부서 1 · 기동 미검증)",
+      "title": "자동 각성: master 표지·cso·worker 생존 확인(상한 7분)",
       "command": {
-        "macos": "~/.wave/bin/wave fleet bootstrap --roles-file ~/.cys/pack/roles.json",
-        "windows": "$env:USERPROFILE\\.wave\\bin\\wave.ps1 fleet bootstrap --roles-file $env:USERPROFILE\\.cys\\pack\\roles.json"
+        "macos": "cys new-surface --role master --cmd <UTF-8 각성 파일>; cys status --json",
+        "windows": "cys new-surface --role master --cmd <UTF-8 각성 파일>; cys status --json"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/fleet/initial-fleet.ok"},
-        {"kind": "count", "path": "~/.wave/fleet/status.json", "json_path": "seats", "equals": 2, "message": "좌석 수 2 확인 · roles.json 기준, 실제 기동 미검증"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.cys/.master-bootstrapped"
+        },
+        {
+          "kind": "json_path",
+          "path": "~/.wave/install-state.json",
+          "json_path": "steps.S07_INITIAL_FLEET.observed.roles",
+          "equals": [
+            "master",
+            "cso",
+            "worker"
+          ]
+        },
+        {
+          "kind": "json_path",
+          "path": "~/.wave/install-state.json",
+          "json_path": "steps.S07_INITIAL_FLEET.observed.fleet_started",
+          "equals": true
+        }
       ],
       "on_fail": {
         "error_id": "WT-S07-FLEET",
-        "message": "roles.json 기준 마스터 1+부서 1 편성을 2석으로 확인하지 못했습니다.",
+        "message": "420초 안에 master 표지와 cso·worker 생존을 확인하지 못했습니다. 리뷰어는 기다리지 않습니다.",
         "next": "stop"
       },
       "optional": false
@@ -212,16 +233,23 @@
       "id": "S08_VERIFY",
       "index": 8,
       "total": 10,
-      "title": "identify·좌석 수 2 확인 · 주입량 미측정(후속)",
+      "title": "master·cso·worker 재확인 · 주입량 미측정(후속)",
       "command": {
-        "macos": "~/.wave/bin/cys identify && ~/.wave/bin/wave doctor --json",
-        "windows": "$env:USERPROFILE\\.wave\\bin\\cys.exe identify; $env:USERPROFILE\\.wave\\bin\\wave.ps1 doctor --json"
+        "macos": "cys status --json; master 부트 표지 대조",
+        "windows": "cys status --json; master 부트 표지 대조"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "json_path", "path": "~/.wave/verify/doctor.json", "json_path": "identify_exit", "equals": 0},
-        {"kind": "count", "path": "~/.wave/verify/doctor.json", "json_path": "seats", "equals": 2},
-        {"kind": "bytes_lte", "path": "~/.wave/verify/doctor.json", "json_path": "max_injected_bytes", "max": 20480, "message": "주입량 — 미측정(후속) · 측정 시 기준 20KB 이하"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "bytes_lte",
+          "path": "~/.wave/verify/doctor.json",
+          "json_path": "max_injected_bytes",
+          "max": 20480,
+          "message": "주입량 — 미측정(후속) · 측정 시 기준 20KB 이하"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S08-VERIFY",

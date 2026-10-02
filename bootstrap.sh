@@ -420,16 +420,27 @@ step_s04() {
 }
 
 # Bounded child commands: timeout is a failed measurement, never success.
-bounded_cys() {
-  python3 - "$WAVE_HOME/bin/cys" "$@" <<'PY_BOUND'
-import subprocess, sys
+bounded_command() {
+  python3 - "$@" <<'PY_BOUND'
+import os, subprocess, sys
 try:
-    result = subprocess.run(sys.argv[1:], timeout=30)
+    result = subprocess.run(sys.argv[1:], timeout=float(os.environ.get("WAVE_COMMAND_TIMEOUT", "30")))
     sys.exit(result.returncode)
 except subprocess.TimeoutExpired:
     print("cys command timed out", file=sys.stderr)
     sys.exit(124)
 PY_BOUND
+}
+
+bounded_cys() { bounded_command "$WAVE_HOME/bin/cys" "$@"; }
+
+awakening_command() {
+  local deadline="$1" remaining
+  shift
+  remaining=$((deadline - SECONDS))
+  (( remaining > 0 )) || return 124
+  (( remaining > 30 )) && remaining=30
+  WAVE_COMMAND_TIMEOUT="$remaining" bounded_command "$@"
 }
 
 step_s05() {
@@ -503,21 +514,22 @@ PY_VERIFY
 # License retained in LICENSES/jarvis-install-MIT.txt.
 step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
-  local wake="$WAVE_HOME/fleet/wake.sh" command ref started attempt
+  local wake="$WAVE_HOME/fleet/wake.sh" command ref started deadline remaining
   started="$(date +%s)"
+  deadline=$((SECONDS + 420))
   cat > "$wake" <<'WAKE'
 #!/usr/bin/env bash
 export PATH="$HOME/.local/bin:$PATH"
 exec claude '너는 마스터다
-설치된 팩의 마스터 부트 절차를 수행해 주세요. 작업 워커 한 좌석을 소환하고 각성을 확인해 주세요.'
+설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.'
 WAKE
   command="$(python3 - "$wake" <<'PY_QUOTE'
 import shlex, sys
 print('bash ' + shlex.quote(sys.argv[1]))
 PY_QUOTE
 )"
-  open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
-  bounded_cys status --json > "$WAVE_HOME/fleet/before.json" || return 1
+  awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
+  awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   ref="$(python3 - "$WAVE_HOME/fleet/before.json" <<'PY_EXISTING'
 import json, sys
 live = [s for s in json.load(open(sys.argv[1]))['surfaces'] if s.get('role') == 'master' and s.get('exited') is False]
@@ -525,19 +537,25 @@ if live:
     raise SystemExit('기존 master가 살아 있습니다. 중복 생성 없이 설치를 중단합니다.')
 PY_EXISTING
 )" || return 1
-  ref="$(bounded_cys new-surface --role master --cmd "$command")" || return 1
+  ref="$(awakening_command "$deadline" "$WAVE_HOME/bin/cys" new-surface --role master --cmd "$command")" || return 1
   [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
   printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
   printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
-  for attempt in {1..30}; do
-    bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
-    if verify_live_fleet "$ref" "$started"; then
-      STEP_OBSERVED='{"seats":2,"fleet_started":true,"master_marker_verified":true}'
+  while (( SECONDS < deadline )); do
+    remaining=$((deadline - SECONDS))
+    (( remaining > 5 )) && remaining=5
+    if WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys status --json > "$WAVE_HOME/fleet/status.json" &&
+       verify_live_fleet "$ref" "$started" && (( SECONDS < deadline )); then
+      STEP_OBSERVED='{"seats":3,"roles":["master","cso","worker"],"fleet_started":true,"master_marker_verified":true}'
       return 0
     fi
-    sleep 2
+    remaining=$((deadline - SECONDS))
+    (( remaining <= 0 )) && break
+    (( remaining > 2 )) && remaining=2
+    sleep "$remaining"
   done
-  fail_message "마스터 부트 표지·자식 좌석 생존 미확인"
+  fail_message "420초 안에 마스터 부트 표지·CSO·worker 생존을 확인하지 못했습니다"
+
 }
 
 verify_live_fleet() {
@@ -549,9 +567,10 @@ try:
     m = json.loads(marker.read_text())
     live = [s for s in json.loads(status.read_text())['surfaces'] if s.get('exited') is False and s.get('agent_alive') is True and s.get('directive_verified') is True and s.get('awakened_at') is not None]
     masters = [s for s in live if s.get('surface_ref') == ref and s.get('role') == 'master']
+    csos = [s for s in live if s.get('role') == 'cso' and s.get('created_at', 0) >= float(since)]
     children = [s for s in live if str(s.get('role', '')).startswith('worker') and s.get('created_at', 0) >= float(since)]
     ok = (marker.stat().st_mtime >= float(since) and m.get('orchestra_check') == 'exit 0'
-          and str(m.get('surface_ref')) in {ref, ref.split(':')[1]} and masters and children)
+          and str(m.get('surface_ref')) in {ref, ref.split(':')[1]} and masters and csos and children)
 except (OSError, ValueError, KeyError, TypeError):
     ok = False
 sys.exit(0 if ok else 1)

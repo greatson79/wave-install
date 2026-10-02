@@ -31,7 +31,7 @@ function Read-SharedCheckLog([string]$Path) {
 if ($Command -eq "fleet" -and $Action -eq "bootstrap") {
   $fleet = Join-Path $WaveHome "fleet"
   New-Item -ItemType Directory -Force -Path $fleet | Out-Null
-  "initial_fleet=master+worker-dept-1" | Set-Content -LiteralPath (Join-Path $fleet "bootstrap-result")
+  "initial_fleet=master+cso+worker" | Set-Content -LiteralPath (Join-Path $fleet "bootstrap-result")
   New-Item -ItemType File -Force -Path (Join-Path $fleet "initial-fleet.ok") | Out-Null
   exit 0
 }

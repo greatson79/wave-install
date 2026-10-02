@@ -783,8 +783,9 @@ function Run-S06 {
   } finally { $env:CYS_PACK_DIR = $priorPackDir }
 }
 
-function Get-LiveFleet {
-  $result = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('status', '--json') 'fleet-status' 5000
+function Get-LiveFleet([int]$TimeoutMs = 5000) {
+  if ($TimeoutMs -le 0) { throw '각성 확인 시간 초과' }
+  $result = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('status', '--json') 'fleet-status' $TimeoutMs
   if ($result.timed_out -or $result.exit_code -ne 0) { throw '초기 편성 상태 조회 실패' }
   return ($result.stdout | ConvertFrom-Json)
 }
@@ -793,7 +794,8 @@ function Test-AwakenedFleet([object]$Status) {
   $live = @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true })
   $master = @($live | Where-Object { $_.role -eq 'master' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
   $children = @($live | Where-Object { $_.role -like 'worker*' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
-  if ($master.Count -lt 1 -or $children.Count -lt 1) { return $false }
+  $cso = @($live | Where-Object { $_.role -eq 'cso' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
+  if ($master.Count -lt 1 -or $children.Count -lt 1 -or $cso.Count -lt 1) { return $false }
   $markerPath = Join-Path $env:USERPROFILE '.cys\.master-bootstrapped'
   if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { return $false }
   if ($null -ne $script:AwakeningStartedAt -and (Get-Item -LiteralPath $markerPath -Force).LastWriteTimeUtc -lt $script:AwakeningStartedAt) { return $false }
@@ -801,9 +803,16 @@ function Test-AwakenedFleet([object]$Status) {
   return ($marker.orchestra_check -eq 'exit 0' -and @($master.surface_ref) -contains $marker.surface_ref)
 }
 
+function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {
+  $remaining = 420000L - $ElapsedMs
+  if ($remaining -le 0) { return 0 }
+  return [int][Math]::Min($LimitMs, $remaining)
+}
+
 function Run-S07 {
+  $clock = [Diagnostics.Stopwatch]::StartNew()
   Start-WaveApp
-  $status = Get-LiveFleet
+  $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
   if (-not (Test-AwakenedFleet $status)) {
     $masters = @($status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })
     if ($masters.Count -eq 0) {
@@ -812,26 +821,28 @@ function Run-S07 {
       $wakePath = Join-Path $WaveHome 'wake-master.ps1'
       $wakeBody = @'
 $ErrorActionPreference = 'Stop'
-& claude "너는 마스터다`n설치된 팩의 마스터 부트 절차를 수행해 주세요. 작업 워커 한 좌석을 소환하고 각성을 확인해 주세요."
+& claude "너는 마스터다`n설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 각각 한 좌석씩 소환해 마스터를 포함한 세 좌석의 각성을 확인해 주세요. 리뷰어는 기다리지 마세요."
 exit $LASTEXITCODE
 '@
       Set-Content -LiteralPath $wakePath -Value $wakeBody -Encoding UTF8
       $command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $wakePath + '"'
       $quotedCommand = '"' + $command.Replace('"', '\"') + '"'
-      $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('new-surface', '--role', 'master', '--cmd', $quotedCommand) 'master-create' 15000
+      $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('new-surface', '--role', 'master', '--cmd', $quotedCommand) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 15000)
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
     }
   }
-  for ($attempt = 0; $attempt -lt 24; $attempt++) {
-    $status = Get-LiveFleet
+  while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {
+    $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
+    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { break }
     if (Test-AwakenedFleet $status) {
-      $script:StepObserved = [ordered]@{ fleet_started = $true; master_awakened = $true; child_alive = $true; source = 'cys status --json' }
+      $script:StepObserved = [ordered]@{ fleet_started = $true; master_awakened = $true; child_alive = $true; cso_alive = $true; seats = 3; roles = @('master','cso','worker'); source = 'cys status --json' }
       return
     }
-    Start-Sleep -Seconds 5
+    $sleepMs = Get-AwakeningBudgetMs $clock.ElapsedMilliseconds
+    if ($sleepMs -gt 0) { Start-Sleep -Milliseconds $sleepMs }
   }
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
-  throw '마스터·워커 각성 확인 시간 초과'
+  throw '마스터·CSO·워커 각성 확인 420초 시간 초과'
 }
 
 function Get-StateField([object]$Object, [string]$Name) {
@@ -863,6 +874,8 @@ function Read-SharedCheckLog([string]$Path) {
 }
 
 function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$Name, [int]$TimeoutMs = 30000) {
+  if ($TimeoutMs -le 0) { throw '명령 실행 제한시간 소진' }
+  $checkClock = [Diagnostics.Stopwatch]::StartNew()
   $verify = Join-Path $WaveHome 'verify'
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
   $stdoutPath = Join-Path $verify ($Name + '.stdout.log')
@@ -872,7 +885,7 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
   $killError = $null
   try {
     $null = $process.Handle
-    $finished = $process.WaitForExit($TimeoutMs)
+    $finished = $process.WaitForExit([int][Math]::Max(0, $TimeoutMs - $checkClock.ElapsedMilliseconds))
     if ($finished) {
       $exitCode = $process.ExitCode
     } else {
@@ -880,7 +893,8 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
       catch { if (-not $process.HasExited) { $killError = $_.Exception.Message } }
     }
     # Keep the final wait bounded: descendants may retain redirected handles.
-    if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
+    $cleanupMs = [int][Math]::Min(1000, [Math]::Max(0, $TimeoutMs - $checkClock.ElapsedMilliseconds))
+    if (-not $process.WaitForExit($cleanupMs) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
   } finally { $process.Dispose() }
   # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
   $stdout = Read-SharedCheckLog $stdoutPath

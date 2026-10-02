@@ -11,7 +11,8 @@
   "integrity": "SHA256SUMS",
   "initial_fleet": [
     "master",
-    "worker-dept-1"
+    "cso",
+    "worker"
   ],
   "profile": "wave-light"
 }

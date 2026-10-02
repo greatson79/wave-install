@@ -1,4 +1,4 @@
-# W5 최소판 설계 §② 가림 8규칙 + API 계약 §3 평문 제어문자 제거.
+﻿# W5 최소판 설계 §② 가림 8규칙 + API 계약 §3 평문 제어문자 제거.
 # 순수 문자열 변환만 제공한다. 호출자가 현재 로그인 이름을 Username에 전달한다.
 function ConvertTo-HelpSafeText([AllowEmptyString()][string]$Text, [AllowEmptyString()][string]$Username = '') {
   if ($null -eq $Text) { return '' }

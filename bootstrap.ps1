@@ -920,10 +920,17 @@ function Run-S08 {
   catch { Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
   if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
   if ($identify.exit_code -ne 0) { Set-S08CallFailure 'cys identify' $identify.exit_code $identify.stderr; return }
-  try { $status = Get-LiveFleet }
+  try { $result = Invoke-BoundedCheck $cys @('status', '--json') 'fleet-status' 5000 }
   catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
-  $status | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WaveHome 'verify\status.json') -Encoding UTF8
-  if (-not (Test-AwakenedFleet $status)) { Set-S08CallFailure 'cys status --json' $null '마스터·자식 각성 증거 없음'; return }
+  if ($result.timed_out) { Set-S08Timeout 'cys status --json' $result.timeout_ms $result.kill_error; return }
+  if ($result.exit_code -ne 0) { Set-S08CallFailure 'cys status --json' $result.exit_code $result.stderr; return }
+  try {
+    $status = $result.stdout | ConvertFrom-Json
+    $verify = Join-Path $WaveHome 'verify'
+    New-Item -ItemType Directory -Force -Path $verify | Out-Null
+    Set-Content -LiteralPath (Join-Path $verify 'status.json') -Value ($status | ConvertTo-Json -Depth 20) -Encoding UTF8
+    if (-not (Test-AwakenedFleet $status)) { throw '마스터·CSO·worker 각성 증거 없음' }
+  } catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
   # 각성 표지는 주입 바이트 실측을 대체하지 않는다. 미측정은 null로 유지한다.
   $script:StepObserved = [ordered]@{ identify_exit = 0; seats = @($status.surfaces | Where-Object { $_.exited -eq $false }).Count; fleet_verified = $true; injection_measured = $false; max_injected_bytes = $null }
 }

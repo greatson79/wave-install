@@ -61,7 +61,8 @@ function Run-S08 { $script:StepObserved = @{ injection_measured = $true; max_inj
             os.utime(mark, (time.time()-601, time.time()-601))
             expired = run()
             self.assertIn('ACTION-S02', expired)
-            self.assertNotIn('ACTION-S06', expired)
+            # W12 G3/G5: completed pack installs still recheck the app's original bytes.
+            self.assertIn('ACTION-S06', expired)
             self.assertIn('ACTION-S06', run('-Reinstall'))
 
     def test_dispatch_uses_our_rule_examples(self):
@@ -271,37 +272,47 @@ if ($actionCalled -or $State.steps.S05_DAEMON_REGISTER.status -ne 'skipped_with_
 if ($State.steps.S05_DAEMON_REGISTER.observed.reason -notmatch 'initial state write') { throw 'initial state reason lost' }
 ''')
 
-    def test_s05_registers_quoted_hkcu_value_and_verifies_readback(self):
+    def test_s05_registers_via_cli_and_checks_bounded_fallbacks(self):
+        # W12 delegates registration to cys daemon install.
         self.run_ps(r'''
-$bin = Join-Path $WaveHome 'bin'
-New-Item -ItemType Directory -Force $bin | Out-Null
-Set-Content (Join-Path $bin 'cysd.exe') 'fixture only'
-# Existing daemon runtime file must not collide with installer-owned records.
-Set-Content (Join-Path $WaveHome 'daemon') 'runtime-owned fixture'
-$script:saved = $null
-function New-Item {
-  param($Path, $ItemType, [switch]$Force, $ErrorAction)
-  if ($Path -like 'HKCU:*') { return }
-  Microsoft.PowerShell.Management\New-Item -Path $Path -ItemType $ItemType -Force
+$script:mode = 'ready'
+$script:phase = 0
+$script:starts = @()
+$script:calls = @()
+function Write-Log { param($Message) }
+function Start-Sleep { param($Milliseconds, $Seconds) }
+function Test-Path { param($LiteralPath, $PathType) return $true }
+function New-ItemProperty { throw 'installer must not register HKCU directly' }
+function Get-ItemProperty { throw 'installer must not inspect HKCU directly' }
+function New-Item { throw 'installer must not create a registry key' }
+function Start-Process {
+  param($FilePath)
+  $script:starts += $FilePath
+  $script:phase++
 }
-function New-ItemProperty {
-  param($Path, $Name, $Value, $PropertyType, [switch]$Force, $ErrorAction)
-  if ($Path -cne 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -or $PropertyType -ne 'String') { throw 'not user Run key' }
-  $script:saved = @{ name=$Name; value=$Value }
+function Invoke-BoundedCheck {
+  param($FilePath, $Arguments, $Name, $TimeoutMs)
+  if ($FilePath -ne (Join-Path $WaveHome 'bin/cys.exe')) { throw 'unexpected CLI path' }
+  $script:calls += ($Arguments -join ' ')
+  if (($Arguments -join ' ') -eq 'daemon install') {
+    if ($TimeoutMs -ne 30000) { throw 'registration not bounded' }
+    $code = if ($mode -eq 'registration-failed') { 7 } else { 0 }
+    return [pscustomobject]@{ timed_out=$false; exit_code=$code; stdout=''; stderr='fixture' }
+  }
+  if (($Arguments -join ' ') -ne 'ping' -or $TimeoutMs -ne 3000) { throw 'unexpected/unbounded ping' }
+  $ready = ($mode -in @('ready','registration-failed') -or ($mode -eq 'daemon-fallback' -and $phase -ge 1) -or ($mode -eq 'app-fallback' -and $phase -ge 2))
+  return [pscustomobject]@{ timed_out=(-not $ready); exit_code=$(if ($ready) { 0 } else { $null }); stdout=$(if ($ready) { 'pong' } else { '' }); stderr='' }
 }
-function Get-ItemProperty {
-  param($LiteralPath, $Name, $ErrorAction)
-  return @{ $Name = $saved.value }
+foreach ($case in @('ready','daemon-fallback','app-fallback','unavailable','registration-failed')) {
+  $script:mode = $case; $script:phase = 0; $script:starts = @(); $script:calls = @(); $script:StepStatus = 'passed'
+  Run-S05
+  if ($calls[0] -ne 'daemon install' -or $StepObserved.registration -ne 'cys daemon install') { throw 'CLI registration missing' }
+  if ($case -eq 'ready' -and ($starts.Count -ne 0 -or -not $StepObserved.daemon_ready -or $StepStatus -ne 'passed')) { throw 'ready daemon was restarted' }
+  if ($case -eq 'daemon-fallback' -and ($starts.Count -ne 1 -or $starts[0] -ne (Join-Path $WaveHome 'bin/cysd.exe') -or -not $StepObserved.daemon_ready)) { throw 'daemon fallback wrong' }
+  if ($case -eq 'app-fallback' -and ($starts.Count -ne 2 -or $starts[1] -ne (Join-Path $WaveHome 'bin/cys-app.exe') -or -not $StepObserved.daemon_ready)) { throw 'app fallback wrong' }
+  if ($case -eq 'unavailable' -and ($StepStatus -ne 'skipped_with_reason' -or $StepObserved.daemon_ready -or $calls.Count -ne 16)) { throw 'unavailable daemon not bounded/nonblocking' }
+  if ($case -eq 'registration-failed' -and ($StepStatus -ne 'skipped_with_reason' -or $StepObserved.registered -or -not $StepObserved.daemon_ready)) { throw 'registration failure hidden' }
 }
-Run-S05
-if ($saved.value -cne ('"' + (Join-Path $bin 'cysd.exe') + '"')) { throw 'path not quoted' }
-if (-not (Test-Path (Join-Path $WaveHome 'install/daemon-register-result'))) { throw 'installer marker absent' }
-if ((Get-Content (Join-Path $WaveHome 'daemon')) -ne 'runtime-owned fixture') { throw 'runtime file changed' }
-if (-not $StepObserved.registered -or $StepObserved.admin_required -or $StepObserved.registration -ne 'HKCU_Run') { throw 'registration evidence' }
-function Get-ItemProperty { param($LiteralPath, $Name, $ErrorAction); return @{ $Name = 'wrong.exe' } }
-$threw = $false
-try { Run-S05 } catch { $threw = $true }
-if (-not $threw) { throw 'wrong registry readback accepted' }
 ''')
 
     @unittest.skipUnless(os.name == 'nt' and Path(PWSH or '').name.lower() == 'powershell.exe',
@@ -446,7 +457,8 @@ Init-State
 foreach ($step in $Config.steps) { Say-Step $step 'test' }
 $id = 'S06_PACK_INSTALL'
 Update-Step $id 'passed' 0 '' @{}
-if (-not (Test-StepComplete $id)) { throw 'automatic resume missing' }
+# W12 G3/G5: persisted passed state cannot replace a live original-pack check.
+if (Test-StepComplete $id) { throw 'pack verification was skipped on resume' }
 $State.steps.$id.version = 'old'
 if (Test-StepComplete $id) { throw 'old release skipped' }
 try { Invoke-Step $id { throw 'claude 명령 없음' } } catch { }

@@ -572,7 +572,19 @@ SEED_ONCE = {'preflight-product-profile.json.new'}
 if [p for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() not in SEED_ONCE]:
     raise SystemExit('pending .new files: merge required')
 PY_VERIFY
-  STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","embedded_directives_verified":true,"pending_new":0}'
+  # cys-dept는 앱 번들 바이너리가 아니라 init-pack이 까는 팩 스크립트다. preflight C11b가 보는 그 자리
+  # (cys 옆 $WAVE_HOME/bin)에 심링크한다. 사용자 실파일은 덮지 않는다(preflight와 같은 규약).
+  local dept_src="$PACK_HOME/bin/cys-dept" dept_link="$WAVE_HOME/bin/cys-dept" dept_state="absent"
+  if [[ -f "$dept_src" && ! -L "$dept_src" ]]; then
+    if [[ -e "$dept_link" && ! -L "$dept_link" ]]; then
+      dept_state="user_file_preserved"
+    elif chmod +x "$dept_src" && ln -sfn "$dept_src" "$dept_link"; then
+      dept_state="linked"
+    else
+      dept_state="link_failed"
+    fi
+  fi
+  STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","embedded_directives_verified":true,"pending_new":0,"cys_dept":"'"$dept_state"'"}'
 }
 
 # Adapted from oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT).

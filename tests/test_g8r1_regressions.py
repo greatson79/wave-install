@@ -305,6 +305,24 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertNotIn('G3=0', r.stdout)
 
+    def test_s06_exposes_pack_cys_dept_next_to_cys_like_preflight_c11b(self):
+        pack = self.directive_fixture()
+        self.env['INIT_PACK_ACTION'] = ('mkdir -p "$HOME/.cys/pack/bin" && printf "#!/bin/sh\\necho dept\\n" '
+                                        '> "$HOME/.cys/pack/bin/cys-dept" && chmod 644 "$HOME/.cys/pack/bin/cys-dept"')
+        r = self.bash('SCRIPT_DIR="' + str(ROOT) + '"; step_s06; echo "RC=$?"; echo "$STEP_OBSERVED"')
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        link, src = self.wave / 'bin/cys-dept', pack / 'bin/cys-dept'
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.path.realpath(link), os.path.realpath(src))
+        self.assertTrue(os.access(link, os.X_OK))
+        self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1])['cys_dept'], 'linked')
+        link.unlink()
+        link.write_text('user owned\n')
+        r = self.bash('SCRIPT_DIR="' + str(ROOT) + '"; step_s06; echo "RC=$?"; echo "$STEP_OBSERVED"')
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        self.assertEqual(link.read_text(), 'user owned\n')
+        self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1])['cys_dept'], 'user_file_preserved')
+
     def test_cdhash_pin_must_be_present(self):
         steps = json.loads((ROOT / 'steps.json').read_text())
         good = steps['release']['cdhash']['macos_arm64']
@@ -475,6 +493,77 @@ $blocked = $false
 try { $null = Test-OriginalInjection } catch { $blocked = $true }
 if (-not $blocked) { throw 'other .new accepted by G3' }
 ''')
+
+
+    def test_s06_writes_the_exact_c11b_cys_dept_launcher(self):
+        out = self.run_ps(r'''
+New-Item -ItemType Directory -Force (Join-Path $ScriptDir 'wave-pack/directives'), (Join-Path $PackHome 'directives'), (Join-Path $WaveHome 'bin') | Out-Null
+$target = Join-Path $PackHome 'directives/MASTER_DIRECTIVE.md'
+function Invoke-BoundedCheck($FilePath, $Arguments, $Name, $TimeoutMs) {
+  if ($Arguments[0] -eq 'init-pack') {
+    [IO.File]::WriteAllText($target, 'full app directive')
+    New-Item -ItemType Directory -Force (Join-Path $PackHome 'bin') | Out-Null
+    [IO.File]::WriteAllText((Join-Path $PackHome 'bin/cys-dept'), 'dept')
+    return [pscustomobject]@{ timed_out = $false; exit_code = 0; stderr = ''; stdout = '' }
+  }
+  return [pscustomobject]@{ timed_out = $false; exit_code = 0; stderr = ''; stdout = ('{"files":{"directives/MASTER_DIRECTIVE.md":"' + (Get-ArtifactHash $target) + '"}}') }
+}
+Run-S06
+if ($StepObserved.cys_dept -ne 'linked') { throw "first: $($StepObserved.cys_dept)" }
+Write-Host ('PACK=' + (Join-Path $PackHome 'bin/cys-dept'))
+Write-Host ('LAUNCHER=' + [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $WaveHome 'bin/cys-dept.cmd'))))
+Run-S06
+if ($StepObserved.cys_dept -ne 'linked') { throw "idempotent: $($StepObserved.cys_dept)" }
+[IO.File]::WriteAllText((Join-Path $WaveHome 'bin/cys-dept.cmd'), 'user owned')
+Run-S06
+if ($StepObserved.cys_dept -ne 'user_file_preserved') { throw "preserve: $($StepObserved.cys_dept)" }
+if ([IO.File]::ReadAllText((Join-Path $WaveHome 'bin/cys-dept.cmd')) -ne 'user owned') { throw 'user launcher overwritten' }
+''')
+        import base64
+        values = dict(line.split('=', 1) for line in out.splitlines() if line.startswith(('PACK=', 'LAUNCHER=')))
+        src = values['PACK']
+        raw = base64.b64decode(values['LAUNCHER'])
+        self.assertFalse(raw.startswith(b'\xef\xbb\xbf'))
+        self.assertIn(b'\r\n', raw)
+        # javis_preflight.py C11b(Windows) reads the file in text mode and compares to exactly this body.
+        expected = '@echo off\nbash "' + src.replace('\\', '/').replace('%', '%%') + '" %*\n'
+        self.assertEqual(raw.decode('utf-8').replace('\r\n', '\n'), expected)
+
+    def test_failed_step_reason_is_redacted_and_bounded(self):
+        for with_lib in (True, False):
+            with self.subTest(with_lib=with_lib):
+                load = (". '" + str(ROOT / 'lib/install-help.ps1') + "'") if with_lib else ''
+                out = self.run_ps(load + r'''
+$env:USERNAME = 'alicesmith'
+$script:Config = [pscustomobject]@{ steps = @([pscustomobject]@{ id = 'S02_CLAUDE_LOGIN'; optional = $false; on_fail = [pscustomobject]@{ error_id = 'E-S02' } }) }
+$script:Recorded = $null
+function Update-Step($Id, $Status, $ExitCode, $ErrorId, $Observed) { if ($Status -eq 'failed') { $script:Recorded = $Observed } }
+function Write-JCode { }
+$logged = ''
+function Write-Log([string]$Message) { $script:logged += $Message }
+$secret = 'token sk-SECRETTOKENVALUE1234567890 at ' + $env:USERPROFILE + '/alicesmith/log'
+try { Invoke-Step 'S02_CLAUDE_LOGIN' { throw ("init-pack 실패: " + ('y' * 200000) + "`n" + $secret) } } catch { }
+$reason = [string]$Recorded.reason
+Write-Host ('BYTES=' + [Text.Encoding]::UTF8.GetByteCount($reason))
+Write-Host ('REASON=' + $reason.Substring([Math]::Max(0, $reason.Length - 200)).Replace("`n", ' '))
+Write-Host ('HEAD=' + $reason.Substring(0, 3))
+Write-Host ('POSITION_HAS_HOME=' + ([string]$Recorded.position).Contains($env:USERPROFILE))
+Write-Host ('LOG_FULL=' + $logged.Contains('SECRETTOKENVALUE') + '/' + ($logged.Length -gt 200000))
+''')
+                values = dict(line.split('=', 1) for line in out.splitlines() if '=' in line and line.split('=', 1)[0].isupper())
+                self.assertLessEqual(int(values['BYTES']), 4096 + 8)
+                self.assertEqual(values['HEAD'], '...')
+                self.assertIn('at ', values['REASON'])
+                self.assertNotIn('alicesmith', values['REASON'])
+                if with_lib:
+                    self.assertIn('/Users/<USER>/', values['REASON'])
+                else:
+                    self.assertNotIn('.g8r1-win-', values['REASON'])
+                    self.assertEqual(values['POSITION_HAS_HOME'], 'False')
+                self.assertEqual(values['LOG_FULL'], 'True/True')
+                if with_lib:
+                    self.assertIn('<TOKEN>', values['REASON'])
+                    self.assertNotIn('TOKENVALUE', values['REASON'])
 
 
 if __name__ == '__main__':

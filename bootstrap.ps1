@@ -857,6 +857,23 @@ function Run-S06 {
   $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -ErrorAction Stop | Where-Object { $_.FullName -ne $seedOnceNew })
   $script:StepObserved = [ordered]@{ pack_installed = $true; legacy_backed_up = $moved; directive_count = $directives.Count; directive_mismatches = $mismatches; new_files = $pending.Count; directive_bytes_match = ($mismatches.Count -eq 0) }
   if ($mismatches.Count -or $pending.Count) { throw "원본 지침 대조 실패: mismatch=$($mismatches.Count), .new=$($pending.Count); 사용자 파일은 보존했습니다" }
+  # cys-dept는 init-pack이 까는 팩 bash 스크립트다. preflight C11b가 기대하는 그 런처(cys 옆 cys-dept.cmd,
+  # 같은 본문)를 둔다. 내용이 다른 기존 파일은 사용자 파일로 보고 덮지 않는다(macOS 심링크와 같은 규약).
+  $deptSrc = Join-Path $PackHome 'bin\cys-dept'
+  $deptLink = Join-Path $WaveHome 'bin\cys-dept.cmd'
+  $deptState = 'absent'
+  if (Test-Path -LiteralPath $deptSrc -PathType Leaf) {
+    $deptBody = "@echo off`nbash `"" + $deptSrc.Replace('\', '/').Replace('%', '%%') + "`" %*`n"
+    try {
+      if (-not (Test-Path -LiteralPath $deptLink)) {
+        [IO.File]::WriteAllText($deptLink, $deptBody.Replace("`n", "`r`n"))
+        $deptState = 'linked'
+      } elseif ([IO.File]::ReadAllText($deptLink).Replace("`r`n", "`n") -eq $deptBody) {
+        $deptState = 'linked'
+      } else { $deptState = 'user_file_preserved' }
+    } catch { Write-Log "cys-dept 런처 생성 실패: $($_.Exception.Message)"; $deptState = 'link_failed' }
+  }
+  $script:StepObserved['cys_dept'] = $deptState
   } finally { $env:CYS_PACK_DIR = $priorPackDir }
 }
 
@@ -1118,6 +1135,27 @@ function Run-S09 {
   $script:StepObserved = [ordered]@{ required_steps_passed = $State.required_steps_passed; start_here = $true; silent_completion = $false }
 }
 
+# 상태 파일에는 가린 뒤 자른 실패 사유 끝부분(최대 4KB)만 남긴다. 원문 전체는 install.log 에만 있다(macOS PY_REASON 과 같은 계약).
+function ConvertTo-StateReason([AllowEmptyString()][string]$Text) {
+  $user = [string]$env:USERNAME
+  $safe = $null
+  if (Get-Command ConvertTo-HelpSafeText -ErrorAction SilentlyContinue) {
+    try { $safe = ConvertTo-HelpSafeText $Text $user } catch { $safe = $null }
+  }
+  if ($null -eq $safe) {
+    $safe = [string]$Text
+    $profileDir = [string]$env:USERPROFILE
+    if ($profileDir.Length -gt 3) { $safe = $safe.Replace($profileDir, '~') }
+    if ($user) { $safe = [regex]::Replace($safe, ('(?<!\w)' + [regex]::Escape($user) + '(?!\w)'), '<USER>', 'IgnoreCase') }
+  }
+  $encoding = [Text.UTF8Encoding]::new($false)
+  $bytes = $encoding.GetBytes($safe)
+  if ($bytes.Length -le 4096) { return $safe }
+  $start = $bytes.Length - 4096
+  while ($start -lt $bytes.Length -and ($bytes[$start] -band 0xC0) -eq 0x80) { $start++ }
+  return '...' + $encoding.GetString($bytes, $start, $bytes.Length - $start)
+}
+
 function Invoke-Step([string]$Id, [scriptblock]$Action) {
   $script:StepObserved = [ordered]@{}
   $script:StepStatus = "passed"
@@ -1133,8 +1171,8 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     $position = $_.InvocationInfo.PositionMessage
     $code = Get-JCode $reason
     $script:StepObserved['j_code'] = $code
-    $script:StepObserved['reason'] = $reason
-    $script:StepObserved['position'] = $position
+    $script:StepObserved['reason'] = ConvertTo-StateReason $reason
+    $script:StepObserved['position'] = ConvertTo-StateReason $position
     try {
       Write-Log "[$Id] 실패 원문: $reason"
       if ($position) { Write-Log $position }

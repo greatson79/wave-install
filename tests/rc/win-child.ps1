@@ -23,6 +23,8 @@ function Reset-Fleet {
 }
 function Install-Fake {
   $bin = Join-Path $h '.local\bin'; New-Item -ItemType Directory -Force (Join-Path $bin 'claude') | Out-Null
+  # 12차: S01 이 설치한 진짜 claude.exe 가 같은 폴더의 claude.cmd 보다 PATHEXT 순서(.EXE 가 .CMD 앞)로 먼저 잡혀 합성이 쓰이지 않고 실제 로그인으로 멈췄다 → 진짜는 이름을 바꿔 치운다(맥의 claude.real 과 같은 취급)
+  foreach ($n in @('claude.exe')) { $real = Join-Path $bin $n; if (Test-Path $real) { Move-Item $real ($real + '.real') -Force } }
   Copy-Item (Join-Path $rc 'fake_claude.py') (Join-Path $bin 'claude\fake_claude.py') -Force
   "@echo off`r`n`"$Py`" `"%~dp0claude\fake_claude.py`" %*`r`n" | Set-Content (Join-Path $bin 'claude.cmd') -Encoding ASCII
   $env:PATH = "$bin;$env:PATH"

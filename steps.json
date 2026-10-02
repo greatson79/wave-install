@@ -147,8 +147,29 @@
       "optional": false
     },
     {
-      "id": "S05_DAEMON_REGISTER",
+      "id": "S06_PACK_INSTALL",
       "index": 5,
+      "total": 10,
+      "title": "앱 원본 팩 설치·임베드 지침 지문 검증",
+      "command": {
+        "macos": "cys init-pack && cys pack-manifest (지침 SHA256 대조)",
+        "windows": "cys init-pack; cys pack-manifest (지침 SHA256 대조)"
+      },
+      "pass": [
+        {"kind": "exit_code", "equals": 0},
+        {"kind": "file_exists", "path": "~/.cys/pack/manifest.json"},
+        {"kind": "file_exists", "path": "~/.cys/pack/SHA256SUMS"}
+      ],
+      "on_fail": {
+        "error_id": "WT-S06-PACK",
+        "message": "wave-pack이 없거나 manifest/SHA256 검증을 통과하지 못했습니다.",
+        "next": "stop"
+      },
+      "optional": false
+    },
+    {
+      "id": "S05_DAEMON_REGISTER",
+      "index": 6,
       "total": 10,
       "title": "데몬 등록(선택·기본 on)",
       "command": {
@@ -165,27 +186,6 @@
         "next": "retry"
       },
       "optional": true
-    },
-    {
-      "id": "S06_PACK_INSTALL",
-      "index": 6,
-      "total": 10,
-      "title": "wave-pack 배치·manifest/SHA256 검증",
-      "command": {
-        "macos": "cp -R wave-pack/. ~/.cys/pack/ && (cd ~/.cys/pack && shasum -a 256 -c SHA256SUMS)",
-        "windows": "Copy-Item wave-pack\\* $env:USERPROFILE\\.cys\\pack -Recurse -Force; Get-FileHash .\\manifest.json -Algorithm SHA256"
-      },
-      "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.cys/pack/manifest.json"},
-        {"kind": "file_exists", "path": "~/.cys/pack/SHA256SUMS"}
-      ],
-      "on_fail": {
-        "error_id": "WT-S06-PACK",
-        "message": "wave-pack이 없거나 manifest/SHA256 검증을 통과하지 못했습니다.",
-        "next": "stop"
-      },
-      "optional": false
     },
     {
       "id": "S07_INITIAL_FLEET",

@@ -40,6 +40,7 @@ $InstallId = ''
 $ProgressWarned = $false
 $CurrentStep = '1/10'
 $DiagnosticWritten = $false
+$AwakeningStartedAt = $null
 
 function Say([string]$Message) { Write-Log $Message }
 
@@ -185,7 +186,7 @@ function Test-StepComplete([string]$Id) {
   if ($entry.status -ne 'passed' -or $entry.exit_code -ne 0 -or $entry.error_id -or (Test-SyntheticBypass $entry)) { return $false }
   if ($entry.version -ne [string]$Config.release.version) { return $false }
   # Authentication, preflight, and measured verification are live checks on every run.
-  if ($Id -in @('S00_PREFLIGHT', 'S01_CLAUDE_INSTALL', 'S02_CLAUDE_LOGIN', 'S08_VERIFY')) { return $false }
+  if ($Id -in @('S00_PREFLIGHT', 'S01_CLAUDE_INSTALL', 'S02_CLAUDE_LOGIN', 'S05_DAEMON_REGISTER', 'S06_PACK_INSTALL', 'S07_INITIAL_FLEET', 'S08_VERIFY')) { return $false }
   if ($Id -eq 'S03_DOWNLOAD_VERIFY') {
     try {
       Release-Context
@@ -695,65 +696,142 @@ function Run-S04 {
   $script:StepObserved = [ordered]@{ cys = $true; cys_version_observed = $cliVersion; cysd = $true; shell_link = $true; shell_scope = "process"; install_dir = $bin; installer_exit = $process.ExitCode; verified_installer_sha256 = $actual; web_mark = $webMark; cli_sha256 = (Get-ArtifactHash $cys); daemon_sha256 = $daemonSha; daemon_verification = "PE-x64-and-observed-SHA256"; daemon_started = $false; admin_required = $false }
 }
 
-function Run-S05 {
-  # 데몬 런타임 경로와 설치기 기록을 분리한다(기존 daemon 파일/폴더와 충돌 금지).
-  $daemon = Join-Path $WaveHome "install"
-  New-Item -ItemType Directory -Force -Path $daemon | Out-Null
-  $result = Join-Path $daemon "daemon-register-result"
-  if ($env:WAVE_ENABLE_DAEMON -eq "0") {
-    Set-Content -LiteralPath $result -Value "skipped_by_user" -Encoding UTF8
-    $script:StepStatus = "skipped"
-    $script:StepObserved = [ordered]@{ mode = "skipped"; registered = $false }
-    return
+# 앱 CLI 계약을 사용한다. 설치 흐름 기반: oogisoogi/jarvis-install (MIT).
+function Test-DaemonReady {
+  $cys = Join-Path $WaveHome 'bin\cys.exe'
+  for ($attempt = 0; $attempt -lt 5; $attempt++) {
+    try {
+      $ping = Invoke-BoundedCheck $cys @('ping') "daemon-ping-$attempt" 3000
+      if (-not $ping.timed_out -and $ping.exit_code -eq 0 -and $ping.stdout.Trim() -eq 'pong') { return $true }
+    } catch { Write-Log $_.Exception.Message }
+    Start-Sleep -Milliseconds 500
   }
-  $cysd = Join-Path $WaveHome "bin\cysd.exe"
-  if (-not (Test-Path -LiteralPath $cysd)) { throw "cysd 없음" }
-  # 현재 사용자 로그인에만 등록한다. 공백·한글 경로도 하나의 실행파일로 해석한다.
-  $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-  $valueName = 'WaveTerminal-cysd'
-  $command = '"' + $cysd + '"'
-  if ($command.Length -gt 260) { throw '사용자 데몬 등록 경로가 Run 값 길이 제한(260자)을 초과합니다' }
-  New-Item -Path $runKey -Force -ErrorAction Stop | Out-Null
-  New-ItemProperty -Path $runKey -Name $valueName -Value $command -PropertyType String -Force -ErrorAction Stop | Out-Null
-  $registered = Get-ItemProperty -LiteralPath $runKey -Name $valueName -ErrorAction Stop
-  if ($registered.$valueName -cne $command) { throw "사용자 데몬 등록 확인 실패: HKCU Run 값 불일치" }
-  Set-Content -LiteralPath $result -Value "registered" -Encoding UTF8
-  $script:StepObserved = [ordered]@{ mode = "default_on"; registered = $true; admin_required = $false; registration = "HKCU_Run"; command = $command }
+  return $false
+}
+
+function Start-WaveApp {
+  $app = Join-Path $WaveHome 'bin\cys-app.exe'
+  if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw 'cys-app.exe 없음' }
+  Start-Process -FilePath $app | Out-Null
+}
+
+function Run-S05 {
+  $cys = Join-Path $WaveHome 'bin\cys.exe'
+  $registered = $false
+  try {
+    $install = Invoke-BoundedCheck $cys @('daemon', 'install') 'daemon-install' 30000
+    $registered = (-not $install.timed_out -and $install.exit_code -eq 0)
+    if (-not $registered) { Write-Log "daemon install 미완료: $($install.stderr)" }
+  } catch { Write-Log "daemon install 실패: $($_.Exception.Message)" }
+  $ready = Test-DaemonReady
+  $fallback = $false
+  if (-not $ready) {
+    $fallback = $true
+    try { Start-Process -FilePath (Join-Path $WaveHome 'bin\cysd.exe') | Out-Null } catch { Write-Log $_.Exception.Message }
+    $ready = Test-DaemonReady
+    if (-not $ready) {
+      try { Start-WaveApp } catch { Write-Log $_.Exception.Message }
+      $ready = Test-DaemonReady
+    }
+  }
+  $script:StepObserved = [ordered]@{ registered = $registered; daemon_ready = $ready; direct_fallback = $fallback; registration = 'cys daemon install' }
+  if (-not $registered -or -not $ready) { $script:StepStatus = 'skipped_with_reason' }
 }
 
 function Run-S06 {
-  $source = if ($env:WAVE_PACK_SOURCE) { $env:WAVE_PACK_SOURCE } else { Join-Path $ScriptDir "wave-pack" }
-  if (-not (Test-Path -LiteralPath (Join-Path $source "manifest.json"))) { throw "S1 wave-pack 소스 없음" }
-  if (-not (Test-Path -LiteralPath (Join-Path $source "SHA256SUMS"))) { throw "wave-pack SHA256SUMS 없음" }
-  New-Item -ItemType Directory -Force -Path $PackHome | Out-Null
-  Copy-Item -Path (Join-Path $source "*") -Destination $PackHome -Recurse -Force
-  $waveBin = Join-Path $PackHome "bin\wave.ps1"
-  if (-not (Test-Path -LiteralPath $waveBin)) { throw "wave.ps1 래퍼 없음" }
-  New-Item -ItemType Directory -Force -Path (Join-Path $WaveHome "bin") | Out-Null
-  Copy-Item -LiteralPath $waveBin -Destination (Join-Path $WaveHome "bin\wave.ps1") -Force
-  $script:StepObserved = [ordered]@{ pack_installed = $true; manifest_present = $true; sha256_manifest_present = $true }
+  $priorPackDir = $env:CYS_PACK_DIR
+  try {
+  $env:CYS_PACK_DIR = $PackHome
+  foreach ($candidate in @($PackHome, (Join-Path $PackHome 'directives'))) {
+    if (Test-Path -LiteralPath $candidate) {
+      if (((Get-Item -LiteralPath $candidate -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw '팩/지침 경로의 reparse point 거부' }
+    }
+  }
+  $cys = Join-Path $WaveHome 'bin\cys.exe'
+  $legacy = Join-Path $ScriptDir 'wave-pack\directives'
+  $backup = Join-Path $WaveHome ('backups\legacy-directives-' + [guid]::NewGuid().ToString('N'))
+  $moved = @()
+  # 배포 스텁과 내용이 정확히 같은 파일만 이동한다. 사용자 수정본은 보존한다.
+  foreach ($stub in @(Get-ChildItem -LiteralPath $legacy -File -ErrorAction Stop)) {
+    $target = Join-Path $PackHome ('directives\' + $stub.Name)
+    if ((Test-Path -LiteralPath $target) -and (((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) { throw '지침 reparse point 거부' }
+    if ((Test-Path -LiteralPath $target -PathType Leaf) -and (Get-ArtifactHash $target) -eq (Get-ArtifactHash $stub.FullName)) {
+      New-Item -ItemType Directory -Force -Path $backup | Out-Null
+      Move-Item -LiteralPath $target -Destination (Join-Path $backup $stub.Name)
+      if (Test-Path -LiteralPath ($target + '.new')) {
+        Move-Item -LiteralPath ($target + '.new') -Destination (Join-Path $backup ($stub.Name + '.new'))
+      }
+      $moved += $stub.Name
+    }
+  }
+  $result = Invoke-BoundedCheck $cys @('init-pack') 'init-pack' 120000
+  if ($result.timed_out -or $result.exit_code -ne 0) { throw "init-pack 실패: $($result.stderr)" }
+  $manifestResult = Invoke-BoundedCheck $cys @('pack-manifest') 'pack-manifest' 30000
+  if ($manifestResult.timed_out -or $manifestResult.exit_code -ne 0) { throw '앱 원본 pack-manifest 조회 실패' }
+  $manifest = $manifestResult.stdout | ConvertFrom-Json
+  $directives = @($manifest.files.PSObject.Properties | Where-Object { $_.Name -like 'directives/*' })
+  if ($directives.Count -eq 0) { throw '앱 manifest 지침 목록 없음' }
+  $mismatches = @()
+  foreach ($file in $directives) {
+    if ($file.Name -match '(^|/)\.\.(/|$)|:|\\' -or $file.Value -notmatch '^[a-fA-F0-9]{64}$') { throw '앱 manifest 지침 경로/지문 오류' }
+    $target = Join-Path $PackHome $file.Name
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf) -or (Get-ArtifactHash $target) -ne $file.Value.ToLowerInvariant()) { $mismatches += $file.Name }
+  }
+  $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -ErrorAction Stop)
+  $script:StepObserved = [ordered]@{ pack_installed = $true; legacy_backed_up = $moved; directive_count = $directives.Count; directive_mismatches = $mismatches; new_files = $pending.Count; directive_bytes_match = ($mismatches.Count -eq 0) }
+  if ($mismatches.Count -or $pending.Count) { throw "원본 지침 대조 실패: mismatch=$($mismatches.Count), .new=$($pending.Count); 사용자 파일은 보존했습니다" }
+  } finally { $env:CYS_PACK_DIR = $priorPackDir }
+}
+
+function Get-LiveFleet {
+  $result = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('status', '--json') 'fleet-status' 5000
+  if ($result.timed_out -or $result.exit_code -ne 0) { throw '초기 편성 상태 조회 실패' }
+  return ($result.stdout | ConvertFrom-Json)
+}
+
+function Test-AwakenedFleet([object]$Status) {
+  $live = @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true })
+  $master = @($live | Where-Object { $_.role -eq 'master' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
+  $children = @($live | Where-Object { $_.role -like 'worker*' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
+  if ($master.Count -lt 1 -or $children.Count -lt 1) { return $false }
+  $markerPath = Join-Path $env:USERPROFILE '.cys\.master-bootstrapped'
+  if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { return $false }
+  if ($null -ne $script:AwakeningStartedAt -and (Get-Item -LiteralPath $markerPath -Force).LastWriteTimeUtc -lt $script:AwakeningStartedAt) { return $false }
+  try { $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json } catch { return $false }
+  return ($marker.orchestra_check -eq 'exit 0' -and @($master.surface_ref) -contains $marker.surface_ref)
 }
 
 function Run-S07 {
-  $roles = Join-Path $PackHome "roles.json"
-  $wave = Join-Path $WaveHome "bin\wave.ps1"
-  if (-not (Test-Path -LiteralPath $roles) -or -not (Test-Path -LiteralPath $wave)) { throw "roles.json 또는 wave CLI 없음" }
-  $fleet = Join-Path $WaveHome "fleet"
-  New-Item -ItemType Directory -Force -Path $fleet | Out-Null
-  $previousPreference = $ErrorActionPreference
-  try {
-    $ErrorActionPreference = 'Continue'
-    $fleetOutput = (& powershell -NoProfile -ExecutionPolicy Bypass -File $wave fleet bootstrap -RolesPath $roles 2>&1 | Out-String).Trim()
-    $fleetExit = $LASTEXITCODE
-  } finally { $ErrorActionPreference = $previousPreference }
-  Set-Content -LiteralPath (Join-Path $fleet "bootstrap.log") -Value $fleetOutput -Encoding UTF8
-  if ($fleetExit -ne 0) { throw "초기 편성 기동 실패(exit=$fleetExit): $fleetOutput" }
-  & powershell -NoProfile -ExecutionPolicy Bypass -File $wave fleet status --json | Set-Content -LiteralPath (Join-Path $fleet "status.json") -Encoding UTF8
-  if ($LASTEXITCODE -ne 0) { throw "초기 편성 상태 조회 실패" }
-  $status = Get-Content -LiteralPath (Join-Path $fleet "status.json") -Raw | ConvertFrom-Json
-  if (@($status.seats).Count -ne 2) { throw "초기 편성 좌석 수가 2가 아님" }
-  New-Item -ItemType File -Force -Path (Join-Path $fleet "initial-fleet.ok") | Out-Null
-  $script:StepObserved = [ordered]@{ seats = 2; roles = "master+dept"; fleet_started = $null }
+  Start-WaveApp
+  $status = Get-LiveFleet
+  if (-not (Test-AwakenedFleet $status)) {
+    $masters = @($status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })
+    if ($masters.Count -eq 0) {
+      $script:AwakeningStartedAt = [DateTime]::UtcNow
+      # oogisoogi/jarvis-install write_wake_file/step_wake (MIT): 프롬프트는 UTF-8 파일로 전달.
+      $wakePath = Join-Path $WaveHome 'wake-master.ps1'
+      $wakeBody = @'
+$ErrorActionPreference = 'Stop'
+& claude "너는 마스터다`n설치된 팩의 마스터 부트 절차를 수행해 주세요. 작업 워커 한 좌석을 소환하고 각성을 확인해 주세요."
+exit $LASTEXITCODE
+'@
+      Set-Content -LiteralPath $wakePath -Value $wakeBody -Encoding UTF8
+      $command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $wakePath + '"'
+      $quotedCommand = '"' + $command.Replace('"', '\"') + '"'
+      $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('new-surface', '--role', 'master', '--cmd', $quotedCommand) 'master-create' 15000
+      if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
+    }
+  }
+  for ($attempt = 0; $attempt -lt 24; $attempt++) {
+    $status = Get-LiveFleet
+    if (Test-AwakenedFleet $status) {
+      $script:StepObserved = [ordered]@{ fleet_started = $true; master_awakened = $true; child_alive = $true; source = 'cys status --json' }
+      return
+    }
+    Start-Sleep -Seconds 5
+  }
+  $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
+  throw '마스터·워커 각성 확인 시간 초과'
 }
 
 function Get-StateField([object]$Object, [string]$Name) {
@@ -823,36 +901,17 @@ function Set-S08CallFailure([string]$Command, $ExitCode, [string]$Detail) {
 }
 
 function Run-S08 {
-  $cys = Join-Path $WaveHome "bin\cys.exe"
-  $wave = Join-Path $WaveHome "bin\wave.ps1"
-  $verify = Join-Path $WaveHome "verify"
-  New-Item -ItemType Directory -Force -Path $verify | Out-Null
+  $cys = Join-Path $WaveHome 'bin\cys.exe'
   try { $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000 }
   catch { Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
-  if ($identify.stdout) { Write-Log $identify.stdout.Trim() }
-  if ($identify.stderr) { Write-Log $identify.stderr.Trim() }
   if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
   if ($identify.exit_code -ne 0) { Set-S08CallFailure 'cys identify' $identify.exit_code $identify.stderr; return }
-  try {$doctorResult = Invoke-BoundedCheck 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $wave + '"'), 'doctor', '--json') 'doctor' 30000 }
-  catch { Set-S08CallFailure 'wave doctor' $null $_.Exception.Message; return }
-  if ($doctorResult.stderr) { Write-Log $doctorResult.stderr.Trim() }
-  if ($doctorResult.timed_out) { Set-S08Timeout 'wave doctor' $doctorResult.timeout_ms $doctorResult.kill_error; return }
-  if ($doctorResult.exit_code -ne 0) { Set-S08CallFailure 'wave doctor' $doctorResult.exit_code $doctorResult.stderr; return }
-  Set-Content -LiteralPath (Join-Path $verify 'doctor.json') -Value $doctorResult.stdout -Encoding UTF8
-  try { $doctor = $doctorResult.stdout | ConvertFrom-Json }
-  catch { Set-S08CallFailure 'wave doctor' $doctorResult.exit_code $_.Exception.Message; return }
-  if ((Get-StateField $doctor 'identify_timed_out') -eq $true) { Set-S08Timeout 'wave doctor: cys identify' ([int](Get-StateField $doctor 'timeout_ms')) ([string](Get-StateField $doctor 'identify_kill_error')); return }
-  if ((Get-StateField $doctor 'identify_exit') -ne 0 -or @((Get-StateField $doctor 'seats')).Count -ne 2) { Set-S08CallFailure 'wave doctor' (Get-StateField $doctor 'identify_exit') 'identify·좌석 수 계약 불일치'; return }
-  $limit = [int64](Get-ConfigValue "tooling.max_injected_bytes_per_seat")
-  $measured = $true
-  $max = 0
-  foreach ($seat in $doctor.seats) {
-    $value = Get-StateField $seat "injected_bytes"
-    if (-not (Test-ByteCount $value)) { $measured = $false; continue }
-    if ($value -gt $limit) { throw "좌석당 지침 주입량 초과" }
-    if ($value -gt $max) { $max = $value }
-  }
-  $script:StepObserved = [ordered]@{ identify_exit = 0; seats = 2; injection_measured = $measured; max_injected_bytes = $(if ($measured) { $max } else { $null }) }
+  try { $status = Get-LiveFleet }
+  catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
+  $status | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $WaveHome 'verify\status.json') -Encoding UTF8
+  if (-not (Test-AwakenedFleet $status)) { Set-S08CallFailure 'cys status --json' $null '마스터·자식 각성 증거 없음'; return }
+  # 각성 표지는 주입 바이트 실측을 대체하지 않는다. 미측정은 null로 유지한다.
+  $script:StepObserved = [ordered]@{ identify_exit = 0; seats = @($status.surfaces | Where-Object { $_.exited -eq $false }).Count; fleet_verified = $true; injection_measured = $false; max_injected_bytes = $null }
 }
 
 function Test-SyntheticBypass([object]$Value) {
@@ -1004,7 +1063,7 @@ $actions = @{
   "S08_VERIFY" = { Run-S08 }
   "S09_COMPLETE" = { Run-S09 }
 }
-foreach ($step in $Config.steps) {
+foreach ($step in ($Config.steps | Sort-Object index)) {
   $id = [string]$step.id
   if (Test-StepComplete $id) { Say-Step $step '이미 완료 — 건너뜀'; Send-Progress $CurrentStep 'end'; continue }
   if ($id -eq "S09_COMPLETE") { Mark-RequiredComplete }

@@ -419,92 +419,144 @@ step_s04() {
   STEP_OBSERVED='{"cys":true,"cysd":true,"cysd_check":"file+executable+symlink+copy-match","shell_link":true,"admin_required":false}'
 }
 
+# Bounded child commands: timeout is a failed measurement, never success.
+bounded_cys() {
+  python3 - "$WAVE_HOME/bin/cys" "$@" <<'PY_BOUND'
+import subprocess, sys
+try:
+    result = subprocess.run(sys.argv[1:], timeout=30)
+    sys.exit(result.returncode)
+except subprocess.TimeoutExpired:
+    print("cys command timed out", file=sys.stderr)
+    sys.exit(124)
+PY_BOUND
+}
+
 step_s05() {
   mkdir -p "$WAVE_HOME/install"
-  local result
-  result="$WAVE_HOME/install/daemon-register-result"
-  if [[ "${WAVE_ENABLE_DAEMON:-1}" == "0" ]]; then
-    printf '%s\n' 'skipped_by_user' > "$result"
-    STEP_STATUS="skipped"
-    STEP_OBSERVED='{"mode":"skipped","registered":false}'
-    return 0
+  local registered=false ready=false attempt
+  if bounded_cys daemon install > "$WAVE_HOME/install/daemon-install.log" 2>&1; then registered=true; fi
+  for attempt in 1 2 3; do
+    if [[ "$(bounded_cys ping 2>/dev/null)" == pong ]]; then ready=true; break; fi
+    sleep 1
+  done
+  if [[ "$ready" != true ]]; then
+    # GUI owns the daemon lifecycle; do not leave an installer-owned background server.
+    open "$WAVE_HOME/apps/Wave Terminal.app" || true
+    for attempt in 1 2 3; do
+      if [[ "$(bounded_cys ping 2>/dev/null)" == pong ]]; then ready=true; break; fi
+      sleep 1
+    done
   fi
-  require_command launchctl || return 1
-  local plist uid label
-  plist="$WAVE_HOME/install/com.waveainetworks.cysd.plist"
-  uid="$(id -u)"
-  label="com.waveainetworks.cysd"
-  cat > "$plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>Label</key><string>${label}</string>
-<key>ProgramArguments</key><array><string>${WAVE_HOME}/bin/cysd</string></array>
-<key>RunAtLoad</key><true/>
-</dict></plist>
-EOF
-  launchctl bootstrap "gui/$uid" "$plist" || return 1
-  launchctl print "gui/$uid/$label" >/dev/null || return 1
-  printf '%s\n' 'registered' > "$result"
-  STEP_OBSERVED='{"mode":"default_on","registered":true,"admin_required":false}'
+  STEP_OBSERVED="{\"registered\":$registered,\"daemon_ready\":$ready,\"registration\":\"cys daemon install\"}"
+  printf '%s\n' "$STEP_OBSERVED" > "$WAVE_HOME/install/daemon-register-result"
+  [[ "$ready" == true ]] || { fail_message "데몬 응답 없음 — 각성 단계에서 재확인 필요"; return 1; }
 }
 
 step_s06() {
-  require_command shasum || return 1
-  local source="${WAVE_PACK_SOURCE:-${SCRIPT_DIR}/wave-pack}"
-  [[ -d "$source" ]] || fail_message "S1 wave-pack 소스 없음: $source" || return 1
-  [[ -f "$source/manifest.json" && -f "$source/SHA256SUMS" ]] || return 1
-  mkdir -p "$PACK_HOME"
-  cp -R "$source"/. "$PACK_HOME"/
-  (cd "$PACK_HOME" && shasum -a 256 -c SHA256SUMS) || return 1
-  mkdir -p "$WAVE_HOME/bin"
-  [[ -x "$PACK_HOME/bin/wave" ]] || fail_message "wave CLI 래퍼 없음" || return 1
-  cp "$PACK_HOME/bin/wave" "$WAVE_HOME/bin/wave"
-  chmod 755 "$WAVE_HOME/bin/wave"
-  STEP_OBSERVED='{"pack_installed":true,"manifest_verified":true}'
+  local backup
+  backup="$WAVE_HOME/backups/legacy-pack-$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+  python3 - "$SCRIPT_DIR/wave-pack" "$PACK_HOME" "$backup" <<'PY_BACKUP' || return 1
+from pathlib import Path
+import shutil, sys
+source, target, backup = map(Path, sys.argv[1:])
+if target.is_symlink() or (target / 'directives').is_symlink():
+    raise SystemExit('pack/directives symlink refused')
+for old in (source / 'directives').glob('*.md'):
+    dest = target / 'directives' / old.name
+    if dest.is_symlink():
+        raise SystemExit('directive symlink refused')
+    if dest.is_file() and dest.read_bytes() == old.read_bytes():
+        saved = backup / 'directives' / old.name
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(dest), str(saved))
+        sidecar = Path(str(dest) + '.new')
+        if sidecar.is_file() and not sidecar.is_symlink():
+            shutil.move(str(sidecar), str(saved) + '.new')
+PY_BACKUP
+  mkdir -p "$WAVE_HOME/verify"
+  CYS_PACK_DIR="$PACK_HOME" bounded_cys init-pack || return 1
+  bounded_cys pack-manifest > "$WAVE_HOME/verify/embedded-pack.json" || return 1
+  python3 - "$PACK_HOME" "$WAVE_HOME/verify/embedded-pack.json" <<'PY_VERIFY' || return 1
+import hashlib, json, sys
+from pathlib import Path
+pack, manifest = map(Path, sys.argv[1:])
+files = json.loads(manifest.read_text())['files']
+directives = {k:v for k,v in files.items() if k.startswith('directives/') and k.endswith('.md')}
+if not directives:
+    raise SystemExit('embedded directive manifest empty')
+for rel, expected in directives.items():
+    path = pack / rel
+    if '..' in Path(rel).parts or path.is_symlink() or not path.is_file():
+        raise SystemExit('invalid/missing directive: '+rel)
+    if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+        raise SystemExit('custom/mismatched directive preserved; merge required: '+rel)
+if list(pack.rglob('*.new')):
+    raise SystemExit('pending .new files: merge required')
+PY_VERIFY
+  STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","embedded_directives_verified":true,"pending_new":0}'
 }
 
+# Adapted from oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT).
+# Source: https://github.com/oogisoogi/jarvis-install/blob/main/bootstrap.sh
+# License retained in LICENSES/jarvis-install-MIT.txt.
 step_s07() {
-  local roles="$PACK_HOME/roles.json"
-  local wave="$WAVE_HOME/bin/wave"
-  [[ -f "$roles" && -x "$wave" ]] || fail_message "roles.json 또는 wave CLI 없음" || return 1
   mkdir -p "$WAVE_HOME/fleet"
-  "$wave" fleet bootstrap --roles-file "$roles" > "$WAVE_HOME/fleet/bootstrap.log" 2>&1 || return 1
-  "$wave" fleet status --json > "$WAVE_HOME/fleet/status.json" || return 1
-  python3 - "$WAVE_HOME/fleet/status.json" <<'PY' || return 1
+  local wake="$WAVE_HOME/fleet/wake.sh" command ref started attempt
+  started="$(date +%s)"
+  cat > "$wake" <<'WAKE'
+#!/usr/bin/env bash
+export PATH="$HOME/.local/bin:$PATH"
+exec claude '너는 마스터다
+설치된 팩의 마스터 부트 절차를 수행해 주세요. 작업 워커 한 좌석을 소환하고 각성을 확인해 주세요.'
+WAKE
+  command="$(python3 - "$wake" <<'PY_QUOTE'
+import shlex, sys
+print('bash ' + shlex.quote(sys.argv[1]))
+PY_QUOTE
+)"
+  open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
+  ref="$(bounded_cys new-surface --role master --cmd "$command")" || return 1
+  [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
+  printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
+  printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+  for attempt in {1..30}; do
+    bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
+    if verify_live_fleet "$ref" "$started"; then
+      STEP_OBSERVED='{"seats":2,"fleet_started":true,"master_marker_verified":true}'
+      return 0
+    fi
+    sleep 2
+  done
+  fail_message "마스터 부트 표지·자식 좌석 생존 미확인"
+}
+
+verify_live_fleet() {
+  python3 - "$WAVE_HOME/fleet/status.json" "$HOME/.cys/.master-bootstrapped" "$1" "$2" <<'PY_LIVE'
 import json, sys
-with open(sys.argv[1], encoding="utf-8") as handle:
-    data = json.load(handle)
-if len(data.get("seats", [])) != 2:
-    raise SystemExit("초기 편성 좌석 수가 2가 아님")
-PY
-  : > "$WAVE_HOME/fleet/initial-fleet.ok"
-  STEP_OBSERVED='{"seats":2,"roles":"master+dept","fleet_started":null}'
+from pathlib import Path
+status, marker = map(Path, sys.argv[1:3]); ref, since = sys.argv[3:]
+try:
+    m = json.loads(marker.read_text())
+    live = [s for s in json.loads(status.read_text())['surfaces'] if s.get('exited') is False and s.get('agent_alive') is True and s.get('directive_verified') is True and s.get('awakened_at') is not None]
+    masters = [s for s in live if s.get('surface_ref') == ref and s.get('role') == 'master']
+    children = [s for s in live if str(s.get('role', '')).startswith('worker') and s.get('created_at', 0) >= float(since)]
+    ok = (marker.stat().st_mtime >= float(since) and m.get('orchestra_check') == 'exit 0'
+          and str(m.get('surface_ref')) in {ref, ref.split(':')[1]} and masters and children)
+except (OSError, ValueError, KeyError, TypeError):
+    ok = False
+sys.exit(0 if ok else 1)
+PY_LIVE
 }
 
 step_s08() {
-  local wave="$WAVE_HOME/bin/wave"
-  [[ -x "$WAVE_HOME/bin/cys" && -x "$wave" ]] || return 1
-  mkdir -p "$WAVE_HOME/verify"
-  "$WAVE_HOME/bin/cys" identify >/dev/null || return 1
-  "$wave" doctor --json > "$WAVE_HOME/verify/doctor.json" || return 1
-  STEP_OBSERVED="$(python3 - "$WAVE_HOME/verify/doctor.json" "$(json_value "$STEPS_FILE" 'tooling.max_injected_bytes_per_seat')" <<'PY'
-import json, sys
-with open(sys.argv[1], encoding="utf-8") as handle:
-    data = json.load(handle)
-limit = int(sys.argv[2])
-if data.get("identify_exit") != 0 or len(data.get("seats", [])) != 2:
-    raise SystemExit("identify·좌석 수 계약 불일치")
-injected = [seat.get("injected_bytes") for seat in data["seats"]]
-known = [value for value in injected if type(value) is int and value >= 0]
-if any(value > limit for value in known):
-    raise SystemExit("좌석당 지침 주입량 20KB 초과")
-measured = len(known) == len(injected)
-print(json.dumps({"identify_exit": 0, "seats": 2,
-                  "injection_measured": measured,
-                  "max_injected_bytes": max(known) if measured else None}))
-PY
-)" || return 1
+  local ref started
+  ref="$(cat "$WAVE_HOME/fleet/master-ref")" || return 1
+  started="$(cat "$WAVE_HOME/fleet/started-at")" || return 1
+  bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
+  verify_live_fleet "$ref" "$started" || return 1
+  # No invented byte count: the daemon status does not expose injected byte lengths.
+  STEP_OBSERVED='{"fleet_verified":true,"injection_measured":false,"max_injected_bytes":null}'
 }
 
 summarize_state() {
@@ -674,7 +726,7 @@ main() {
   local id status
   while IFS= read -r id; do
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
-    if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
+    if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
       log "[$id] resume: 이미 $status — 건너뜀"
       continue
     fi

@@ -72,6 +72,10 @@ elif a.cmd == "g4":
     seats = [{"role": ("worker" if str(s.get("role", "")).startswith("worker") else s.get("role")),
               "alive": s.get("exited") is False and s.get("agent_alive") is True} for s in json.loads(r.stdout)["surfaces"]]
     raws = [raw_entry(out, bl, "boot-last.json"), {"path": "G4_status.json", "sha256": sha((out / "G4_status.json").read_bytes())}]
+    # 부트·첫 출력 문자열 검사 대상(판정기 QUESTION_PATTERNS): javis_bootstrap 출력(합성 master 좌석이 남긴 것) · 훅 stdout
+    for src, nm in ((pathlib.Path(a.hook_dir).parent / "rc" / "bootstrap.out", "bootstrap.out"), (pathlib.Path(a.hook_dir).parent / "rc" / "bootstrap.err", "bootstrap.err"),
+                    *((pathlib.Path(a.hook_dir) / ("hook_%s.out" % r), "hook_%s.out" % r) for r in ROLE_FILE)):
+        if src.is_file(): raws.append(raw_entry(out, src, nm))
     (out / "G4_boot.json").write_text(json.dumps({"steps": [{"n": n, "exit": st[n]} for n in sorted(st)], "seats": seats, "raw": raws}), encoding="utf-8")
 else:
     root = pathlib.Path(os.path.expanduser("~/.claude")); h = hashlib.sha256(); rows = []

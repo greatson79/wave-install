@@ -3,7 +3,7 @@
   gate.py EVIDENCE_ROOT [--json]      exit 0 = 전부 PASS, 1 = 하나라도 FAIL 또는 미측정
 증거 규약(파일 이름·PASS 조건)은 관문표.md. 규칙: 증거 파일이 없거나 원본(raw) 해시가 안 맞으면 PASS 가 될 수 없다.
 """
-import hashlib, json, pathlib, sys
+import hashlib, json, pathlib, re, sys
 
 PASS, FAIL, NA = "PASS", "FAIL", "미측정"
 ROLES = {"master", "cso", "worker"}
@@ -45,15 +45,18 @@ def need(base, name, raw=True):
 
 
 # ── 관문 판정 함수: (증거 폴더[, 공통 폴더]) -> (verdict, 한 줄) ─────────────────
+CI_STEPS = ("S00", "S01", "S03", "S04", "S05", "S06")  # G1-CI: S02(로그인)·S07·S08·S09(실제 각성·완료) 는 G9 사람 단계
+
+
 def g1(b, c=None):
     d, bad = need(b, "G1_state.json", raw=False)
     if bad: return bad
     steps = d.get("steps", {})
-    # 설치기 실제 어휘(bootstrap.sh/ps1): 단계 status=passed · 전체 status=complete (예외 있으면 complete_with_exceptions=FAIL)
-    st = sorted(k for k, v in steps.items() if v.get("status") != "passed")
-    if len(steps) == 10 and not st and d.get("required_steps_passed") is True and d.get("status") == "complete":
-        return PASS, "10/10 passed"
-    return FAIL, "completed %d/10 · 미완 %s · status=%s" % (len(steps) - len(st), ",".join(st) or "-", d.get("status"))
+    if len(steps) != 10: return FAIL, "상태 파일 단계 %d개 (10 기대)" % len(steps)
+    # 설치기 실제 어휘: 단계 status=passed
+    st = sorted(k for k, v in steps.items() if k[:3] in CI_STEPS and v.get("status") != "passed")
+    if st: return FAIL, "CI 단계 미통과: %s" % ",".join("%s=%s" % (k[:3], steps[k].get("status")) for k in st)
+    return PASS, "S00·S01·S03~S06 passed · S02·S07~S09 = G9 사람 단계(미측정, 통과 아님)"
 
 
 def g2(b, c=None):
@@ -74,17 +77,31 @@ def g2(b, c=None):
     return (FAIL, "새 WARN %d: %s%s" % (len(new), ",".join(new), tag)) if new else (PASS, "FAIL 0 · WARN %d 전부 허용 목록 안%s" % (len(warns), tag))
 
 
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
 def g3(b, c=None):
+    """역할 master·cso·worker 전부 + 64hex 양 해시 일치 + 양 바이트 양의 정수 일치 + .new 0.
+    injected_* = 훅 stdout 에서 찾은 지침 본문 구간(포함 안 되면 stdout 전체 → 해시 불일치로 FAIL), pack_* = 앱 동봉 pack-manifest 기준."""
     d, bad = need(b, "G3_inject.json")
     if bad: return bad
-    roles = d.get("roles", {})
-    diff = sorted(r for r, v in roles.items() if v.get("injected_sha256") != v.get("pack_sha256"))
-    mx = max([v.get("injected_bytes", 0) for v in roles.values()] or [0])
-    note = " · 최대 주입 %dB (참고용 — 20KB 상한은 폐기, 기준=팩 원본 일치)" % mx
-    if not roles: return NA, "역할별 측정 없음"
-    if diff or d.get("new_file_count") != 0:
-        return FAIL, "원본 불일치 %s · .new %s%s" % (diff or "-", d.get("new_file_count"), note)
-    return PASS, "주입=팩 원본 %d역할 · .new 0%s" % (len(roles), note)
+    roles = d.get("roles")
+    if not isinstance(roles, dict) or not roles: return NA, "역할별 측정 없음"
+    missing = sorted(ROLES - set(roles)); extra = sorted(set(roles) - ROLES)
+    if missing or extra: return FAIL, "역할 집합 불일치 (없음 %s · 초과 %s)" % (missing or "-", extra or "-")
+    probs = []
+    for r in sorted(roles):
+        v = roles[r] if isinstance(roles[r], dict) else {}
+        h1, h2, n1, n2 = v.get("injected_sha256"), v.get("pack_sha256"), v.get("injected_bytes"), v.get("pack_bytes")
+        if not (isinstance(h1, str) and isinstance(h2, str) and HEX64.match(h1) and HEX64.match(h2)): probs.append("%s: 해시 형식" % r)
+        elif h1 != h2: probs.append("%s: 해시 불일치" % r)
+        if not all(type(n) is int and n > 0 for n in (n1, n2)): probs.append("%s: 바이트 정수 아님" % r)
+        elif n1 != n2: probs.append("%s: 바이트 불일치" % r)
+    nf = d.get("new_file_count")
+    if type(nf) is not int or nf != 0: probs.append(".new %s" % nf)
+    mx = max([v.get("injected_bytes", 0) for v in roles.values() if isinstance(v, dict) and type(v.get("injected_bytes")) is int] or [0])
+    note = " · 최대 주입 %dB (참고용 — 20KB 상한 폐기)" % mx
+    return (FAIL, "; ".join(probs) + note) if probs else (PASS, "주입=팩 원본 3역할(해시·바이트 일치) · .new 0" + note)
 
 
 def g4(b, c=None):
@@ -196,11 +213,11 @@ def h6(b, c=None):
 
 
 # (id, 제목, 적용 칸: os=맥·윈 각각 / common=한 번만, 판정 함수)
-GATES = [("G1", "한 줄 설치 10/10", "os", g1), ("G2", "프리플라이트 FAIL 0 · 새 WARN 0", "os", g2),
-         ("G3", "주입 바이트=팩 원본 · .new 0", "os", g3), ("G4", "선언 ①~⑤ exit 0 · 패인 3 · 리뷰어 0", "os", g4),
+GATES = [("G1", "G1-CI 한 줄 설치 결정론 6단계", "os", g1), ("G2", "프리플라이트 FAIL 0 · 새 WARN 0", "os", g2),
+         ("G3", "주입 바이트=팩 원본 · .new 0", "os", g3), ("G4", "G4-CI 선언 ①~⑤ exit 0 · 패인 3 · 리뷰어 0(LLM 없음)", "os", g4),
          ("G5", "업그레이드 v0.2.3→ 후 G2~G4", "os", g5), ("G6", "재설치 왕복 · ~/.claude 무접촉", "os", g6),
          ("G7", "문구 3곳 일치 · 라이선스 동봉", "common", g7), ("G8", "적대검수 젠·노아 blocking 0", "common", g8),
-         ("G9", "실기 3대(윈2+맥1)", "common", g9),
+         ("G9", "실기 3대(윈2+맥1) — S02·S07·S08 포함", "common", g9),
          ("H1", "막힘→펄스 inbox 60초", "os", h1), ("H2", "처방→설치 창 2분", "os", h2),
          ("H3", "가림 시험", "os", h3), ("H4", "서버 차단 fail-open", "os", h4), ("H5", "대시보드=원장", "common", h5),
          ("H6", "동시 30건 · 시트 한도 오류 0 · 접수 누락 0", "common", h6)]

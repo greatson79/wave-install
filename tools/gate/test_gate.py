@@ -14,7 +14,7 @@ def put(base, name, doc, raw=True):
 def os_set(b):
     put(b, "G1_state.json", {"status": "complete", "required_steps_passed": True, "steps": {"S%02d" % i: {"status": "passed"} for i in range(10)}}, raw=False)
     put(b, "G2_preflight.json", {"checks": [{"id": "C20", "status": "WARN"}, {"id": "C01", "status": "PASS"}]}, raw=False)
-    put(b, "G3_inject.json", {"new_file_count": 0, "roles": {"master": {"injected_sha256": "a", "pack_sha256": "a", "injected_bytes": 30000}}})
+    put(b, "G3_inject.json", {"new_file_count": 0, "roles": {r: {"injected_sha256": "a" * 64, "pack_sha256": "a" * 64, "injected_bytes": 30000, "pack_bytes": 30000} for r in ("master", "cso", "worker")}})
     put(b, "G4_boot.json", {"steps": [{"n": n, "exit": 0} for n in range(1, 6)], "seats": [{"role": r, "alive": True} for r in ("master", "cso", "worker")]})
     for g, extra in (("G5", ("G5_meta.json", {"from_version": "0.2.3"})), ("G6", ("G6_claude_untouched.json", {"before_sha256": "x", "after_sha256": "x"}))):
         s = b / g
@@ -62,6 +62,33 @@ class T(unittest.TestCase):
         r = {x["id"]: x for x in gate.judge(self.d)}
         self.assertIn("D1 잠정", r["G2"]["mac"][1])
         self.assertEqual(r["G3"]["mac"][0], gate.PASS)  # 30000B 주입이어도 원본 일치면 PASS
+
+    def test_g3_rejects_hollow_or_partial_evidence(self):
+        def g3(doc):
+            (self.d / "mac" / "G3_inject.json").write_text(json.dumps(doc))
+            # raw 해시 목록은 put() 이 만든 것을 유지
+            return gate.g3(self.d / "mac")[0]
+        good = json.loads((self.d / "mac" / "G3_inject.json").read_text())
+        raw = good["raw"]
+        h = lambda **kw: dict(good, raw=raw, **kw)
+        self.assertEqual(g3(h(roles={"master": {}})), gate.FAIL)  # None==None 통과 금지
+        self.assertEqual(g3(h(roles={r: v for r, v in good["roles"].items() if r != "cso"})), gate.FAIL)
+        bad = {r: dict(v) for r, v in good["roles"].items()}; bad["worker"]["injected_sha256"] = "b" * 64
+        self.assertEqual(g3(h(roles=bad)), gate.FAIL)
+        bad = {r: dict(v) for r, v in good["roles"].items()}; bad["master"]["pack_bytes"] = 1
+        self.assertEqual(g3(h(roles=bad)), gate.FAIL)
+        bad = {r: dict(v) for r, v in good["roles"].items()}; bad["cso"]["pack_sha256"] = bad["cso"]["injected_sha256"] = "xyz"
+        self.assertEqual(g3(h(roles=bad)), gate.FAIL)
+        self.assertEqual(g3(h(new_file_count=1)), gate.FAIL)
+        self.assertEqual(g3(good), gate.PASS)
+
+    def test_g1_ci_scope(self):
+        f = self.d / "mac" / "G1_state.json"; d = json.loads(f.read_text())
+        for k in ("S02", "S07"): d["steps"][k] = {"status": "failed"}
+        d["steps"]["S08"] = {"status": "pending"}; f.write_text(json.dumps(d))
+        self.assertEqual(gate.g1(self.d / "mac")[0], gate.PASS)  # 사람 단계는 CI 판정에서 제외(통과 선언 아님)
+        d["steps"]["S04"] = {"status": "failed"}; f.write_text(json.dumps(d))
+        self.assertEqual(gate.g1(self.d / "mac")[0], gate.FAIL)
 
     def test_missing_file_is_unmeasured_not_pass(self):
         (self.d / "mac" / "G3_inject.json").unlink()

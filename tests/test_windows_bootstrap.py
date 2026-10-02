@@ -212,11 +212,11 @@ $env:WAVE_NO_PROGRESS = '0'
 $script:InstallId = 'test-install-id'
 $script:ProgressUrl = 'https://example.test/api/progress'
 $script:calls = 0
-function Invoke-WebRequest {
-  param($Uri, $Method, $Body, $ContentType, $TimeoutSec, [switch]$UseBasicParsing, $ErrorAction, $MaximumRedirection)
+function Invoke-ProgressPost {
+  param($Uri, $Body, $TimeoutMs)
   $script:calls++
   $payload = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
-  if ($payload.step -ne '4/10' -or $payload.detail -ne 'J-DL-04' -or $TimeoutSec -gt 5 -or $MaximumRedirection -ne 0) { throw 'bad payload' }
+  if ($payload.step -ne '4/10' -or $payload.detail -ne 'J-DL-04' -or $TimeoutMs -gt 5000) { throw 'bad payload' }
   $script:payloadOK = $true
   throw 'network down'
 }

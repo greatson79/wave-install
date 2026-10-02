@@ -178,10 +178,10 @@
       "id": "S05_DAEMON_REGISTER",
       "index": 6,
       "total": 10,
-      "title": "데몬 등록(선택·기본 on)",
+      "title": "데몬 등록·응답 확인(실패 시 이유 기록 후 계속)",
       "command": {
-        "macos": "launchctl bootstrap gui/$(id -u) ~/.wave/install/com.waveainetworks.cysd.plist && launchctl print gui/$(id -u)/com.waveainetworks.cysd",
-        "windows": "HKCU Run: WaveTerminal-cysd = quoted user cysd.exe path; read back exact value"
+        "macos": "cys daemon install; cys ping (최대 3회, 명령마다 시간 상한); 응답이 없으면 Wave Terminal 앱을 열어 데몬을 띄운 뒤 cys ping 재확인; 결과는 ~/.wave/install/daemon-register-result",
+        "windows": "cys daemon install; cys ping (최대 5회, 명령마다 시간 상한); 응답이 없으면 cysd.exe 직접 실행 후, 그래도 없으면 Wave Terminal 앱 실행 후 cys ping 재확인"
       },
       "pass": [
         {"kind": "exit_code", "equals": 0},
@@ -189,7 +189,7 @@
       ],
       "on_fail": {
         "error_id": "WT-S05-DAEMON",
-        "message": "데몬 등록 결과를 확인하지 못했습니다. 선택을 해제했는지 또는 사용자 권한 오류인지 확인하세요.",
+        "message": "데몬 등록(cys daemon install) 또는 응답(cys ping)을 확인하지 못했습니다. 이유를 기록하고 다음 단계로 계속합니다. 각성 단계에서 데몬을 다시 확인하며, 사용자 권한 오류인지 install.log 를 확인하세요.",
         "next": "retry"
       },
       "optional": true

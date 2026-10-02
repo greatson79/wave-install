@@ -6,16 +6,26 @@ function ConvertTo-HelpSafeText([AllowEmptyString()][string]$Text, [AllowEmptySt
   $safe = [regex]::Replace($Text, '\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '')
   $safe = [regex]::Replace($safe, '\x1b\[[0-?]*[ -/]*[@-~]', '')
   $safe = [regex]::Replace($safe, '[\x00-\x08\x0b-\x1f\x7f]', '')
+  # lib/install_help.py RULES 와 같은 규칙·같은 순서(동등성 시험). 벤더 접두 토큰은 앞에 단어 문자가 붙어 있어도 잡는다.
   $safe = [regex]::Replace($safe, '[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,63}', '<EMAIL>')
   $safe = [regex]::Replace($safe, '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+', '<TOKEN>')
-  $safe = [regex]::Replace($safe, '\bsk-[A-Za-z0-9_-]{8,}', '<TOKEN>')
-  $safe = [regex]::Replace($safe, '\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, '(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9_-]{20,}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, '(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, 'AIza[0-9A-Za-z_-]{35}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, 'xox[abprs]-[0-9A-Za-z-]{10,}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, 'npm_[A-Za-z0-9]{36}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, '(?:AKIA|ASIA)[0-9A-Z]{16}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, 'eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}', '<TOKEN>')
+  $safe = [regex]::Replace($safe, '(?i)((?<![A-Za-z0-9])[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)["'']?\s*[=:]\s*["'']?)[^\s"'',;}]+', '${1}<SECRET>')
   $safe = [regex]::Replace($safe, '\b[A-Za-z0-9_-]{20,}#[A-Za-z0-9_-]{8,}\b', '<LOGIN_CODE>')
   $safe = [regex]::Replace($safe, '(?im)(Paste code here if prompted\s*>)[^\n]*', '${1} <LOGIN_CODE>')
   if (-not [string]::IsNullOrEmpty($Username)) {
     $safe = [regex]::Replace($safe, ('(?<!\w)' + [regex]::Escape($Username) + '(?!\w)'), '<USER>', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
   }
+  # 프로필 폴더는 공백을 포함하고 로그인 이름과 다를 수 있다: 다음 구분자까지를 먼저 가린다.
+  $safe = [regex]::Replace($safe, '(?i)[A-Za-z]:[\\/]+Users[\\/]+[^\\/\n"''|:*?]{1,64}?(?=[\\/])', 'C:\Users\<USER>')
   $safe = [regex]::Replace($safe, '(?i)[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s]+', 'C:\Users\<USER>')
+  $safe = [regex]::Replace($safe, '/(?:Users|home)/[^/\n"''|:*?]{1,64}?(?=/)', '/Users/<USER>')
   $safe = [regex]::Replace($safe, '/(?:Users|home)/[^/\s]+', '/Users/<USER>')
   $safe = [regex]::Replace($safe, '(?im)((?:USERNAME\s*=|whoami\s*:)\s*)[^\n]*', '${1}<USER>')
   return $safe
@@ -67,8 +77,9 @@ function ConvertTo-HelpDisplayText([AllowEmptyString()][string]$Text) {
 }
 
 function New-HelpPayload([string]$InstallId, [string]$Version, [string]$Step, [string]$Code, [AllowEmptyString()][string]$EnvReport, [AllowEmptyString()][string]$LogTail, [AllowEmptyString()][string]$Username) {
+  # 순서 고정: 전체를 먼저 가리고 그다음 줄·바이트로 자른다(잘린 경로·토큰 조각은 가림 규칙이 못 알아본다).
   $lines = [System.Collections.Generic.List[string]]::new()
-  foreach ($line in ([regex]::Split([string]$LogTail, '\r?\n'))) { $lines.Add($line) }
+  foreach ($line in ((ConvertTo-HelpSafeText $LogTail $Username) -split "`n")) { $lines.Add($line) }
   if ($lines.Count -gt 0 -and $lines[$lines.Count - 1] -eq '') { $lines.RemoveAt($lines.Count - 1) }
   $keep = [Math]::Min(40, $lines.Count)
   $tail = ($lines.GetRange($lines.Count - $keep, $keep)) -join "`n"
@@ -80,7 +91,7 @@ function New-HelpPayload([string]$InstallId, [string]$Version, [string]$Step, [s
     code = $(if ($Code -cmatch '^J-[A-Z0-9]{2,8}-\d{2,3}$') { $Code } else { 'J-UNK-00' })
     notice_shown = $true
     env_report = Limit-HelpBytes (ConvertTo-HelpSafeText $EnvReport $Username) (96 * 1024)
-    log_tail = Limit-HelpBytes (ConvertTo-HelpSafeText $tail $Username) (128 * 1024) -Tail
+    log_tail = Limit-HelpBytes $tail (128 * 1024) -Tail
   }
 }
 

@@ -194,6 +194,9 @@ class ClaudeSteps(unittest.TestCase):
         self.assertFalse((sb.fake / "calls").exists())
 
 
+FAKE_CDHASH = "abc123" + "0" * 34
+
+
 class DownloadVerify(unittest.TestCase):
     def setup_download(self, sb, dmg_bytes=b"fake-dmg", pinned=None):
         dmg = sb.tmp / "asset.dmg"
@@ -201,13 +204,14 @@ class DownloadVerify(unittest.TestCase):
         steps = json.loads((ROOT / "steps.json").read_text())
         for plat in ("macos_arm64", "macos_x64"):
             steps["release"]["sha256"][plat] = pinned or sha(dmg)
-        steps["release"]["cdhash"] = {"macos_arm64": None, "macos_x64": None}  # 기본은 CDHash 미대조
+        # G8 R1: CDHash 핀은 필수(빈 값·null 이면 중단). 기본 픽스처는 가짜 codesign 이 내는 값과 같은 핀을 둔다.
+        steps["release"]["cdhash"] = {"macos_arm64": FAKE_CDHASH, "macos_x64": FAKE_CDHASH}
         sb.steps = sb.tmp / "steps.json"
         sb.steps.write_text(json.dumps(steps))
         sb.stub("curl", 'out=""; while [ $# -gt 0 ]; do [ "$1" = --output ] && out="$2"; shift; done\ncp "$FAKE/asset.dmg" "$out"\n')
         shutil.copy(dmg, sb.fake / "asset.dmg")
         sb.stub("hdiutil", 'if [ "$1" = attach ]; then while [ $# -gt 0 ]; do [ "$1" = -mountpoint ] && mp="$2"; shift; done; mkdir -p "$mp/Wave Terminal.app"; fi\n')
-        sb.stub("codesign", 'case "$1" in --verify) exit "${FAKE_CODESIGN_RC:-0}" ;; -dvvv) echo "CDHash=abc123" >&2 ;; esac\n')
+        sb.stub("codesign", 'case "$1" in --verify) exit "${FAKE_CODESIGN_RC:-0}" ;; -dvvv) echo "CDHash=' + FAKE_CDHASH + '" >&2 ;; esac\n')
         sb.stub("uname", '[ "$1" = -m ] && echo arm64 || /usr/bin/uname "$@"\n')
 
     def run_s03(self, sb, **extra):
@@ -240,14 +244,19 @@ class DownloadVerify(unittest.TestCase):
         sb = Sandbox(self)
         self.setup_download(sb)
         steps = json.loads(sb.steps.read_text())
-        steps["release"]["cdhash"] = {"macos_arm64": "deadbeef", "macos_x64": "deadbeef"}
+        steps["release"]["cdhash"] = {"macos_arm64": "d" * 40, "macos_x64": "d" * 40}
         sb.steps.write_text(json.dumps(steps))
         r = self.run_s03(sb)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("CDHash 불일치", r.stderr)
-        steps["release"]["cdhash"] = {"macos_arm64": "abc123", "macos_x64": "abc123"}
+        steps["release"]["cdhash"] = {"macos_arm64": FAKE_CDHASH, "macos_x64": FAKE_CDHASH}
         sb.steps.write_text(json.dumps(steps))
         self.assertEqual(self.run_s03(sb).returncode, 0)
+        steps["release"]["cdhash"] = {"macos_arm64": None, "macos_x64": None}
+        sb.steps.write_text(json.dumps(steps))
+        r = self.run_s03(sb)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("CDHash 핀 미확정", r.stderr)
 
 
 if __name__ == "__main__":

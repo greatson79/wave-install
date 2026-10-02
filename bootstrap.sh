@@ -25,6 +25,10 @@ STEP_STATUS="passed"
 HELP_NOTICE_SHOWN=0
 HELP_INTERACTIVE=0
 HELP_PROGRESS_WARNED=0
+# 진행 신호 시간 상한: 호출 1회 벽시계(DNS 포함, 초과 시 자식 종료) · 설치 1회 누적 예산(다 쓰면 이번 설치에서는 끈다).
+HELP_PROGRESS_CALL_CAP=3
+HELP_PROGRESS_BUDGET=15
+HELP_PROGRESS_SPENT=0
 HELP_STEP="1/10"
 HELP_VERSION="unknown"
 
@@ -71,15 +75,25 @@ show_help_notice() {
   HELP_NOTICE_SHOWN=1
 }
 
-# 진행 신호(3초·8KB). 실패해도 한 번만 알리고 설치를 계속한다. 본문·오류 원문은 출력하지 않는다.
+# 진행 신호(8KB). 호출 1회는 client 안에서 3초 벽시계, 바깥에서 자식 프로세스 전체를 CALL_CAP+2초로 끊는다.
+# 실패는 CALL_CAP초로 쳐서 누적하고, 누적이 BUDGET초에 닿으면 이번 설치에서는 더 보내지 않는다.
+# 실패해도 한 번만 알리고 설치를 계속한다. 본문·오류 원문은 출력하지 않는다.
 help_progress() {
   help_enabled || return 0
-  local rc=0
-  python3 "$SCRIPT_DIR/lib/install_help_client.py" progress --notice-shown --version "$HELP_VERSION" \
+  (( HELP_PROGRESS_SPENT < HELP_PROGRESS_BUDGET )) || return 0
+  local rc=0 began=$SECONDS used
+  WAVE_COMMAND_TIMEOUT=$((HELP_PROGRESS_CALL_CAP + 2)) bounded_command python3 "$SCRIPT_DIR/lib/install_help_client.py" \
+    progress --notice-shown --version "$HELP_VERSION" \
     --step "$HELP_STEP" --event "$1" --detail "${2:-}" </dev/null >/dev/null 2>&1 || rc=$?
+  used=$((SECONDS - began))
+  if [[ "$rc" -ne 0 && "$used" -lt "$HELP_PROGRESS_CALL_CAP" ]]; then used=$HELP_PROGRESS_CALL_CAP; fi
+  HELP_PROGRESS_SPENT=$((HELP_PROGRESS_SPENT + used))
   if [[ "$rc" -ne 0 && "$HELP_PROGRESS_WARNED" == 0 ]]; then
     HELP_PROGRESS_WARNED=1
     log 'progress send failed (fail-open); 설치를 계속합니다.'
+  fi
+  if (( HELP_PROGRESS_SPENT >= HELP_PROGRESS_BUDGET )); then
+    log "진행 신호 시간 예산(${HELP_PROGRESS_BUDGET}초)을 다 써서 이번 설치에서는 진행 신호를 보내지 않습니다. 설치는 계속합니다."
   fi
   return 0
 }
@@ -383,14 +397,23 @@ step_s02() {
   STEP_OBSERVED='{"authenticated":true,"account_recorded":false}'
 }
 
+# CDHash 핀은 steps.json 단일 정본에서 온다. 비었거나 null·자리표시자·형식 오류면 건너뛰지 않고 중단한다.
+release_cdhash_pin() {
+  local pin
+  pin="$(json_value "$STEPS_FILE" "release.cdhash.$RELEASE_PLATFORM" 2>/dev/null)" || pin=""
+  [[ "$pin" =~ ^[0-9a-f]{40}$ ]] || { fail_message "앱 CDHash 핀 미확정: steps.json release.cdhash.$RELEASE_PLATFORM"; return 1; }
+  printf '%s\n' "$pin"
+}
+
 step_s03() {
   require_command curl || return 1
   require_command shasum || return 1
   require_command hdiutil || return 1
   require_command codesign || return 1
   set_release_context || return 1
+  local actual want_cdhash mp app got_cdhash
+  want_cdhash="$(release_cdhash_pin)" || return 1
   mkdir -p "$WAVE_HOME/downloads"
-  local actual cdhash want_cdhash mp app got_cdhash="null"
   curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "$RELEASE_ASSET_URL" --output "$ARTIFACT_PATH" || return 1
   actual="$(shasum -a 256 "$ARTIFACT_PATH" | awk '{print $1}')"
   [[ "$RELEASE_EXPECTED_SHA256" == "$actual" ]] || fail_message "SHA256 불일치(고정값과 다름)" || return 1
@@ -404,20 +427,17 @@ step_s03() {
     fail_message "앱 서명(codesign) 검증 실패"
     return 1
   fi
-  want_cdhash="$(json_value "$STEPS_FILE" "release.cdhash.$RELEASE_PLATFORM")"
-  if [[ -n "$want_cdhash" && "$want_cdhash" != null && "$want_cdhash" != __*__ ]]; then
-    got_cdhash="$(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
-    if [[ "$got_cdhash" != "$want_cdhash" ]]; then
-      hdiutil detach "$mp" >/dev/null 2>&1 || true
-      fail_message "앱 CDHash 불일치"
-      return 1
-    fi
+  got_cdhash="$(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+  if [[ "$got_cdhash" != "$want_cdhash" ]]; then
+    hdiutil detach "$mp" >/dev/null 2>&1 || true
+    fail_message "앱 CDHash 불일치"
+    return 1
   fi
   hdiutil detach "$mp" >/dev/null 2>&1 || true
   STEP_OBSERVED="$(python3 - "$RELEASE_PLATFORM" "$RELEASE_ASSET_NAME" "$actual" "$got_cdhash" <<'PY'
 import json, sys
 print(json.dumps({"platform": sys.argv[1], "asset": sys.argv[2], "sha256": sys.argv[3], "codesign_verified": True,
-                  "cdhash": None if sys.argv[4] == "null" else sys.argv[4]}))
+                  "cdhash": sys.argv[4]}))
 PY
 )"
 }
@@ -545,7 +565,11 @@ for rel, expected in directives.items():
         raise SystemExit('invalid/missing directive: '+rel)
     if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
         raise SystemExit('custom/mismatched directive preserved; merge required: '+rel)
-if list(pack.rglob('*.new')):
+# preflight-product-profile.json is seed-once and user-owned in the app (written only when missing, never
+# overwritten). A user edit/revert is a legitimate state, so its sidecar never blocks the install; the
+# installer leaves both files untouched. Every other .new still means a pending merge.
+SEED_ONCE = {'preflight-product-profile.json.new'}
+if [p for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() not in SEED_ONCE]:
     raise SystemExit('pending .new files: merge required')
 PY_VERIFY
   STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","embedded_directives_verified":true,"pending_new":0}'
@@ -556,7 +580,7 @@ PY_VERIFY
 # License retained in LICENSES/jarvis-install-MIT.txt.
 step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
-  local wake="$WAVE_HOME/fleet/wake.sh" command ref started deadline remaining
+  local wake="$WAVE_HOME/fleet/wake.sh" command ref started deadline remaining existing reused=false
   started="$(date +%s)"
   deadline=$((SECONDS + 420))
   cat > "$wake" <<'WAKE'
@@ -572,23 +596,45 @@ PY_QUOTE
 )"
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
-  ref="$(python3 - "$WAVE_HOME/fleet/before.json" <<'PY_EXISTING'
-import json, sys
+  # 재실행·resume(Windows Run-S07 과 같은 동작): 이 설치가 앞서 만든 master(master-ref·started-at 기록과 일치,
+  # 그 시각 이후 생성) 하나만 살아 있으면 새로 만들지 않고 재사용해 각성을 확인한다. 기록과 다른 master·둘 이상·
+  # 기록 이전 생성 master 는 여전히 중복 생성 없이 중단한다.
+  existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" <<'PY_EXISTING'
+import json, re, sys
 live = [s for s in json.load(open(sys.argv[1]))['surfaces'] if s.get('role') == 'master' and s.get('exited') is False]
-if live:
-    raise SystemExit('기존 master가 살아 있습니다. 중복 생성 없이 설치를 중단합니다.')
+if not live:
+    sys.exit(0)
+try:
+    saved_ref = open(sys.argv[2]).read().strip()
+    saved_started = int(open(sys.argv[3]).read().strip())
+except (OSError, ValueError):
+    saved_ref, saved_started = '', None
+seat = live[0]
+created = seat.get('created_at')
+if (len(live) == 1 and re.fullmatch(r'surface:[0-9]+', saved_ref) and saved_started is not None
+        and seat.get('surface_ref') == saved_ref and isinstance(created, (int, float)) and created >= saved_started):
+    print(saved_ref, saved_started)
+    sys.exit(0)
+raise SystemExit('기존 master가 살아 있습니다(이 설치가 만든 좌석이 아니거나 둘 이상). 중복 생성 없이 설치를 중단합니다.')
 PY_EXISTING
 )" || return 1
-  ref="$(awakening_command "$deadline" "$WAVE_HOME/bin/cys" new-surface --role master --cmd "$command")" || return 1
-  [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
-  printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
-  printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+  if [[ -n "$existing" ]]; then
+    ref="${existing% *}"
+    started="${existing#* }"
+    reused=true
+    log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."
+  else
+    ref="$(awakening_command "$deadline" "$WAVE_HOME/bin/cys" new-surface --role master --cmd "$command")" || return 1
+    [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
+    printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
+    printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+  fi
   while (( SECONDS < deadline )); do
     remaining=$((deadline - SECONDS))
     (( remaining > 5 )) && remaining=5
     if WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys status --json > "$WAVE_HOME/fleet/status.json" &&
        verify_live_fleet "$ref" "$started" && (( SECONDS < deadline )); then
-      STEP_OBSERVED='{"seats":3,"roles":["master","cso","worker"],"fleet_started":true,"master_marker_verified":true}'
+      STEP_OBSERVED="{\"seats\":3,\"roles\":[\"master\",\"cso\",\"worker\"],\"fleet_started\":true,\"master_marker_verified\":true,\"master_reused\":$reused}"
       return 0
     fi
     remaining=$((deadline - SECONDS))
@@ -641,7 +687,8 @@ for rel, expected in directives.items():
     if not data or actual != expected:
         raise SystemExit('G3 installed original mismatch: '+rel)
     result[rel]=dict(pack_sha256=actual,pack_bytes=len(data))
-if list(pack.rglob('*.new')):
+# Same seed-once exception as S06 (user-owned product profile); any other .new fails.
+if [p for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() != 'preflight-product-profile.json.new']:
     raise SystemExit('G3 pending .new files')
 print(json.dumps(dict(original_match=True,new_file_count=0,roles=result,
     injected_bytes=None,injection_reason='RC 러너 G3_inject.json 판정',
@@ -776,11 +823,32 @@ run_step() {
   set -e
   if [[ "$rc" -ne 0 ]]; then
     help_progress fail J-UNK-00
-    STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" <<'PY_REASON'
-import json, sys
-from pathlib import Path
-observed = json.loads(sys.argv[1])
-observed["reason"] = Path(sys.argv[2]).read_text(errors="replace").strip() or "step exited with code " + sys.argv[3]
+    # 상태 파일에는 가린 뒤 자른 stderr 끝부분(최대 4KB)만 남긴다. 원문 전체는 install.log 에만 있다.
+    STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" "$SCRIPT_DIR/lib" <<'PY_REASON'
+import json, os, re, sys
+observed, path, rc, lib = json.loads(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
+with open(path, "rb") as handle:
+    handle.seek(0, os.SEEK_END)
+    start = max(0, handle.tell() - 1024 * 1024)
+    handle.seek(start)
+    data = handle.read()
+if start:
+    data = data[data.find(b"\n") + 1:] if b"\n" in data else b""
+text, user = data.decode("utf-8", "replace").strip(), os.environ.get("USER", "")
+try:
+    sys.path.insert(0, lib)
+    from install_help import safe_text
+    text = safe_text(text, user)
+except Exception:
+    home = os.path.expanduser("~")
+    if len(home) > 1:
+        text = text.replace(home, "~")
+    if user:
+        text = re.sub(r"(?<!\w)" + re.escape(user) + r"(?!\w)", "<USER>", text, flags=re.I)
+raw = text.encode("utf-8")
+if len(raw) > 4096:
+    text = "..." + raw[-4096:].decode("utf-8", "ignore")
+observed["reason"] = text or "step exited with code " + rc
 print(json.dumps(observed, ensure_ascii=False))
 PY_REASON
 )"

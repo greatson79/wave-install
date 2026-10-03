@@ -48,6 +48,7 @@ python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase before
 bash "$HERE/reset-fleet.sh"
 python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
 collect "$EV/G6"
+cp -R "$HOME/.wave/rc" "$EV/G6/rc-synthetic-logs" 2>/dev/null   # 19차: 재설치 ① 이 C43(uvx 없음)로 한 번 실패 — 그때의 좌석 PATH·프로세스 증거를 G6 에도 남긴다
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase after
 # 증거 없이 성공 처리 금지: 필수 증거가 하나라도 없으면 잡을 실패시킨다(판정은 gate.py 몫 — 여기선 존재만)
 miss=0; for f in G1_state.json G2_preflight.json G3_inject.json G4_boot.json G6/G6_claude_untouched.json G6/G2_preflight.json G6/G3_inject.json G6/G4_boot.json; do [ -s "$EV/$f" ] || { log "증거 없음: $f"; miss=1; }; done

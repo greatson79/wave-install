@@ -52,8 +52,7 @@ class SeedResetTests(unittest.TestCase):
         self.settings.write_text('{"theme":"light","autoUpdatesChannel":"latest","other":42}')
         self.seed()
         data = json.loads(self.settings.read_text())
-        self.assertEqual(data, dict(theme='dark', autoUpdatesChannel='stable', other=42, remoteControlAtStartup=True))
-        self.assertNotIn('skipDangerousModePermissionPrompt', data)
+        self.assertEqual(data, dict(theme='dark', autoUpdatesChannel='stable', other=42, remoteControlAtStartup=True, skipDangerousModePermissionPrompt=True))   # 주인님 결정 2026-10-03 23:05
         self.assertEqual(self.personal.read_text(), '{"theme":"light","personal":true}')
 
     def test_reset_wave_and_all_restore_before_deleting_journal(self):
@@ -69,6 +68,7 @@ class SeedResetTests(unittest.TestCase):
                     self.assertNotIn(str(self.home), json.loads(self.cfg.read_text())['projects'])
                     self.assertNotIn(str(self.wave), json.loads(self.cfg.read_text())['projects'])
                     self.assertNotIn('remoteControlAtStartup', json.loads(self.settings.read_text()))
+                    self.assertNotIn('skipDangerousModePermissionPrompt', json.loads(self.settings.read_text()))   # reset 이 되돌린다
                     self.assertEqual(self.pack.exists(), target == 'wave')
                     self.assertEqual(self.personal.read_text(), '{"theme":"light","personal":true}')
 

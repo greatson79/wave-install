@@ -76,6 +76,11 @@ show_help_notice() {
   HELP_NOTICE_SHOWN=1
 }
 
+# 설치 시작 안내 한 줄(테오 확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 윈 bootstrap.ps1 과 같은 글자.
+show_permission_notice() {
+  log "이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요."
+}
+
 # 진행 신호(8KB). 호출 1회는 client 안에서 3초 벽시계, 바깥에서 자식 프로세스 전체를 CALL_CAP+2초로 끊는다.
 # 실패는 CALL_CAP초로 쳐서 누적하고, 누적이 BUDGET초에 닿으면 이번 설치에서는 더 보내지 않는다.
 # 실패해도 한 번만 알리고 설치를 계속한다. 본문·오류 원문은 출력하지 않는다.
@@ -688,14 +693,14 @@ step_s07() {
   # 이번 시도의 시작 — S05 데몬 시작 직후 자동복원이 S07 진입 전(같은 초 경계 안팎)에 만든 cso·worker 도 이 시도의 좌석이다
   # (진입 시각의 초 버림값을 쓰면 그 좌석이 created_at < since 로 영영 배제되어 420초 대기). 이전 실행의 좌석은 여전히 시작보다 앞이라 배제된다.
   started="$RUN_STARTED"
-  deadline=$((SECONDS + 420))
+  deadline=$((SECONDS + ${WAVE_AWAKENING_SECONDS:-420}))   # 환경변수는 시험 전용(실사용 420초)
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
   wait_gui_onboarded "$deadline" || return 1
   seed_claude_trust || return 1
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   # 재실행·resume: 이 설치가 앞서 만든 master(started-at 이후 생성, master-ref 기록이 있으면 그것과 일치) 하나만
   # 살아 있으면 새로 만들지 않고 재사용한다. master-ref 가 없으면 launch-agent 가 상한에 걸려 ref 를 못 받은 경우다.
-  # 선언 전달 기록(declared)이 없고 각성도 확인되지 않으면 선언을 한 번 다시 보낸다(W-DECLARE 복구).
+  # 각성 표지가 확인되지 않으면(선언 전달 기록이 있어도) 선언을 한 번 다시 보낸다(W-DECLARE 복구 · 부트 스크립트를 건너뛴 master 도).
   # 기록과 다른 master·둘 이상·기록 이전 생성 master 는 중복 생성 없이 중단한다.
   # (Windows Run-S07 은 살아 있는 master 하나를 재사용하고 started-at 기록이 있을 때만 선언을 다시 보낸다.)
   existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" "$RUN_STARTED" <<'PY_EXISTING'
@@ -738,8 +743,8 @@ PY_EXISTING
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."
     cp "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/status.json"
-    if [[ ! -f "$WAVE_HOME/fleet/declared" ]] && ! verify_live_fleet "$ref" "$started"; then
-      log "선언 전달 기록이 없어 master($ref)에 선언을 한 번 다시 보냅니다."
+    if ! verify_live_fleet "$ref" "$started"; then
+      log "각성 표지가 아직 없어 master($ref)에 선언을 한 번 다시 보냅니다."
       send_master_declaration "$deadline" || return 1
     fi
   else
@@ -753,7 +758,9 @@ PY_EXISTING
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     send_master_declaration "$deadline" || return 1
   fi
+  local tick paused=0 reported=$SECONDS
   while (( SECONDS < deadline )); do
+    tick=$SECONDS
     remaining=$((deadline - SECONDS))
     (( remaining > 5 )) && remaining=5
     if WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys status --json > "$WAVE_HOME/fleet/status.json" &&
@@ -764,13 +771,58 @@ PY_EXISTING
       return 0
     fi
     notice_first_run_gate
+    if (( SECONDS - reported >= ${WAVE_WAIT_REPORT_SECONDS:-30} )); then reported=$SECONDS; log_waiting_for; fi
     remaining=$((deadline - SECONDS))
     (( remaining <= 0 )) && break
     (( remaining > 2 )) && remaining=2
     sleep "$remaining"
+    # 사람이 고르는 첫 실행 확인 창이 떠 있는 동안은 상한을 쓰지 않는다(총 GATE_PAUSE_MAX초까지 — 무한 대기 방지).
+    if [[ "$GATE_VISIBLE" == 1 ]] && (( paused < GATE_PAUSE_MAX )); then
+      deadline=$((deadline + SECONDS - tick)); paused=$((paused + SECONDS - tick))
+    fi
   done
-  fail_message "420초 안에 마스터 부트 표지·CSO·worker 생존을 확인하지 못했습니다"
+  s07_unfinished
+}
 
+# 상한에 닿았을 때: master·cso·worker 세 칸이 살아 있고 지침 주입(launch-agent 완료 신호)까지 끝났으면 설치 실패가 아니라
+# 「세 칸 생존 · 확인 미완」(2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 그 밖(좌석 부족·주입 미확인)은 진척이 부족한 것이므로 실패(1).
+s07_unfinished() {
+  local n roles injected
+  WAVE_COMMAND_TIMEOUT=5 bounded_cys status --json > "$WAVE_HOME/fleet/status.json" 2>/dev/null || true
+  read -r n roles injected <<< "$(live_role_seats)"
+  if [[ "${n:-0}" -eq 3 && "${injected:-0}" -eq 3 ]]; then
+    STEP_OBSERVED="{\"fleet_started\":false,\"fleet_state\":\"alive_unconfirmed\",\"seats_alive\":3,\"roles_alive\":\"$roles\",\"launch_complete\":3,\"j_code\":\"J-VER-04\"}"
+    log "J-VER-04 — 세 칸 생존 · master 첫 답을 확인하세요. 세 칸($roles)이 살아 있고 지침도 들어갔으며, 설치기는 각성 표지를 아직 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+    return 2
+  fi
+  fail_message "420초 안에 마스터·CSO·worker 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 ${n:-0}/3 · 지침 주입 확인 ${injected:-0}/3)"
+}
+
+# 살아 있는 master·cso·worker 좌석: 「<역할 수> <역할,역할> <주입 끝난 역할 수>」 (status.json 기준 · 없으면 「0 - 0」).
+# 주입 끝남 = 데몬의 launch_complete(launch-agent 가 준비 표지·지침 주입까지 마쳤다는 신호).
+live_role_seats() {
+  python3 - "$WAVE_HOME/fleet/status.json" <<'PY_LIVE_ROLES'
+import json, sys
+try:
+    rows = json.load(open(sys.argv[1]))['surfaces']
+except Exception:
+    rows = []
+live = [s for s in rows if s.get('exited') is False and s.get('agent_alive') is True and str(s.get('role') or '').startswith(('master', 'cso', 'worker'))]
+base = lambda s: str(s['role']).split('-')[0]
+roles = sorted({base(s) for s in live})
+done = {base(s) for s in live if s.get('launch_complete') is True}
+print(len(roles), ','.join(roles) or '-', len(done))
+PY_LIVE_ROLES
+}
+
+# S07 대기 중 30초마다 기다리는 것을 한 줄로 남긴다(표지 · 좌석 n/3 · 확인 창).
+log_waiting_for() {
+  local n roles injected mark=없음 gate=
+  read -r n roles injected <<< "$(live_role_seats)"
+  [[ -f "$HOME/.cys/.master-bootstrapped" ]] && mark=있음
+  [[ "$GATE_VISIBLE" == 1 ]] && gate=" · 확인 창 대기 중(예산 정지)"
+  log "기다리는 것: 각성 표지 ${mark} · 좌석 ${n:-0}/3 · 지침 주입 ${injected:-0}/3${gate}"
 }
 
 # 좌석 첫 실행 질문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit) 사전 설정.
@@ -791,12 +843,14 @@ seed_claude_trust() {
   esac
 }
 
-# S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고)이 보이면 안내를 한 번 띄우고 계속 기다린다.
+# S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고 · 큰 화면 권유 — 앱 first_run_gate.rs 의 질문 문면과 같은 목록)이 보이면 안내를 한 번 띄우고 계속 기다린다.
 # 설치기는 어떤 키도 보내지 않는다 — 사람이 Wave 창에서 고른다. 판별은 질문문으로만 한다: 선택지 「Yes, I trust this folder」·확인 에코는
 # 근거가 아니다(첫 실행 관문 판별 기준 · 2026-07-29 사고 원인).
 GATE_NOTICED=0
+GATE_VISIBLE=0   # 이번 확인 때 확인 창이 보였는가(S07 대기 예산을 멈추는 신호) — status 에는 관문 표시가 없어 화면을 읽는다
+GATE_PAUSE_MAX="${WAVE_GATE_PAUSE_MAX:-1800}"
 notice_first_run_gate() {
-  [[ "$GATE_NOTICED" == 1 ]] && return 0
+  GATE_VISIBLE=0
   local ref screen
   for ref in $(python3 - "$WAVE_HOME/fleet/status.json" <<'PY_GATE_SEATS'
 import json, sys
@@ -811,9 +865,12 @@ PY_GATE_SEATS
 ); do
     screen="$(WAVE_COMMAND_TIMEOUT=3 bounded_cys read-screen --surface "$ref" 2>/dev/null | tr -d '[:space:]')" || continue
     case "$screen" in
-      *Quicksafetycheck*|*Isthisaprojectyoucreatedoroneyoutrust*|*Doyoutrustthefilesinthisfolder*|*WARNING:ClaudeCoderunninginBypassPermissionsmode*)
-        log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($ref)이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."
-        GATE_NOTICED=1
+      *Quicksafetycheck*|*Isthisaprojectyoucreatedoroneyoutrust*|*Doyoutrustthefilesinthisfolder*|*Doyoutrustthisfolder*|*WARNING:ClaudeCoderunninginBypassPermissionsmode*|*InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval*|*Trythenewfullscreenrenderer?*)
+        GATE_VISIBLE=1
+        if [[ "$GATE_NOTICED" != 1 ]]; then
+          log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($ref)이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."
+          GATE_NOTICED=1
+        fi
         return 0 ;;
     esac
   done
@@ -825,7 +882,7 @@ PY_GATE_SEATS
 # 전달에 성공한 뒤에만 declared 를 기록한다 — 실패 후 재실행이 선언을 다시 보내게.
 send_master_declaration() {
   awakening_command "$1" "$WAVE_HOME/bin/cys" send --queued --to master \
-    '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.' >/dev/null ||
+    "너는 마스터다 — 설치된 팩의 마스터 부트를 수행해 주세요. 이 좌석에서 python3 $PACK_HOME/bin/javis_bootstrap.py 를 실행하고 마지막 JSON 을 인용해 주세요(CSO·작업 워커 소환과 각성 확인이 그 안에 들어 있습니다). 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다." >/dev/null ||
     fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
   : > "$WAVE_HOME/fleet/declared"
 }
@@ -1045,7 +1102,7 @@ run_step() {
   cat "$stderr_file" >> "$LOG_FILE"
   set -e
   if [[ "$rc" -ne 0 ]]; then
-    help_progress fail J-UNK-00
+    if [[ "$rc" -eq 2 ]]; then help_progress fail J-VER-04; else help_progress fail J-UNK-00; fi   # 2 = 세 칸 생존·확인 미완(S07) — 전용 코드만 알리고 도움 요청은 보내지 않는다
     # 상태 파일에는 가린 뒤 자른 stderr 끝부분(최대 4KB)만 남긴다. 원문 전체는 install.log 에만 있다.
     STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" "$SCRIPT_DIR/lib" <<'PY_REASON'
 import json, os, re, sys
@@ -1117,10 +1174,11 @@ main() {
   fi
   HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
   show_help_notice
+  show_permission_notice
   init_state
   attempt_start
   # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)
-  local id idx title status
+  local id idx title status step_rc
   while IFS=$'\t' read -r id idx title; do
     HELP_STEP="$((idx + 1))/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
@@ -1133,7 +1191,7 @@ main() {
       mark_required_complete || return 1
     fi
     log "[$HELP_STEP] $title — 시작"
-    run_step "$id" || { help_request; return 1; }
+    run_step "$id" || { step_rc=$?; (( step_rc == 2 )) && return 2; help_request; return 1; }
   done < <(python3 - "$STEPS_FILE" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:

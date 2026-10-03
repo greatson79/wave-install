@@ -54,6 +54,7 @@ try {
     # 측정 전용(관문 미산입): 설치 실패 → 도움 대기(대화형) 진입 → 실제 Ctrl+C 주입 → 종료값·상태 파일·남는 프로세스·도움 서버 close 호출을 기록한다.
     #  실패 주입 = 드라이버가 서빙 폴더에서 앱 설치 파일을 지워 둔다(S03 다운로드 실패). 대화형 판정 = 도움 서버 로그에 폴링(GET) 줄이 생겼는가.
     $cd = Join-Path $e 'ctrlc'; New-Item -ItemType Directory -Force $cd | Out-Null
+    Install-Fake   # 합성 claude(auth 즉시 0) — 없으면 콘솔 stdin 에서 진짜 `claude auth login` 이 S02 에서 로그인 대기로 멈춘다(37096440885 실측: help_posted=false)
     Remove-Item Env:WAVE_NO_PROGRESS -ErrorAction SilentlyContinue   # 설정돼 있으면 설치기가 도움 요청을 건너뛴다
     $env:WAVE_HELP_BASE_URL = 'https://127.0.0.1:8443/'; $env:BROWSER = 'false'
     $helpLog = Join-Path $cd 'help_server.log'; $codeFile = Join-Path $cd 'exit_code.txt'
@@ -61,7 +62,7 @@ try {
     # 리다이렉트 없는 새 콘솔(숨김)에서 실행 — 설치기는 stdin·stdout 이 리다이렉트되지 않을 때만 대화형 대기에 들어간다. cmd /v:on 으로 설치기 종료값을 파일에 남긴다(Ctrl+C 에 cmd 가 먼저 죽지 않는지도 함께 본다)
     $victim = Start-Process cmd.exe -ArgumentList @('/v:on', '/d', '/c', ('powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ' + $enc + ' & echo !errorlevel!> "' + $codeFile + '"')) -PassThru -WindowStyle Hidden
     $t0 = Get-Date; $posted = $false
-    while (((Get-Date) - $t0).TotalSeconds -lt 900 -and -not $victim.HasExited) {
+    while (((Get-Date) - $t0).TotalSeconds -lt 600 -and -not $victim.HasExited) {
       if ((Test-Path $helpLog) -and (Select-String -Path $helpLog -Pattern 'POST /api/help$' -Quiet)) { $posted = $true; break }
       Start-Sleep 2
     }

@@ -329,6 +329,26 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertIn('J-PATH-02', r.stderr)
 
+    def test_master_restored_during_this_run_is_accepted_over_stale_markers(self):
+        # 재설치: 데몬이 올라오자 자동복원이 master 를 먼저 만든다. 이전 설치가 남긴 master-ref·started-at 은
+        # 이번 실행의 증거가 아니므로, 이번 실행 시작 뒤에 생긴 단일 master 는 이 설치가 이어받는다.
+        future = int(time.time()) + 100
+        rows = [self.seat('surface:9', 'master', future), self.seat('surface:20', 'cso', future),
+                self.seat('surface:21', 'worker-1', future)]
+        self.fleet.write_text(json.dumps({'surfaces': rows}))
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+        (self.wave / 'fleet/master-ref').write_text('surface:5\n')      # 이전 설치의 낡은 표식
+        (self.wave / 'fleet/started-at').write_text(str(self.since) + '\n')
+        (self.wave / 'fleet/declared').write_text('')
+        r = self.bash('step_s07; echo "RC=$?"; echo "$STEP_OBSERVED"')
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertFalse(self.new_surface_called())
+        self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:9')
+        self.assertGreater(int((self.wave / 'fleet/started-at').read_text().strip()), self.since)
+        self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+        # 낡은 선언 표식은 이번 master 에 대한 증거가 아니므로 지워 선언 재전송 경로를 되살린다
+        self.assertFalse((self.wave / 'fleet/declared').exists())
+
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),
                  'duplicate': (['surface:5', 'surface:6'], 'surface:5', None),

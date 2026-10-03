@@ -4,7 +4,7 @@
   "gate_ref": "feat/p3-gate",
   "text_ref": "feat/w4-release-text",
   "win_run_id": "37117287518",
-  "installer_sha": "55d90d1",
+  "installer_sha": "146cd33e095416d73fd965720623ee2d1b599d53",
   "freeze_baseline_ref": {
     "mac": "v0.1.1",
     "win": "fa4c12b8"

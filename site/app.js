@@ -23,11 +23,11 @@
   const commands = {
     mac: {
       label: "Mac · 터미널에 붙여넣기",
-      command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
+      command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
     },
     windows: {
       label: "Windows · PowerShell에 붙여넣기",
-      command: 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath(\'UserProfile\')+\'\\install-wave.ps1\'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath(\'UserProfile\')+\'\\install-wave.ps1\')"'
+      command: 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath(\'UserProfile\')+\'\\install-wave.ps1\'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath(\'UserProfile\')+\'\\install-wave.ps1\')"'
     }
   };
 

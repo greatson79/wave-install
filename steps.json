@@ -1,7 +1,7 @@
 {
   "schema": "wave-install.steps.v1",
   "product": "Wave Terminal",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",
@@ -39,8 +39,8 @@
   },
   "reinstall": {
     "command": {
-      "macos": "curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\" --reinstall",
-      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
+      "macos": "curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\" --reinstall",
+      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
     },
     "description": "설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일 전체 삭제는 하지 않습니다."
   },

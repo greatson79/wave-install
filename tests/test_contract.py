@@ -2,7 +2,7 @@
 """S3 설치기 계약 테스트.
 
 이 테스트는 네트워크·실제 설치·GitHub/Vercel 접근을 하지 않는다.
-v0.2.4은 릴리스 자산 핀이 확정되어 기본 실행과
+v0.3.0은 릴리스 자산 핀이 확정되어 기본 실행과
 --require-resolved-release 모두 자리표시자를 거부한다.
 """
 
@@ -68,7 +68,7 @@ def assert_contract(require_resolved_release: bool) -> None:
     steps = load_json(STEPS_PATH)
     assert steps.get("schema") == "wave-install.steps.v1"
     assert steps.get("product") == "Wave Terminal"
-    assert steps.get("version") == "0.2.4"
+    assert steps.get("version") == "0.3.0"
     assert isinstance(steps.get("steps"), list)
     actual_ids = [step.get("id") for step in steps["steps"]]
     assert actual_ids == EXPECTED_IDS, actual_ids

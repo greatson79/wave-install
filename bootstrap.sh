@@ -3,7 +3,16 @@ set -euo pipefail
 
 # Wave Install S3. 실제 릴리스·설치 실행은 S5 검증 창에서만 수행한다.
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# 파일 실행(bash bootstrap.sh)은 스크립트 옆 폴더가 SCRIPT_DIR. 표준입력 실행(curl ... | bash · bash < bootstrap.sh)은 BASH_SOURCE 가 비고
+# 옆 폴더도 없으므로 SCRIPT_DIR 을 존재하지 않는 자리로 두어 ensure_pack 이 설치팩을 받아 풀고 그 안의 파일로 다시 시작하게 한다
+# (현재 폴더의 steps.json 등을 설치팩으로 착각하지 않는다).
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+  SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  FROM_STDIN=0
+else
+  SCRIPT_DIR="/nonexistent-wave-install-stdin"
+  FROM_STDIN=1
+fi
 WAVE_HOME="${WAVE_HOME:-${HOME}/.wave}"
 PACK_HOME="${HOME}/.cys/pack"
 STEPS_FILE="${SCRIPT_DIR}/steps.json"
@@ -132,6 +141,10 @@ ensure_pack() {
   tar -xzf "$tgz" -C "$src/pack" --strip-components=1 || return 1
   [[ -f "$src/pack/bootstrap.sh" && -f "$src/pack/steps.json" && -d "$src/pack/wave-pack" ]] || fail_message "설치팩 구성이 올바르지 않음" || return 1
   log "설치팩 확인 완료 — $src/pack 에서 다시 시작합니다."
+  # 표준입력(파이프)으로 시작했다면 다시 시작하는 쪽은 표준입력이 터미널이 아니다 — 터미널이 있으면 그것을 물려준다(로그인·도움 처방 표시가 대화형으로 동작).
+  if [[ "$FROM_STDIN" == 1 && ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
+    exec bash "$src/pack/bootstrap.sh" "$@" </dev/tty
+  fi
   exec bash "$src/pack/bootstrap.sh" "$@"
 }
 

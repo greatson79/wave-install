@@ -172,6 +172,15 @@ class ResetFleetTest(unittest.TestCase):
                 self.assertEqual((out / "fleet" / name).read_text(), body, name)
             self.assertEqual((out / "install.log").read_text(), "log")
             self.assertEqual((out / "attempt-started").read_text(), "90\n")
+            self.assertFalse((out / "master-bootstrapped").exists())   # 표지가 없으면 건너뛴다
+            marker = home / ".cys" / ".master-bootstrapped"
+            marker.parent.mkdir()
+            marker.write_text('{"surface_ref": "surface:5"}')
+            os.utime(marker, (1700000000, 1700000000))
+            result = subprocess.run(["bash", str(collect), str(out)], env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((out / "master-bootstrapped").read_text(), '{"surface_ref": "surface:5"}')
+            self.assertEqual((out / "master-bootstrapped.mtime").read_text().strip(), "1700000000")
             # 원천이 하나도 없어도 실패하지 않는다(증거 수집이 잡을 죽이면 안 됨)
             empty = pathlib.Path(tmp) / "empty"
             empty.mkdir()

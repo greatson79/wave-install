@@ -48,7 +48,15 @@ with open(out / "SHA256SUMS", "a", encoding="utf-8") as f:  # make-release ê°€ ì
 
 readme = (stage / "README.md").read_text(encoding="utf-8").splitlines()
 line = next(l for l in readme if (l.startswith("curl -fsSL https://github.com/greatson79/wave-install/releases/download/") if a.os == "mac" else l.startswith("powershell ") and "install-wave.ps1" in l))
-one = re.sub(r"https://github\.com/greatson79/wave-install/releases/download/v[0-9.]+/", a.base, line)
+if a.os == "win":
+    stub = out / "win-start.ps1"
+    subprocess.run([sys.executable, str(stage / "scripts/render_win_start.py"), "--bootstrap", str(out / "bootstrap.ps1"),
+                    "--url", a.base + "bootstrap.ps1", "--output", str(stub)], check=True)
+    with open(out / "SHA256SUMS", "a", encoding="utf-8") as f:
+        f.write("%s  %s\n" % (hashlib.sha256(stub.read_bytes()).hexdigest(), stub.name))
+    one = "irm " + a.base + "win-start.ps1 | iex"
+else:
+    one = re.sub(r"https://github\.com/greatson79/wave-install/releases/download/v[0-9.]+/", a.base, line)
 (out / "rc-release.json").write_text(json.dumps({"os": a.os, "installer_version": ver, "asset": name, "asset_sha256": sha, "cdhash": a.cdhash,
                                                  "one_line": one, "readme_line": line}, ensure_ascii=False, indent=1), encoding="utf-8")
 shutil.rmtree(stage)

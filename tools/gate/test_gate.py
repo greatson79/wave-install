@@ -40,6 +40,7 @@ def os_set(b):
     (b / "G6" / "exit").write_text("0\n")
     reinstall = json.loads((b / "G1_state.json").read_text())
     reinstall["exceptions"] = []
+    reinstall["steps"].pop("S09")
     reinstall["steps"]["S09_COMPLETE"] = {"status": "passed", "exit_code": 0}
     (b / "G6" / "install-state.json").write_text(json.dumps(reinstall))
     put(b / "G5", "G7b_schedule_freeze.json", {"baseline_sha256": "a" * 64, "current_sha256": "a" * 64})
@@ -104,6 +105,15 @@ class T(unittest.TestCase):
                 self.assertEqual(gate.g6(self.d / os_name)[0], gate.FAIL)
             state_file.write_text(original)
             self.assertEqual(gate.g6(self.d / os_name)[0], gate.PASS)
+            exit_file.write_bytes(b"\xef\xbb\xbf0\n")
+            self.assertEqual(gate.g6(self.d / os_name)[0], gate.PASS)
+            exit_file.write_text("0\n")
+            for invalid in (None, "bad", []):
+                with self.subTest(os=os_name, s09=invalid):
+                    state = json.loads(original)
+                    state["steps"]["S09_COMPLETE"] = invalid
+                    state_file.write_text(json.dumps(state))
+                    self.assertEqual(gate.g6(self.d / os_name)[0], gate.FAIL)
 
     def test_g6_different_hash_fail(self):
         p = self.d / "mac" / "G6" / "G6_claude_untouched.json"

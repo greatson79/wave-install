@@ -494,7 +494,7 @@ $HelpRulesJson = @'
     "pattern": "W-FLEET-ALIVE-UNCONFIRMED",
     "action1": "세 칸 생존 · Wave 창에서 master 첫 답을 확인하세요.",
     "action2": "확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행하세요.",
-    "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 주인님 윈 rc.3 실기 관측(원인 표지 미기록은 추론)",
+    "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 사용자 실기 관측(원인 표지 미기록은 추론)",
     "os": "win",
     "sample": "W-FLEET-ALIVE-UNCONFIRMED"
   },
@@ -987,9 +987,9 @@ function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$Declared
 #   · projects.<홈 2꼴>.hasTrustDialogAccepted=true 는 키가 없을 때만 · 되읽기 실패면 사본 복원.
 #   우리가 넣은 홈 키만 $WaveHome\trust-seed.tsv 에 「설정파일<탭>키」로 기록 — 기록 실패면 넣지 않고 J-PERM-01 로 멈춘다.
 #   settings.json: autoUpdatesChannel=stable 강제 · theme 키가 없을 때만 dark(원작 ps1:3211-3215).
-#   settings.json skipDangerousModePermissionPrompt=true(원작 :2732-2733 · 주인님 결정 2026-10-03 23:05 — 권한 확인 경고 창을 미리 넘김 · 바꾸기 전 값을 같은 기록에 ·
+#   settings.json skipDangerousModePermissionPrompt=true(원작 :2732-2733 · 제품 결정 2026-10-03 — 권한 확인 경고 창을 미리 넘김 · 바꾸기 전 값을 같은 기록에 ·
 #   원작은 개인 ~/.claude/settings.json 에도 쓰지만 여기서는 Wave 좌석 설정 폴더에만 쓴다).
-#   Wave 고유(의도적 차이 · 주인님 지시): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
+#   Wave 고유(의도적 차이 · 제품 결정): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
 # 되돌리기: bootstrap.ps1 -UndoTrust (원작 reset-clean.ps1:2077 Remove-TrustSeed 와 같은 범위 + 작업폴더 칸 삭제 = reset-clean.sh:2095).
 function Read-JsonObject([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -1027,7 +1027,7 @@ function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Work
     if ($null -eq $ex -or $null -eq $ex.Value -or $null -eq $ex.Value.PSObject.Properties['hasTrustDialogAccepted']) { $homeKeys += $k; $rows += ($cfg + "`t" + $k) }
     else { Say '     (이 컴퓨터에는 홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다 — 우리가 바꾸지 않습니다.)' }
   }
-  # settings.json 의 true 값 키 — 바꾸기 전 값을 기록에 남기고 Undo 가 되돌린다(주인님 결정 2026-10-03 23:05: skipDangerousModePermissionPrompt 포함).
+  # settings.json 의 true 값 키 — 바꾸기 전 값을 기록에 남기고 Undo 가 되돌린다(제품 결정 2026-10-03: skipDangerousModePermissionPrompt 포함).
   $setKeys = @()
   foreach ($key in @('remoteControlAtStartup', 'skipDangerousModePermissionPrompt')) {
     $cur = $s.PSObject.Properties[$key]
@@ -1581,7 +1581,7 @@ if ($env:WAVE_NO_PROGRESS -ne '1' -and (Get-Command Show-HelpNotice -ErrorAction
   $HelpInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and -not ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
   Show-HelpNotice
 }
-# 설치 시작 안내 한 줄(테오 확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 맥 bootstrap.sh 와 같은 글자.
+# 설치 시작 안내 한 줄(확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 맥 bootstrap.sh 와 같은 글자.
 Say '이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요.'
 Init-State
 if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }

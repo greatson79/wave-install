@@ -1,0 +1,31 @@
+name: shortline-windows-ps51
+on:
+  push:
+    branches: [feat/win-short-line-ci]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  entrypoint:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Literal short line on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'PS 5.1 required' }
+          python tests/shortline/run_ps51.py
+          if ($LASTEXITCODE -ne 0) { throw "Short-line verification failed (exit $LASTEXITCODE)" }
+          exit 0
+      - name: Preserve measured cases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortline-ps51-results
+          path: shortline-ps51-results.json
+          if-no-files-found: error

@@ -149,8 +149,8 @@ try {
       Sort-Object FullName | Select-Object -First 1
     if (-not $installedBootstrap) { throw 'G6: installed bootstrap.ps1 missing' }
     if ((OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($installedBootstrap.FullName)`" -Reinstall" (Join-Path $e 'G6\run.log')) -ne 0) { throw 'G6: reinstall failed' }
-    Collect (Join-Path $e 'G6')
   } finally {
-    & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after
+    try { Collect (Join-Path $e 'G6') }
+    finally { & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after }
   }
 } finally { Stop-Transcript | Out-Null }

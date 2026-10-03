@@ -492,9 +492,9 @@ $HelpRulesJson = @'
     "code": "J-VER-04",
     "symptom": "세 칸은 살아 있지만 설치기가 각성 확인을 끝내지 못함",
     "pattern": "W-FLEET-ALIVE-UNCONFIRMED",
-    "action1": "세 칸 생존 · Wave 창에서 master 첫 답을 확인하세요.",
+    "action1": "세 칸이 살아 있습니다 · master 첫 답을 확인하세요.",
     "action2": "확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행하세요.",
-    "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 주인님 윈 rc.3 실기 관측(원인 표지 미기록은 추론)",
+    "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 사용자 실기 관측(원인 표지 미기록은 추론)",
     "os": "win",
     "sample": "W-FLEET-ALIVE-UNCONFIRMED"
   },
@@ -987,9 +987,9 @@ function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$Declared
 #   · projects.<홈 2꼴>.hasTrustDialogAccepted=true 는 키가 없을 때만 · 되읽기 실패면 사본 복원.
 #   우리가 넣은 홈 키만 $WaveHome\trust-seed.tsv 에 「설정파일<탭>키」로 기록 — 기록 실패면 넣지 않고 J-PERM-01 로 멈춘다.
 #   settings.json: autoUpdatesChannel=stable 강제 · theme 키가 없을 때만 dark(원작 ps1:3211-3215).
-#   settings.json skipDangerousModePermissionPrompt=true(원작 :2732-2733 · 주인님 결정 2026-10-03 23:05 — 권한 확인 경고 창을 미리 넘김 · 바꾸기 전 값을 같은 기록에 ·
+#   settings.json skipDangerousModePermissionPrompt=true(원작 :2732-2733 · 제품 결정 2026-10-03 — 권한 확인 경고 창을 미리 넘김 · 바꾸기 전 값을 같은 기록에 ·
 #   원작은 개인 ~/.claude/settings.json 에도 쓰지만 여기서는 Wave 좌석 설정 폴더에만 쓴다).
-#   Wave 고유(의도적 차이 · 주인님 지시): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
+#   Wave 고유(의도적 차이 · 제품 결정): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
 # 되돌리기: bootstrap.ps1 -UndoTrust (원작 reset-clean.ps1:2077 Remove-TrustSeed 와 같은 범위 + 작업폴더 칸 삭제 = reset-clean.sh:2095).
 function Read-JsonObject([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -1027,7 +1027,7 @@ function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Work
     if ($null -eq $ex -or $null -eq $ex.Value -or $null -eq $ex.Value.PSObject.Properties['hasTrustDialogAccepted']) { $homeKeys += $k; $rows += ($cfg + "`t" + $k) }
     else { Say '     (이 컴퓨터에는 홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다 — 우리가 바꾸지 않습니다.)' }
   }
-  # settings.json 의 true 값 키 — 바꾸기 전 값을 기록에 남기고 Undo 가 되돌린다(주인님 결정 2026-10-03 23:05: skipDangerousModePermissionPrompt 포함).
+  # settings.json 의 true 값 키 — 바꾸기 전 값을 기록에 남기고 Undo 가 되돌린다(제품 결정 2026-10-03: skipDangerousModePermissionPrompt 포함).
   $setKeys = @()
   foreach ($key in @('remoteControlAtStartup', 'skipDangerousModePermissionPrompt')) {
     $cur = $s.PSObject.Properties[$key]
@@ -1222,18 +1222,22 @@ function Run-S07 {
   Complete-S07Unfinished
 }
 
-# 상한에 닿았을 때: master·cso·worker 세 칸이 살아 있고 지침 주입(launch-agent 완료 신호 launch_complete)까지 끝났으면
-# 설치 실패가 아니라 「세 칸 생존 · 확인 미완」(종료값 2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
-# 그 밖(좌석 부족·주입 미확인)은 진척이 부족한 것이므로 실패(1).
+# 상한에 닿았을 때: master·cso·worker 세 역할 좌석이 모두 살아 있으면(exited=false ∧ agent_alive=true) 설치 실패가 아니라
+# 「세 칸 생존 · 확인 미완」(종료값 2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 좌석 부족·사망은 진척이 부족한 것이므로 실패(1). 지침 주입 여부는 판정에 쓰지 않는다 — `cys status --json` 에는 그 신호가 없다
+# (launch_complete 는 데몬 surface.list 응답에만 있음). 신호가 있으면 관측값에 개수만 기록한다.
 function Get-LiveRoleSeats([object]$Status) {
   if ($null -eq $Status) { return @() }
   return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique)
 }
 
-function Get-InjectedRoleCount([object]$Status) {
-  if ($null -eq $Status) { return 0 }
-  return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and $_.launch_complete -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
+# 관측값 기록용: launch_complete 가 true 인 살아 있는 역할 수. 응답에 그 속성이 없으면 $null(StrictMode 예외 없이).
+function Get-LaunchCompleteObserved([object]$Status) {
+  if ($null -eq $Status) { return $null }
+  $with = @($Status.surfaces | Where-Object { $null -ne $_.PSObject.Properties['launch_complete'] })
+  if ($with.Count -eq 0) { return $null }
+  return @($with | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and $_.launch_complete -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique).Count
 }
 
@@ -1241,22 +1245,21 @@ function Get-InjectedRoleCount([object]$Status) {
 function Write-WaitingFor([object]$Status) {
   $mark = if (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.cys\.master-bootstrapped') -PathType Leaf) { '있음' } else { '없음' }
   $gate = if ($script:GateVisible) { ' · 확인 창 대기 중(예산 정지)' } else { '' }
-  Write-Log "기다리는 것: 각성 표지 $mark · 좌석 $(@(Get-LiveRoleSeats $Status).Count)/3 · 지침 주입 $(Get-InjectedRoleCount $Status)/3$gate"
+  Write-Log "기다리는 것: 각성 표지 $mark · 좌석 $(@(Get-LiveRoleSeats $Status).Count)/3$gate"
 }
 
 function Complete-S07Unfinished {
   $last = $null
   try { $last = Get-LiveFleet 5000 } catch { }
   $roles = @(Get-LiveRoleSeats $last)
-  $injected = Get-InjectedRoleCount $last
-  if ($roles.Count -eq 3 -and $injected -eq 3) {
+  if ($roles.Count -eq 3) {
     $script:AliveUnconfirmed = $true
-    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = 3; roles_alive = ($roles -join ','); launch_complete = 3; j_code = 'J-VER-04'; source = 'cys status --json' }
-    Say "세 칸 생존 · master 첫 답을 확인하세요. 세 칸($($roles -join ','))이 살아 있고 지침도 들어갔으며, 설치기는 각성 표지를 아직 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = 3; roles_alive = ($roles -join ','); launch_complete = (Get-LaunchCompleteObserved $last); j_code = 'J-VER-04'; source = 'cys status --json' }
+    Say "세 칸이 살아 있습니다 · master 첫 답을 확인하세요. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     throw 'W-FLEET-ALIVE-UNCONFIRMED'
   }
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
-  throw "마스터·CSO·워커 각성 확인 420초 안에 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 $($roles.Count)/3 · 지침 주입 확인 $injected/3)"
+  throw "마스터·CSO·워커 각성 확인 420초 안에 세 칸의 생존을 확인하지 못했습니다(살아 있는 칸 $($roles.Count)/3)"
 }
 
 function Get-StateField([object]$Object, [string]$Name) {
@@ -1581,7 +1584,7 @@ if ($env:WAVE_NO_PROGRESS -ne '1' -and (Get-Command Show-HelpNotice -ErrorAction
   $HelpInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and -not ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
   Show-HelpNotice
 }
-# 설치 시작 안내 한 줄(테오 확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 맥 bootstrap.sh 와 같은 글자.
+# 설치 시작 안내 한 줄(확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 맥 bootstrap.sh 와 같은 글자.
 Say '이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요.'
 Init-State
 if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }

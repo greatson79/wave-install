@@ -15,9 +15,9 @@ LICENSES/jarvis-install-MIT.txt — 같은 규칙):
     실패하면 홈 키는 넣지 않고 종료값 3(:2918-2926 마침표 홈 갈래와 같은 순서 → 단계 실패 J-PERM-01 :3011-3019).
   - 맥 원작에는 .claude.json 백업 사본이 없다(백업 사본은 윈도우 원작 ps1:3105-3108 만).
   - settings.json theme=dark, autoUpdatesChannel=stable(원작 :2730-2737; 기존 값 덮어씀).
-  Wave 고유(원작과 다른 유일한 의도적 차이 · 주인님 지시): <설정폴더>/settings.json 의 remoteControlAtStartup = true
+  Wave 고유(원작과 다른 유일한 의도적 차이 · 제품 결정): <설정폴더>/settings.json 의 remoteControlAtStartup = true
     (원작 :2734-2735 는 false). 바꿨으면 「settings.json<탭>remoteControlAtStartup<탭>바꾸기 전 값(JSON 또는 absent)」을 같은 기록에 남긴다.
-  주인님 결정(2026-10-03 23:05): <설정폴더>/settings.json 의 skipDangerousModePermissionPrompt = true 도 지인과 같은 키·값으로 넣는다
+  제품 결정(2026-10-03): <설정폴더>/settings.json 의 skipDangerousModePermissionPrompt = true 도 지인과 같은 키·값으로 넣는다
     (원작 :2732-2733 — 첫 실행의 「권한 확인 없이 실행(Bypass Permissions)」 경고 창을 미리 넘긴다). 바꾸기 전 값은 remoteControlAtStartup 와 같은
     줄 꼴로 기록하고 rollback 이 되돌린다. 원작은 개인 ~/.claude/settings.json 에도 쓰지만 여기서는 Wave 좌석 설정 폴더에만 쓴다(개인 설정 무접촉).
 rollback (원작 reset-clean.sh:1684-1757 strip_trust_seed · :2095 작업폴더 칸 삭제와 같은 범위):

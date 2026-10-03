@@ -1,0 +1,99 @@
+{
+ "provenance": {
+  "kind": "recorded real output (RC evidence) — not hand-written",
+  "os": "macos",
+  "what": "RC run 37134620023 · G6 재설치 잡 — master·cso·worker 생존",
+  "command": "`cys status --json` — 설치기 bootstrap.sh 가 $WAVE_HOME/fleet/status.json 에 남긴 stdout. tests/rc/collect-fleet.sh 가 증거 폴더로 복사",
+  "binary": "mac 앱 3af28f20d657 (빌드 run 37120607115 headSha 3af28f20d6573b376a388f34af0e5992a0bf41fc)",
+  "evidence_file": "rc-gate-table-37134620023/evidence/mac/G6/fleet/status.json",
+  "recorded_at": "2026-10-04T01:02:06+09:00 (증거 파일 수정 시각 · 수집 시각 아님)",
+  "masking": "사용자 계정 경로만 <USER> 로 가림 — 나머지 값은 원문"
+ },
+ "response": {
+  "daemon": {
+   "build_id": "3af28f20d657",
+   "embedded_pack_hash": "e39a40918056e9603700ec3f90e0039ce3b3403a846ac4c08a7170e8cd0aeced",
+   "latest_seq": 269,
+   "parser_panics": 0,
+   "protocol_version": "1",
+   "started_at": 1791043214.446347,
+   "version": "0.2.0"
+  },
+  "feed": {
+   "oldest_pending_age_secs": null,
+   "pending": 0
+  },
+  "health_recent": [],
+  "pause_info": null,
+  "paused": false,
+  "surfaces": [
+   {
+    "agent": "claude",
+    "agent_alive": true,
+    "created_at": 1791043214.90223,
+    "cwd": "/Users/<USER>",
+    "exited": false,
+    "idle_secs": 18,
+    "last_parser_panic": null,
+    "line_count": 10,
+    "live_cwd": "/Users/<USER>",
+    "model": "claude-sonnet-5-5",
+    "model_fallback": false,
+    "parser_panics": 0,
+    "queue_depth": 0,
+    "queue_paused": false,
+    "role": "cso",
+    "status": null,
+    "surface_id": 5,
+    "surface_ref": "surface:5",
+    "title": "cso-claude · runner",
+    "usage": null
+   },
+   {
+    "agent": "claude",
+    "agent_alive": true,
+    "created_at": 1791043216.335544,
+    "cwd": "/Users/<USER>",
+    "exited": false,
+    "idle_secs": 0,
+    "last_parser_panic": null,
+    "line_count": 370,
+    "live_cwd": "/Users/<USER>",
+    "model": "claude-opus-5-5",
+    "model_fallback": false,
+    "parser_panics": 0,
+    "queue_depth": 1,
+    "queue_paused": false,
+    "role": "master",
+    "status": null,
+    "surface_id": 6,
+    "surface_ref": "surface:6",
+    "title": "master-claude · runner",
+    "usage": null
+   },
+   {
+    "agent": "claude",
+    "agent_alive": true,
+    "created_at": 1791043224.993254,
+    "cwd": "/Users/<USER>",
+    "exited": false,
+    "idle_secs": 9,
+    "last_parser_panic": null,
+    "line_count": 10,
+    "live_cwd": "/Users/<USER>",
+    "model": "claude-sonnet-5-5",
+    "model_fallback": false,
+    "parser_panics": 0,
+    "queue_depth": 0,
+    "queue_paused": false,
+    "role": "worker",
+    "status": null,
+    "surface_id": 7,
+    "surface_ref": "surface:7",
+    "title": "worker-claude · runner",
+    "usage": null
+   }
+  ],
+  "todo": {}
+ }
+}

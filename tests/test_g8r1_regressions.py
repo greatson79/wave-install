@@ -349,6 +349,29 @@ class MacResumeAndPackTests(unittest.TestCase):
         # 낡은 선언 표식은 이번 master 에 대한 증거가 아니므로 지워 선언 재전송 경로를 되살린다
         self.assertFalse((self.wave / 'fleet/declared').exists())
 
+    def test_restored_master_boundary_and_duplicates(self):
+        # 시작 시각 경계 양쪽 1건씩 · 시작 전부터 있던 master 거부 · master 둘 이상 거부(둘 다 시작 뒤 생성이어도).
+        start = int(time.time()) - 5  # 시험이 RUN_STARTED 를 이 값으로 고정한다(각성 표식 파일의 mtime 이 그 뒤여야 함)
+        stale = {'fleet/master-ref': 'surface:5\n', 'fleet/started-at': str(self.since) + '\n'}
+        cases = {'at-start-accepted': ([start], 0), 'one-second-before-refused': ([start - 1], 1),
+                 'long-before-refused': ([self.since + 5], 1),
+                 'two-masters-after-start-refused': ([start, start + 3], 1)}
+        for name, (created_list, want_rc) in cases.items():
+            with self.subTest(name):
+                self.log.unlink(missing_ok=True)
+                for rel, text in stale.items():
+                    (self.wave / rel).write_text(text)
+                (self.wave / 'fleet/declared').unlink(missing_ok=True)
+                rows = [self.seat('surface:%d' % (9 + i), 'master', c) for i, c in enumerate(created_list)]
+                rows += [self.seat('surface:20', 'cso', start + 5), self.seat('surface:21', 'worker-1', start + 6)]
+                self.fleet.write_text(json.dumps({'surfaces': rows}))
+                (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+                r = self.bash('RUN_STARTED=%d; step_s07; echo "RC=$?"' % start)
+                self.assertEqual('RC=0' in r.stdout, want_rc == 0, r.stdout + r.stderr)
+                self.assertFalse(self.new_surface_called(), name)
+                if want_rc:
+                    self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5', name)  # 거부는 표식을 건드리지 않는다
+
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),
                  'duplicate': (['surface:5', 'surface:6'], 'surface:5', None),

@@ -14,4 +14,5 @@ python3 "$HERE/run_to.py" 1500 "$EV/run.log" -- bash -c "cd \"\$HOME\" && $ONE";
 cp "$HOME/.wave/install-state.json" "$EV/install-state.json" 2>/dev/null
 bash "$HERE/collect-fleet.sh" "$EV"   # install.log · fleet/ · 표지(있으면)
 cp -R "$HOME/.wave/rc" "$EV/rc-synthetic-logs" 2>/dev/null
+python3 "$HERE/surface_list.py" "$EV/surface_list.json" || true   # surface.list 원본 응답(증거만)
 [ -s "$EV/exit" ] && [ -s "$EV/install-state.json" ]

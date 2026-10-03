@@ -118,6 +118,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $nb 'exit'), ([string]$ex + "`n"), ([Text.UTF8Encoding]::new($false)))
     if (-not (Test-Path (Join-Path $h '.cys\.master-bootstrapped'))) { '' | Set-Content (Join-Path $nb 'marker_absent') }
     foreach ($f in @('install-state.json', 'install.log')) { Copy-Item (Join-Path $h ".wave\$f") (Join-Path $nb $f) -ErrorAction SilentlyContinue }
+    & $Py (Join-Path $rc 'surface_list.py') (Join-Path $nb 'surface_list.json') *> $null   # surface.list 원본 응답(증거만 · 실패해도 무시)
     Copy-FleetStatusEvidence $nb; Copy-Item (Join-Path $h '.wave\rc') (Join-Path $nb 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
     return
   }

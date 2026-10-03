@@ -84,6 +84,7 @@ elif a.cmd == "g4":
         if n: st[n] = x["exit"]
     r = subprocess.run([a.cys, "status", "--json"], capture_output=True, text=True, timeout=60); r.check_returncode()
     (out / "G4_status.json").write_text(r.stdout, encoding="utf-8")
+    subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("surface_list.py")), str(out / "G4_surface_list.json")], capture_output=True, timeout=60)   # surface.list 원본 응답(증거만 · 실패해도 무시 — raws 에 넣지 않는다)
     seats = [{"role": ("worker" if str(s.get("role", "")).startswith("worker") else s.get("role")),
               "alive": s.get("exited") is False and s.get("agent_alive") is True} for s in json.loads(r.stdout)["surfaces"]]
     raws = [raw_entry(out, bl, "boot-last.json"), {"path": "G4_status.json", "sha256": sha((out / "G4_status.json").read_bytes())}]

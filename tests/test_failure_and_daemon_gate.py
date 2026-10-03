@@ -249,6 +249,8 @@ printf '%s\n' "$STEP_OBSERVED"
             "events-client-link": fake("%s events --reconnect --cursor-file x" % (wave / "bin/cys")),
             "events-client-app": fake("%s events --reconnect" % (wave / "apps/Wave Terminal.app/Contents/MacOS/cys")),
             "office-bridge": fake("%s/runtime/python/bin/python3 %s/bin/javis_hud_bridge.py" % (wave / "apps/Wave Terminal.app", pack)),
+            # macOS 프레임워크 파이썬(Xcode CLT·Homebrew 의 python3)은 명령줄이 대문자 Python.app/Contents/MacOS/Python <script>
+            "office-bridge-framework": fake("/opt/homebrew/Cellar/python@3.14/3.14.0/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python %s/bin/javis_hud_bridge.py" % pack),
         }
         controls = {
             "other-install-daemon": fake(self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"),

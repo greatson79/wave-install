@@ -25,6 +25,8 @@ function Copy-FleetStatusEvidence([string]$out) {
   }
   Get-ChildItem -LiteralPath $src -Filter 'fleet-status-*.json' -File -ErrorAction SilentlyContinue |
     Copy-Item -Destination $dest -ErrorAction SilentlyContinue
+  Get-ChildItem -LiteralPath $src -Filter 's07-predicate-*.json' -File -ErrorAction SilentlyContinue |
+    Copy-Item -Destination $dest -ErrorAction SilentlyContinue
 }
 function Reset-Fleet {
   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'fake_claude\.py|cysd' } | ForEach-Object { & taskkill /PID $_.ProcessId /T /F 2>&1 | Out-Null }

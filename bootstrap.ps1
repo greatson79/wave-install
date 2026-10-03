@@ -928,6 +928,30 @@ function Test-AwakenedFleet([object]$Status) {
   return ($marker.orchestra_check -eq 'exit 0' -and @($master.surface_ref) -contains $marker.surface_ref)
 }
 
+function Save-S07PredicateEvidence([string]$Phase, [object]$Status) {
+  # CI 진단 전용: 원문을 보존하되 설치 판정에는 관여하지 않는다.
+  try {
+    $markerPath = Join-Path $env:USERPROFILE '.cys\.master-bootstrapped'
+    $marker = Get-Item -LiteralPath $markerPath -Force -ErrorAction SilentlyContinue
+    $masters = @($Status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false } |
+      ForEach-Object { [ordered]@{ surface_ref = $_.surface_ref; agent_alive = $_.agent_alive } })
+    $startedUtc = $null; if ($null -ne $script:AwakeningStartedAt) { $startedUtc = $script:AwakeningStartedAt.ToString('o') }
+    $markerUtc = $null; $markerRaw = $null
+    if ($marker) { $markerUtc = $marker.LastWriteTimeUtc.ToString('o'); $markerRaw = [IO.File]::ReadAllText($markerPath) }
+    $trace = [ordered]@{
+      phase = $Phase; observed_at_utc = [DateTime]::UtcNow.ToString('o')
+      awakening_started_at_utc = $startedUtc
+      master = $masters; marker_exists = ($null -ne $marker)
+      marker_last_write_time_utc = $markerUtc
+      marker_raw = $markerRaw
+    }
+    $verify = Join-Path $WaveHome 'verify'
+    New-Item -ItemType Directory -Force -Path $verify | Out-Null
+    $path = Join-Path $verify ("s07-predicate-$Phase.json")
+    [IO.File]::WriteAllText($path, (ConvertTo-Json -InputObject $trace -Depth 6), [Text.UTF8Encoding]::new($false))
+  } catch { Write-Log "S07 판정 증거 수집 실패 ($Phase): $($_.Exception.Message)" }
+}
+
 function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {
   $remaining = 420000L - $ElapsedMs
   if ($remaining -le 0) { return 0 }
@@ -1177,7 +1201,8 @@ function Run-S07 {
   }
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {
     $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
-    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { break }
+    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { Save-S07PredicateEvidence 'before-timeout' $status; break }
+    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 5000) { Save-S07PredicateEvidence 'before-timeout' $status }
     if (Test-AwakenedFleet $status) {
       $script:StepObserved = [ordered]@{ fleet_started = $true; master_awakened = $true; child_alive = $true; cso_alive = $true; seats = 3; roles = @('master','cso','worker'); source = 'cys status --json' }
       return
@@ -1186,6 +1211,7 @@ function Run-S07 {
     $sleepMs = Get-AwakeningBudgetMs $clock.ElapsedMilliseconds
     if ($sleepMs -gt 0) { Start-Sleep -Milliseconds $sleepMs }
   }
+  Save-S07PredicateEvidence 'after-timeout' $status
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
   throw '마스터·CSO·워커 각성 확인 420초 시간 초과'
 }

@@ -599,6 +599,7 @@ step_s07() {
   deadline=$((SECONDS + 420))
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
   wait_gui_onboarded "$deadline" || return 1
+  seed_claude_trust
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   # 재실행·resume: 이 설치가 앞서 만든 master(started-at 이후 생성, master-ref 기록이 있으면 그것과 일치) 하나만
   # 살아 있으면 새로 만들지 않고 재사용한다. master-ref 가 없으면 launch-agent 가 상한에 걸려 ref 를 못 받은 경우다.
@@ -658,6 +659,7 @@ PY_EXISTING
       STEP_OBSERVED="{\"seats\":3,\"roles\":[\"master\",\"cso\",\"worker\"],\"fleet_started\":true,\"master_marker_verified\":true,\"master_reused\":$reused}"
       return 0
     fi
+    notice_first_run_gate
     remaining=$((deadline - SECONDS))
     (( remaining <= 0 )) && break
     (( remaining > 2 )) && remaining=2
@@ -665,6 +667,53 @@ PY_EXISTING
   done
   fail_message "420초 안에 마스터 부트 표지·CSO·worker 생존을 확인하지 못했습니다"
 
+}
+
+# 좌석이 첫 실행 관문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit)에서 Return 한 번에 죽지 않게,
+# 좌석이 읽는 Wave 전용 설정 폴더(CLAUDE_CONFIG_DIR = ${CYS_ACCOUNT_DIR:-$HOME/.cys/claude})의
+# .claude.json(projects.<폴더>.hasTrustDialogAccepted · hasCompletedOnboarding)에만 미리 기록한다.
+# 대상 폴더 = 좌석 cwd: master 는 아래 launch-agent --cwd "$HOME", cso·worker 는 master 가 홈에서 부르는 `cys boot`(cwd 미지정 → 호출 폴더).
+# 사용자 ~/.claude·~/.claude.json 은 읽지도 쓰지도 않는다. 되돌리기: python3 lib/trust_seed.py rollback "$WAVE_HOME/trust-seed.json"
+# Adapted from oogisoogi/jarvis-install bootstrap.sh:2711-3002 seed_claude_prefs/TRUST_SEED_FILE (df5efc8a, MIT, LICENSES/jarvis-install-MIT.txt).
+# hasCompletedOnboarding 은 로그인 관문까지 지우므로 좌석과 같은 설정 폴더로 `claude auth status` 가 통과할 때만 넣는다(trust_seed.py 머리말).
+seed_claude_trust() {
+  local cfg="${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" dirs=("$HOME") real result auth=unproven
+  real="$(cd "$HOME" && pwd -P)" && [[ "$real" != "$HOME" ]] && dirs+=("$real")
+  PATH="$PATH:$HOME/.local/bin" CLAUDE_CONFIG_DIR="$cfg" WAVE_COMMAND_TIMEOUT=20 bounded_command claude auth status >/dev/null 2>&1 && auth=verified
+  if result="$(python3 "$SCRIPT_DIR/lib/trust_seed.py" seed "$cfg" "$WAVE_HOME/trust-seed.json" "$auth" "${dirs[@]}")"; then
+    log "폴더 신뢰 사전 기록: $result (Wave 전용 Claude 설정 · 폴더 ${#dirs[@]}곳 · 로그인 $auth)"
+  else
+    log "주의: Wave 전용 Claude 설정에 폴더 신뢰를 미리 기록하지 못했습니다 — 좌석에 「Quick safety check」 창이 뜨면 「Yes, I trust this folder」를 고르세요."
+  fi
+}
+
+# S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고)이 보이면 안내를 한 번 띄우고 계속 기다린다.
+# 설치기는 어떤 키도 보내지 않는다 — 사람이 Wave 창에서 고른다. 판별은 질문문으로만 한다: 선택지 「Yes, I trust this folder」·확인 에코는
+# 근거가 아니다(원작 idoforgod/cys-terminal src/first_run_gates.rs needles · 2026-07-29 사고 원인).
+GATE_NOTICED=0
+notice_first_run_gate() {
+  [[ "$GATE_NOTICED" == 1 ]] && return 0
+  local ref screen
+  for ref in $(python3 - "$WAVE_HOME/fleet/status.json" <<'PY_GATE_SEATS'
+import json, sys
+try:
+    rows = json.load(open(sys.argv[1]))['surfaces']
+except Exception:
+    rows = []
+for s in rows:
+    if s.get('exited') is False and str(s.get('role') or '').startswith(('master', 'cso', 'worker')) and s.get('surface_ref'):
+        print(s['surface_ref'])
+PY_GATE_SEATS
+); do
+    screen="$(WAVE_COMMAND_TIMEOUT=3 bounded_cys read-screen --surface "$ref" 2>/dev/null | tr -d '[:space:]')" || continue
+    case "$screen" in
+      *Quicksafetycheck*|*Isthisaprojectyoucreatedoroneyoutrust*|*Doyoutrustthefilesinthisfolder*|*WARNING:ClaudeCoderunninginBypassPermissionsmode*)
+        log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($ref)이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."
+        GATE_NOTICED=1
+        return 0 ;;
+    esac
+  done
+  return 0
 }
 
 # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
@@ -964,6 +1013,7 @@ main() {
   fi
   HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
   show_help_notice
+  [[ -f "$SCRIPT_DIR/lib/trust-notice.txt" ]] && cat -- "$SCRIPT_DIR/lib/trust-notice.txt"
   init_state
   # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)
   local id idx title status

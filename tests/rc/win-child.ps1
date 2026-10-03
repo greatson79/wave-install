@@ -16,6 +16,7 @@ function OneLine([string]$line, [string]$log, [int]$sec = 1500) {
   $script = '$utf8 = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; $env:PYTHONIOENCODING = "utf-8"; $global:LASTEXITCODE = 0; ' + $line + '; exit $LASTEXITCODE'
   $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)); $empty = Join-Path $env:TEMP 'rc-empty.txt'; '' | Set-Content $empty
   $p = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -RedirectStandardInput $empty -PassThru -WindowStyle Hidden
+  $null = $p.Handle  # PS 5.1: 핸들을 먼저 잡아 두지 않으면 빨리 끝난 자식의 ExitCode 가 비어 온다
   if (-not $p.WaitForExit($sec * 1000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Get-Process claude -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; return 124 }
   return $p.ExitCode
 }

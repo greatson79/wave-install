@@ -101,8 +101,14 @@ elif a.cmd == "g4":
                    and str(s.get("role") or "").startswith(("master", "cso", "worker"))})
     forms = lambda c: dict.fromkeys([c, c.replace("\\", "/")] if os.name == "nt" else [c])
     trusted = lambda k: isinstance(proj.get(k), dict) and proj[k].get("hasTrustDialogAccepted") is True
+    #   + 같은 폴더 settings.json remoteControlAtStartup=true(주인님 지시 — 지인 원작은 false · Wave 만 true)
+    try:
+        sj = json.loads((cfg.parent / "settings.json").read_text(encoding="utf-8")); sj = sj if isinstance(sj, dict) else {}
+    except (OSError, ValueError):
+        sj = {}
     trust = {"config": str(cfg), "config_sha256": cfg_sha, "hasCompletedOnboarding": cj.get("hasCompletedOnboarding") is True,
-             "cwds": {c: {k: trusted(k) for k in forms(c)} for c in cwds}}
+             "cwds": {c: {k: trusted(k) for k in forms(c)} for c in cwds},
+             "remoteControlAtStartup": sj.get("remoteControlAtStartup") is True}
     (out / "G4_boot.json").write_text(json.dumps({"steps": [{"n": n, "exit": st[n]} for n in sorted(st)], "seats": seats, "raw": raws, "trust": trust}), encoding="utf-8")
 else:
     root = pathlib.Path(os.path.expanduser("~/.claude")); h = hashlib.sha256(); rows = []

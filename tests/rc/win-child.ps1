@@ -129,7 +129,10 @@ try {
   Copy-Item (Join-Path $h '.wave\rc') (Join-Path $e 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
   & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase before
   Reset-Fleet
-  OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$h\install-wave.ps1`" -Reinstall" (Join-Path $e 'G6\run.log') | Out-Null
+  $installedBootstrap = Get-ChildItem -LiteralPath (Join-Path $h '.wave\src') -Recurse -Filter bootstrap.ps1 -File |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $installedBootstrap) { throw 'G6: installed bootstrap.ps1 missing' }
+  OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($installedBootstrap.FullName)`" -Reinstall" (Join-Path $e 'G6\run.log') | Out-Null
   Collect (Join-Path $e 'G6')
   & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after
 } finally { Stop-Transcript | Out-Null }

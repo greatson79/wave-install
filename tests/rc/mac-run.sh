@@ -50,7 +50,7 @@ import pathlib, shutil, sys
 source = pathlib.Path(sys.argv[1])
 if source.is_file(): shutil.copy2(source, sys.argv[2])
 PY
-bash "$HERE/reset-fleet.sh" || { log "G6 재설치 전 정지 실패"; exit 1; }
+bash "$HERE/reset-fleet.sh" "$EV/G6/reset-fail.txt" || { log "G6 재설치 전 정지 실패"; exit 1; }
 python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
 cp "$HOME/.wave/install-state.json" "$EV/G6/install-state.json" 2>/dev/null || log "G6 설치 상태 수집 실패"
 python3 - "$EV/G6/before-state.json" "$EV/G6/install-state.json" "$EV/G6/attempt.json" <<'PY'

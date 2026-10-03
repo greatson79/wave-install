@@ -2,6 +2,7 @@ import os
 import pathlib
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -65,7 +66,72 @@ class ResetFleetTest(unittest.TestCase):
 
     def test_mac_upgrade_stops_when_reset_fails(self):
         text = SCRIPT.with_name("mac-upgrade.sh").read_text()
-        self.assertRegex(text, r'reset-fleet\.sh"\s*\|\|\s*exit 1')
+        self.assertRegex(text, r'reset-fleet\.sh" "[^"]*"\s*\|\|\s*exit 1')
+
+    def run_with_fakes(self, spawn, extra_args=()):
+        """격리 HOME 에서 reset-fleet.sh 를 돌린다. spawn(home) 이 띄운 가짜 프로세스 목록과 결과를 돌려준다.
+        가짜 cys 는 $HOME/daemon.pid 의 프로세스가 살아 있는 동안만(부모가 아직 안 거둔 좀비는 죽은 것으로 본다) socket_alive=true 를 보고한다."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        home = pathlib.Path(tmp.name)
+        fakebin = home / "fakebin"
+        fakebin.mkdir()
+        # ps·pkill 은 진짜를 쓴다 — 이 시험의 요점이 pkill 패턴이다
+        for name, body in {"lsof": "#!/bin/sh\nexit 1\n", "osascript": "#!/bin/sh\nexit 0\n"}.items():
+            (fakebin / name).write_text(body)
+            (fakebin / name).chmod(0o755)
+        (home / ".wave" / "bin").mkdir(parents=True)
+        cys = home / ".wave" / "bin" / "cys"
+        cys.write_text('#!/bin/sh\ncase "$2" in\n status) if [ -f "$HOME/daemon.pid" ] && ps -o stat= -p "$(cat "$HOME/daemon.pid")" | grep -qv "^Z"; '
+                       'then echo "registered=false loaded=false socket_alive=true"; '
+                       'else echo "registered=false loaded=false socket_alive=false"; fi ;;\nesac\n')
+        cys.chmod(0o755)
+        procs = spawn(home)
+        self.addCleanup(lambda: [(q.poll() is None and q.kill(), q.wait()) for q in procs.values()])
+        time.sleep(0.7)
+        for name, proc in procs.items():
+            self.assertIsNone(proc.poll(), "%s died before the script ran" % name)
+        env = dict(os.environ, HOME=str(home), PATH=str(fakebin) + os.pathsep + os.environ["PATH"])
+        result = subprocess.run(["bash", str(SCRIPT), *extra_args], env=env, capture_output=True, text=True, timeout=60)
+        return home, procs, result
+
+    @staticmethod
+    def fake(path):
+        # argv[0] 만 원하는 경로로 보이게 한다(서명 문제 없이 실제 실행 파일은 /bin/sleep)
+        return subprocess.Popen([str(path), "60"], executable="/bin/sleep")
+
+    def test_daemon_not_owned_by_launchd_is_stopped_by_command_line(self):
+        # 공개판 v0.2.3 의 데몬은 launchd 소유가 아니라 daemon uninstall 로 안 멈춘다 — 안내하는 pkill 과 같은 패턴으로 멈춘다
+        def spawn(home):
+            daemon = self.fake(home / ".wave/bin/cysd")
+            (home / "daemon.pid").write_text(str(daemon.pid))
+            return {"daemon": daemon}
+        home, procs, result = self.run_with_fakes(spawn)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIsNotNone(procs["daemon"].poll())
+
+    def test_leftover_seat_diagnostic_loops_are_stopped_and_other_processes_survive(self):
+        def spawn(home):
+            return {"loop": self.fake(home / ".wave/rc/alive_series_cso.txt"),
+                    "bystander": self.fake(home / "elsewhere/keep-me")}
+        home, procs, result = self.run_with_fakes(spawn)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIsNotNone(procs["loop"].poll(), "diagnostic loop must be stopped before the daemon check")
+        self.assertIsNone(procs["bystander"].poll(), "unrelated process must survive")
+
+    def test_failure_dumps_process_and_daemon_state_to_the_given_file(self):
+        def spawn(home):
+            daemon = subprocess.Popen(["/bin/sleep", "60"])  # 패턴에 안 맞는 데몬 = 안 죽는 경로
+            (home / "daemon.pid").write_text(str(daemon.pid))
+            return {"stubborn": daemon}
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dump = pathlib.Path(tmp.name) / "reset-fail.txt"
+        home, procs, result = self.run_with_fakes(spawn, extra_args=(str(dump),))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        text = dump.read_text()
+        self.assertIn("socket_alive=true", text)
+        self.assertIn("sleep", text)  # ps 목록
 
 
 if __name__ == "__main__":

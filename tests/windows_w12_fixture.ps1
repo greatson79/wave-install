@@ -103,3 +103,23 @@ $script:calls=@(); $script:launched=$false; $script:sendExit=3
 $blocked=$false; try {Run-S07} catch {$blocked=((Get-JCode $_.Exception.Message) -eq 'J-PATH-02')}
 if(-not $blocked){throw 'declaration send failure not mapped to J-PATH-02'}
 Write-Host 'PASS master launch-agent then queued one-line declaration; send failure J-PATH-02'
+$declared=Join-Path $WaveHome 'fleet/declared'
+if((Test-Path $declared) -or -not (Test-Path (Join-Path $WaveHome 'fleet/started-at'))){throw 'failed declaration recorded as delivered or start time missing'}
+$script:declSent=$false; function Write-Log { }
+$nowUnix=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$masterOnly=[pscustomobject]@{surfaces=@([pscustomobject]@{surface_ref='surface:1';role='master';exited=$false;agent_alive=$true;created_at=$nowUnix})}
+function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:declSent){return $live}; return $masterOnly }
+function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
+ $script:calls += ($Arguments -join ' ')
+ if($Arguments[0] -eq 'send' -and $script:sendExit -eq 0){$script:declSent=$true;'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker}
+ return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout="cys 9.9.9`n"}
+}
+$script:calls=@(); $script:sendExit=0
+Run-S07
+$sends=@($script:calls | Where-Object { $_ -like 'send --queued --to master*' })
+if($sends.Count -ne 1 -or @($script:calls | Where-Object { $_ -like 'launch-agent*' }).Count -ne 0 -or -not (Test-Path $declared)){throw 'rerun after W-DECLARE did not re-send exactly once'}
+$script:calls=@(); $script:fleetCalls=0
+function Get-LiveFleet([int]$TimeoutMs=5000) { $script:fleetCalls++; if($script:fleetCalls -gt 1){return $live}; return $masterOnly }
+$blocked=$false; try {Run-S07} catch {$blocked=$true}
+if(@($script:calls | Where-Object { $_ -like 'send*' -or $_ -like 'launch-agent*' }).Count -ne 0){throw 'declared master got a second declaration or a new seat'}
+Write-Host 'PASS W-DECLARE rerun re-sends once; declared reuse sends nothing'

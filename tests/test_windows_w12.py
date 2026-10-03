@@ -20,6 +20,7 @@ class WindowsW12Tests(unittest.TestCase):
             self.assertIn("PASS onboarding marker wait", result.stdout)
             self.assertIn("PASS master awake evidence", result.stdout)
             self.assertIn("PASS master launch-agent then queued one-line declaration", result.stdout)
+            self.assertIn("PASS W-DECLARE rerun re-sends once; declared reuse sends nothing", result.stdout)
             self.assertEqual(result.stderr, "", result.stderr)
 
 if __name__ == "__main__":

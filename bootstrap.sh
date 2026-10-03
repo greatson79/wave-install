@@ -596,24 +596,30 @@ step_s07() {
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
   wait_gui_onboarded "$deadline" || return 1
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
-  # 재실행·resume(Windows Run-S07 과 같은 동작): 이 설치가 앞서 만든 master(master-ref·started-at 기록과 일치,
-  # 그 시각 이후 생성) 하나만 살아 있으면 새로 만들지 않고 재사용해 각성을 확인한다. 기록과 다른 master·둘 이상·
-  # 기록 이전 생성 master 는 여전히 중복 생성 없이 중단한다.
+  # 재실행·resume: 이 설치가 앞서 만든 master(started-at 이후 생성, master-ref 기록이 있으면 그것과 일치) 하나만
+  # 살아 있으면 새로 만들지 않고 재사용한다. master-ref 가 없으면 launch-agent 가 상한에 걸려 ref 를 못 받은 경우다.
+  # 선언 전달 기록(declared)이 없고 각성도 확인되지 않으면 선언을 한 번 다시 보낸다(W-DECLARE 복구).
+  # 기록과 다른 master·둘 이상·기록 이전 생성 master 는 중복 생성 없이 중단한다.
+  # (Windows Run-S07 은 살아 있는 master 하나를 재사용하고 started-at 기록이 있을 때만 선언을 다시 보낸다.)
   existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" <<'PY_EXISTING'
 import json, re, sys
 live = [s for s in json.load(open(sys.argv[1]))['surfaces'] if s.get('role') == 'master' and s.get('exited') is False]
 if not live:
     sys.exit(0)
 try:
-    saved_ref = open(sys.argv[2]).read().strip()
     saved_started = int(open(sys.argv[3]).read().strip())
 except (OSError, ValueError):
-    saved_ref, saved_started = '', None
+    saved_started = None
+try:
+    saved_ref = open(sys.argv[2]).read().strip()
+except OSError:
+    saved_ref = ''  # launch-agent 상한으로 ref 를 못 받은 경우
 seat = live[0]
 created = seat.get('created_at')
-if (len(live) == 1 and re.fullmatch(r'surface:[0-9]+', saved_ref) and saved_started is not None
-        and seat.get('surface_ref') == saved_ref and isinstance(created, (int, float)) and created >= saved_started):
-    print(saved_ref, saved_started)
+ref = str(seat.get('surface_ref'))
+if (len(live) == 1 and re.fullmatch(r'surface:[0-9]+', ref) and saved_started is not None and saved_ref in ('', ref)
+        and isinstance(created, (int, float)) and created >= saved_started):
+    print(ref, saved_started)
     sys.exit(0)
 raise SystemExit('기존 master가 살아 있습니다(이 설치가 만든 좌석이 아니거나 둘 이상). 중복 생성 없이 설치를 중단합니다.')
 PY_EXISTING
@@ -622,19 +628,23 @@ PY_EXISTING
     ref="${existing% *}"
     started="${existing#* }"
     reused=true
+    printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."
+    cp "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/status.json"
+    if [[ ! -f "$WAVE_HOME/fleet/declared" ]] && ! verify_live_fleet "$ref" "$started"; then
+      log "선언 전달 기록이 없어 master($ref)에 선언을 한 번 다시 보냅니다."
+      send_master_declaration "$deadline" || return 1
+    fi
   else
     # launch-agent 는 준비 표지(❯)·지침 주입까지 기다리므로 30초 상한(awakening_command)보다 길게 준다.
     remaining=$((deadline - SECONDS)); (( remaining > 120 )) && remaining=120
+    # 시작 시각은 launch-agent 전에 기록한다 — 상한에 걸려 ref 를 못 받아도 재실행이 그 좌석을 찾아 복구한다.
+    rm -f "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/declared"
+    printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
     ref="$(WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys launch-agent --role master --agent claude --cwd "$HOME")" || return 1
     [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
-    printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
-    # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
-    # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
-    awakening_command "$deadline" "$WAVE_HOME/bin/cys" send --queued --to master \
-      '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.' >/dev/null ||
-      fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
+    send_master_declaration "$deadline" || return 1
   fi
   while (( SECONDS < deadline )); do
     remaining=$((deadline - SECONDS))
@@ -651,6 +661,16 @@ PY_EXISTING
   done
   fail_message "420초 안에 마스터 부트 표지·CSO·worker 생존을 확인하지 못했습니다"
 
+}
+
+# Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
+# 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
+# 전달에 성공한 뒤에만 declared 를 기록한다 — 실패 후 재실행이 선언을 다시 보내게.
+send_master_declaration() {
+  awakening_command "$1" "$WAVE_HOME/bin/cys" send --queued --to master \
+    '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.' >/dev/null ||
+    fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
+  : > "$WAVE_HOME/fleet/declared"
 }
 
 # S07: 앱 첫 실행 온보딩(팩·훅 설치)이 끝난 뒤에 master 를 만든다 — 온보딩의 팩 교체와 좌석이 겹치지 않게.

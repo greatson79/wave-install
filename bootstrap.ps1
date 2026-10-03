@@ -944,6 +944,16 @@ function Wait-GuiOnboarded([Diagnostics.Stopwatch]$Clock, [int]$CapMs = 180000) 
   throw 'W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다. 앱 창을 열어 둔 채 같은 설치 명령을 다시 실행하세요.'
 }
 
+# Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
+# 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
+# 전달에 성공한 뒤에만 declared 를 기록한다 — 실패 후 재실행이 선언을 다시 보내게.
+function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$DeclaredPath) {
+  $declaration = '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 각각 한 좌석씩 소환해 마스터를 포함한 세 좌석의 각성을 확인해 주세요. 리뷰어는 기다리지 마세요.'
+  $sent = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('send', '--queued', '--to', 'master', ('"' + $declaration + '"')) 'master-declare' (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds 15000)
+  if ($sent.timed_out -or $sent.exit_code -ne 0) { throw 'W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다' }
+  [IO.File]::WriteAllText($DeclaredPath, '')
+}
+
 function Run-S07 {
   $clock = [Diagnostics.Stopwatch]::StartNew()
   Start-WaveApp
@@ -951,16 +961,27 @@ function Run-S07 {
   $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
   if (-not (Test-AwakenedFleet $status)) {
     $masters = @($status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })
+    $fleetDir = Join-Path $WaveHome 'fleet'
+    $startedPath = Join-Path $fleetDir 'started-at'
+    $declaredPath = Join-Path $fleetDir 'declared'
     if ($masters.Count -eq 0) {
       $script:AwakeningStartedAt = [DateTime]::UtcNow
+      # 시작 시각은 launch-agent 전에 기록한다 — 상한에 걸려도 재실행이 그 좌석에 선언을 다시 보내 복구한다.
+      New-Item -ItemType Directory -Force -Path $fleetDir | Out-Null
+      Remove-Item -LiteralPath $declaredPath -Force -ErrorAction SilentlyContinue
+      [IO.File]::WriteAllText($startedPath, [string]([DateTimeOffset]$script:AwakeningStartedAt).ToUnixTimeSeconds())
       # 앱 계약: launch-agent 가 agent 정보를 기록하고 MASTER 지침을 주입한다. 준비 표지·주입까지 기다리므로 상한 120초.
       $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
-      # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
-      # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
-      $declaration = '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 각각 한 좌석씩 소환해 마스터를 포함한 세 좌석의 각성을 확인해 주세요. 리뷰어는 기다리지 마세요.'
-      $sent = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('send', '--queued', '--to', 'master', ('"' + $declaration + '"')) 'master-declare' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 15000)
-      if ($sent.timed_out -or $sent.exit_code -ne 0) { throw 'W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다' }
+      Send-MasterDeclaration $clock $declaredPath
+    } elseif ($masters.Count -eq 1 -and -not (Test-Path -LiteralPath $declaredPath) -and (Test-Path -LiteralPath $startedPath -PathType Leaf)) {
+      # 재실행 복구(W-DECLARE·launch-agent 상한): 이 설치가 시작한 뒤 생긴 master 인데 선언 전달 기록이 없으면 한 번 다시 보낸다.
+      $since = [long]([IO.File]::ReadAllText($startedPath).Trim())
+      if ($masters[0].created_at -ge $since) {
+        $script:AwakeningStartedAt = [DateTimeOffset]::FromUnixTimeSeconds($since).UtcDateTime
+        Write-Log '선언 전달 기록이 없어 master 에 선언을 한 번 다시 보냅니다.'
+        Send-MasterDeclaration $clock $declaredPath
+      }
     }
   }
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {

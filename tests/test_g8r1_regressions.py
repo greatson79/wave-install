@@ -229,7 +229,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.log = self.home / 'cys-calls.log'
         cys = self.wave / 'bin/cys'
         cys.write_text('#!/bin/sh\necho "$*" >> "$CYS_LOG"\ncase "$1" in\n'
-                       'status) cat "$FLEET_JSON";;\nsend) exit "${SEND_RC:-0}";;\n'
+                       'status) cat "$FLEET_JSON";;\nsend) [ "${SEND_RC:-0}" = 0 ] && [ -n "$FLEET_AFTER_SEND" ] && cp "$FLEET_AFTER_SEND" "$FLEET_JSON"; exit "${SEND_RC:-0}";;\n'
                        'launch-agent) [ -n "$FLEET_AFTER" ] && cp "$FLEET_AFTER" "$FLEET_JSON"; touch "$HOME/.cys/.master-bootstrapped"; echo surface:5;;\n'
                        'pack-manifest) cat "$MANIFEST_JSON";;\ninit-pack) sh -c "$INIT_PACK_ACTION";;\nesac\n')
         cys.chmod(0o755)
@@ -268,6 +268,46 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
         self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(self.since))
         self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+        self.assertNotIn('send ', self.log.read_text())
+
+    def test_declared_reuse_sends_nothing(self):
+        self.prepare(['surface:5'])
+        (self.wave / 'fleet/declared').write_text('')
+        r = self.bash('step_s07; echo "RC=$?"')
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        self.assertNotIn('send ', self.log.read_text())
+        self.assertFalse(self.new_surface_called())
+
+    def test_declaration_failure_then_rerun_resends_once(self):
+        future = int(time.time()) + 100
+        self.prepare([], saved_ref=None)
+        master_only = self.home / 'fleet-master.json'
+        master_only.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', future)]}))
+        full = self.home / 'fleet-full.json'
+        full.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', future), self.seat('surface:20', 'cso', future),
+                                                 self.seat('surface:21', 'worker-1', future)]}))
+        self.env.update(FLEET_AFTER=str(master_only), FLEET_AFTER_SEND=str(full), SEND_RC='3')
+        r = self.bash('step_s07; echo "RC=$?"')
+        self.assertNotIn('RC=0', r.stdout)
+        self.assertIn('J-PATH-02', r.stderr)
+        self.assertFalse((self.wave / 'fleet/declared').exists())
+        # 재실행 복구 두 꼴: 선언 전달 실패(master-ref 있음) · launch-agent 상한(master-ref 없음).
+        for name, drop_ref in (('send-failed', False), ('launch-capped', True)):
+            with self.subTest(name):
+                self.log.unlink(missing_ok=True)
+                (self.wave / 'fleet/declared').unlink(missing_ok=True)
+                if drop_ref:
+                    (self.wave / 'fleet/master-ref').unlink()
+                self.fleet.write_text(master_only.read_text())
+                (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:5', 'orchestra_check': 'exit 0'}))
+                self.env['SEND_RC'] = '0'
+                r = self.bash('step_s07; echo "RC=$?"')
+                self.assertIn('RC=0', r.stdout, r.stderr)
+                calls = self.log.read_text().splitlines()
+                self.assertEqual(sum(c.startswith('send --queued --to master') for c in calls), 1)
+                self.assertFalse(self.new_surface_called())
+                self.assertTrue((self.wave / 'fleet/declared').exists())
+                self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
 
     def test_new_master_gets_queued_declaration_after_launch_agent(self):
         future = int(time.time()) + 100

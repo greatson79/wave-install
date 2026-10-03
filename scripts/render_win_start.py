@@ -16,7 +16,10 @@ TEMPLATE = r'''& {
     $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash.ToLowerInvariant()
     if ($actual -ne '__SHA__') { throw 'BOOTSTRAP_SHA_MISMATCH' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f
-    if ($LASTEXITCODE -ne 0) { throw "Wave installer failed (exit $LASTEXITCODE)." }
+    $code = $LASTEXITCODE
+    # 2 = the installer already printed its own notice (all three seats alive, first answer still to be checked): not a failure.
+    # Keep the code for the caller without an error or the word failed; never call exit here (under iex it would close the caller's window).
+    if ($code -eq 2) { $global:LASTEXITCODE = 2 } elseif ($code -ne 0) { throw "Wave installer failed (exit $code)." }
   } finally {
     if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force }
     if (Test-Path -LiteralPath $d) { Remove-Item -LiteralPath $d }

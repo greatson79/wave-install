@@ -13,6 +13,8 @@ def judge(ev, expect_path):
     except (OSError, ValueError): return 1, "증거 없음: exit"
     if not os.path.exists(os.path.join(ev, "marker_absent")): return 1, "표지가 있었다 — 가짜 Claude 가 부트를 건너뛰지 못함(시험 무효)"
     if got == 1: return 1, "설치기 exit 1 = 실패"
+    shown = "".join(open(os.path.join(ev, f), encoding="utf-8", errors="replace").read() for f in ("run.log", "run.log.err") if os.path.exists(os.path.join(ev, f)))
+    if "Wave installer failed" in shown: return 1, "짧은 한 줄 stub 이 종료값 %d 를 「failed」로 표시함(실패 아님 안내여야 함)" % got   # 윈 stub(win-start.ps1) 경유 화면 단정
     if got != want: return 1, "종료값 %d != 기대 %d" % (got, want)
     if code:
         text = "".join(open(os.path.join(ev, f), encoding="utf-8", errors="replace").read() for f in ("run.log", "install.log") if os.path.exists(os.path.join(ev, f)))

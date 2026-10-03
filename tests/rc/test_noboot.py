@@ -19,6 +19,14 @@ class Judge(unittest.TestCase):
     def test_other_exit_fails(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, exit_txt="0"), 1)
     def test_missing_exit_fails(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, exit_txt=None), 1)
     def test_marker_present_invalidates(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, absent=False), 1)
+    def test_stub_failed_wording_on_the_expected_exit_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "exit"), "w").write("2\n"); open(os.path.join(d, "marker_absent"), "w").write("")
+            open(os.path.join(d, "run.log"), "w").write("J-VER-04"); open(os.path.join(d, "run.log.err"), "w").write("Wave installer failed (exit 2).")
+            open(os.path.join(d, "e.json"), "w").write(json.dumps({"unconfirmed_exit": 2}))
+            self.assertEqual(check_noboot.judge(d, os.path.join(d, "e.json"))[0], 1)
+            open(os.path.join(d, "run.log.err"), "w").write("")
+            self.assertEqual(check_noboot.judge(d, os.path.join(d, "e.json"))[0], 0)
     def test_observed_values(self):
         exp = {"unconfirmed_exit": 7, "observed": {"fleet_state": "alive_unconfirmed", "fleet_started": False, "seats_alive": 3}}
         ok = {"fleet_state": "alive_unconfirmed", "fleet_started": False, "seats_alive": 3, "j_code": "J-VER-04"}

@@ -5,11 +5,12 @@ sys.path.insert(0, HERE)
 import check_noboot
 
 class Judge(unittest.TestCase):
-    def run_case(self, exp, exit_txt="7", absent=True, log="", exists=True):
+    def run_case(self, exp, exit_txt="7", absent=True, log="", state=None):
         with tempfile.TemporaryDirectory() as d:
             if exit_txt is not None: open(os.path.join(d, "exit"), "w").write(exit_txt + "\n")
             if absent: open(os.path.join(d, "marker_absent"), "w").write("")
             open(os.path.join(d, "run.log"), "w").write(log)
+            if state is not None: open(os.path.join(d, "install-state.json"), "w").write(json.dumps({"steps": {"S07_INITIAL_FLEET": {"observed": state}}}))
             open(os.path.join(d, "e.json"), "w").write(json.dumps(exp))
             return check_noboot.judge(d, os.path.join(d, "e.json"))[0]
     def test_undecided_is_not_pass(self): self.assertEqual(self.run_case({"unconfirmed_exit": None}), 3)
@@ -18,6 +19,16 @@ class Judge(unittest.TestCase):
     def test_other_exit_fails(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, exit_txt="0"), 1)
     def test_missing_exit_fails(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, exit_txt=None), 1)
     def test_marker_present_invalidates(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, absent=False), 1)
+    def test_observed_values(self):
+        exp = {"unconfirmed_exit": 7, "observed": {"fleet_state": "alive_unconfirmed", "fleet_started": False, "seats_alive": 3}}
+        ok = {"fleet_state": "alive_unconfirmed", "fleet_started": False, "seats_alive": 3, "j_code": "J-VER-04"}
+        self.assertEqual(self.run_case(exp, state=ok), 0)
+        self.assertEqual(self.run_case(exp, state=dict(ok, fleet_started=True)), 1)
+        self.assertEqual(self.run_case(exp, state=dict(ok, seats_alive=2)), 1)
+        self.assertEqual(self.run_case(exp), 1)   # install-state.json 없음
+    def test_real_expect_file_is_exit_2(self):
+        exp = json.load(open(os.path.join(HERE, "rc4-expect.json")))
+        self.assertEqual((exp["unconfirmed_exit"], exp["diag_code"]), (2, "J-VER-04"))
     def test_diag_code(self):
         self.assertEqual(self.run_case({"unconfirmed_exit": 7, "diag_code": "J-X"}, log="… J-X …"), 0)
         self.assertEqual(self.run_case({"unconfirmed_exit": 7, "diag_code": "J-X"}, log="J-UNK-00"), 1)

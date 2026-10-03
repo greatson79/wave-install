@@ -1,4 +1,5 @@
 {
-  "unconfirmed_exit": null,
-  "diag_code": null
+  "unconfirmed_exit": 2,
+  "diag_code": "J-VER-04",
+  "observed": {"fleet_state": "alive_unconfirmed", "fleet_started": false, "seats_alive": 3}
 }

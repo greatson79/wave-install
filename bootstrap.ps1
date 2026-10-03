@@ -965,15 +965,15 @@ function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$Declared
   [IO.File]::WriteAllText($DeclaredPath, '')
 }
 
-# 좌석이 첫 실행 관문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit)에서 Enter 한 번에 죽지 않게,
-# 좌석이 읽는 Wave 전용 설정 폴더(CLAUDE_CONFIG_DIR = CYS_ACCOUNT_DIR 또는 %USERPROFILE%\.cys\claude)의
-# .claude.json(projects.<폴더>.hasTrustDialogAccepted · hasCompletedOnboarding)에만 미리 기록한다.
-# 대상 폴더 = 좌석 cwd: master 는 Run-S07 launch-agent --cwd $env:USERPROFILE, cso·worker 는 master 가 홈에서 부르는 `cys boot`(cwd 미지정 → 호출 폴더).
-# 폴더 키는 두 꼴(C:\Users\x · C:/Users/x)을 함께 쓴다 — Claude 는 자기 꼴만 본다(원본 실측). 사용자 ~/.claude·~/.claude.json 은 읽지도 쓰지도 않는다.
-# 규칙은 lib/trust_seed.py(맥)와 같다: false 도 true 로 세우고 바꾸기 전 값을 기록 → 되돌리기는 우리가 세운 칸만(bootstrap.ps1 -UndoTrust).
-# Adapted from oogisoogi/jarvis-install bootstrap.ps1:3078-3195 Set-ClaudePrefs (df5efc8a, MIT, LICENSES/jarvis-install-MIT.txt).
-function Test-JsonTrue($Value) { return ($Value -is [bool] -and $Value) }
-
+# 좌석 첫 실행 질문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit) 사전 설정.
+# 지인 oogisoogi/jarvis-install bootstrap.ps1:3078-3220·3378-3470 Get-ProfileTargets·Set-ClaudePrefs·Set-AllProfiles·Step-Prepare와
+# 같은 규칙(df5efc8a, MIT, LICENSES/jarvis-install-MIT.txt) — 맥 lib/trust_seed.py 머리말과 같다:
+#   대상 = 좌석 설정 폴더(CYS_ACCOUNT_DIR 또는 %USERPROFILE%\.cys\claude · 있을 때만) · 쓰기 전 .claude.json 사본 .bak-wave(원작 .bak-jarvis)
+#   · hasCompletedOnboarding=true · fullscreenUpsellSeenCount=99 · projects.<작업폴더 2꼴>.hasTrustDialogAccepted=true(덮어씀)
+#   · projects.<홈 2꼴>.hasTrustDialogAccepted=true 는 키가 없을 때만 · 되읽기 실패면 사본 복원.
+#   우리가 넣은 홈 키만 $WaveHome\trust-seed.tsv 에 「설정파일<탭>키」로 기록 — 기록 실패면 넣지 않고 J-PERM-01 로 멈춘다.
+#   Wave 고유(유일한 의도적 차이 · 주인님 지시): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
+# 되돌리기: bootstrap.ps1 -UndoTrust (원작 reset-clean.ps1:2077 Remove-TrustSeed 와 같은 범위 + 작업폴더 칸 삭제 = reset-clean.sh:2095).
 function Read-JsonObject([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
   $o = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -982,116 +982,103 @@ function Read-JsonObject([string]$Path) {
 }
 
 function Write-JsonNoBom([string]$Path, [object]$Value) {
-  $tmp = $Path + '.wave-tmp'
-  [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $Value -Depth 100), [Text.UTF8Encoding]::new($false))
-  if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($tmp, $Path, [NullString]::Value) } else { [IO.File]::Move($tmp, $Path) }
+  [IO.File]::WriteAllText($Path, (ConvertTo-Json -InputObject $Value -Depth 100), [Text.UTF8Encoding]::new($false))
 }
 
-# 경로 끝 칸을 true 로. 이미 true 면 $null, 아니면 @(바꾸기 전 값, 새로 만든 중간 칸 수).
-function Set-JsonTrue([object]$Node, [string[]]$Path) {
-  $made = 0
-  foreach ($k in $Path[0..($Path.Count - 2)]) {
-    if ($Path.Count -eq 1) { break }
-    $p = $Node.PSObject.Properties[$k]
-    if ($null -eq $p) { $Node | Add-Member -NotePropertyName $k -NotePropertyValue ([pscustomobject]@{}); $p = $Node.PSObject.Properties[$k]; $made++ }
-    if ($p.Value -isnot [Management.Automation.PSCustomObject]) { throw "$k 칸이 객체가 아님" }
-    $Node = $p.Value
+function Get-WaveClaudeDir { if ($env:CYS_ACCOUNT_DIR) { return $env:CYS_ACCOUNT_DIR } else { return (Join-Path $env:USERPROFILE '.cys\claude') } }
+
+# 반환: 'skip' | 'ok' | 'journal-failed' — 다른 실패는 throw.
+function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$WorkDir, [string]$HomeDir) {
+  if (-not (Test-Path -LiteralPath $ConfigDir -PathType Container)) { Say '     (Wave 좌석 Claude 설정 폴더가 아직 없어 사전 설정을 건너뜁니다.)'; return 'skip' }
+  $cfg = Join-Path $ConfigDir '.claude.json'; $sf = Join-Path $ConfigDir 'settings.json'
+  foreach ($f in @($cfg, $sf)) {
+    if ((Test-Path -LiteralPath $f -PathType Leaf) -and -not (Test-Path -LiteralPath "$f.bak-wave")) { Copy-Item -LiteralPath $f -Destination "$f.bak-wave" -Force }
   }
-  $leaf = $Node.PSObject.Properties[$Path[-1]]
-  if ($null -ne $leaf -and (Test-JsonTrue $leaf.Value)) { return $null }
-  $prior = if ($null -eq $leaf) { [pscustomobject]@{ absent = $true } } else { $leaf.Value }
-  $Node | Add-Member -NotePropertyName $Path[-1] -NotePropertyValue $true -Force
-  return ,@($prior, $made)
+  $o = Read-JsonObject $cfg; if ($null -eq $o) { $o = [pscustomobject]@{} }
+  $s = Read-JsonObject $sf; if ($null -eq $s) { $s = [pscustomobject]@{} }
+  $o | Add-Member -NotePropertyName hasCompletedOnboarding -NotePropertyValue $true -Force
+  $o | Add-Member -NotePropertyName fullscreenUpsellSeenCount -NotePropertyValue 99 -Force
+  if (-not $o.PSObject.Properties['projects']) { $o | Add-Member -NotePropertyName projects -NotePropertyValue ([pscustomobject]@{}) -Force }
+  foreach ($k in @($WorkDir, ($WorkDir -replace '\\', '/'))) {
+    $ex = $o.projects.PSObject.Properties[$k]
+    if ($null -eq $ex -or $null -eq $ex.Value) { $o.projects | Add-Member -NotePropertyName $k -NotePropertyValue ([pscustomobject]@{ hasTrustDialogAccepted = $true }) -Force }
+    else { $ex.Value | Add-Member -NotePropertyName hasTrustDialogAccepted -NotePropertyValue $true -Force }
+  }
+  $rows = @(); $homeKeys = @()
+  foreach ($k in @($HomeDir, ($HomeDir -replace '\\', '/'))) {
+    $ex = $o.projects.PSObject.Properties[$k]
+    if ($null -eq $ex -or $null -eq $ex.Value -or $null -eq $ex.Value.PSObject.Properties['hasTrustDialogAccepted']) { $homeKeys += $k; $rows += ($cfg + "`t" + $k) }
+    else { Say '     (이 컴퓨터에는 홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다 — 우리가 바꾸지 않습니다.)' }
+  }
+  $rc = $s.PSObject.Properties['remoteControlAtStartup']
+  $setRc = -not ($null -ne $rc -and $rc.Value -is [bool] -and $rc.Value)
+  if ($setRc) { $rows += ($sf + "`tremoteControlAtStartup`t" + $(if ($null -eq $rc) { 'absent' } else { ConvertTo-Json -InputObject $rc.Value -Compress })) }
+  $result = 'ok'
+  if ($rows.Count -gt 0) {
+    try {   # 기록이 먼저 선다 — 기록 없이 넣지 않는다
+      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Journal) | Out-Null
+      [IO.File]::AppendAllText($Journal, (($rows -join "`r`n") + "`r`n"), [Text.UTF8Encoding]::new($false))
+    } catch { $result = 'journal-failed'; $homeKeys = @(); $setRc = $false }
+  }
+  foreach ($k in $homeKeys) {
+    $ex = $o.projects.PSObject.Properties[$k]
+    if ($null -eq $ex -or $null -eq $ex.Value) { $o.projects | Add-Member -NotePropertyName $k -NotePropertyValue ([pscustomobject]@{ hasTrustDialogAccepted = $true }) -Force }
+    else { $ex.Value | Add-Member -NotePropertyName hasTrustDialogAccepted -NotePropertyValue $true -Force }
+  }
+  if ($setRc) { $s | Add-Member -NotePropertyName remoteControlAtStartup -NotePropertyValue $true -Force; Write-JsonNoBom $sf $s }
+  Write-JsonNoBom $cfg $o
+  try {   # 쓴 뒤 되읽어 확인 — 못 읽으면 사본으로 되돌린다
+    $back = Get-Content -LiteralPath $cfg -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not $back.hasCompletedOnboarding) { throw '되읽기 확인 실패' }
+  } catch {
+    if (Test-Path -LiteralPath "$cfg.bak-wave") { Copy-Item -LiteralPath "$cfg.bak-wave" -Destination $cfg -Force; Say '     (설정 파일을 원래대로 되돌렸습니다 — 첫 실행 질문이 뜰 수 있습니다.)' }
+    throw
+  }
+  if ($result -eq 'ok') { Say '     첫 실행 질문(테마·폴더 신뢰·큰 화면 권유)을 미리 넘겨 두었습니다.' }
+  return $result
 }
 
-# hasCompletedOnboarding 은 로그인 관문까지 지우므로 $AuthVerified(좌석과 같은 설정 폴더로 claude auth status 통과)일 때만 넣는다
-# (원작 idoforgod/cys-terminal src/pack.rs U-19 V-h 실측 ③ — 미로그인 좌석이 「Not logged in」 인 채 살아 있다).
-function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [bool]$AuthVerified, [string[]]$Dirs) {
-  $files = [ordered]@{ cfg = (Join-Path $ConfigDir '.claude.json') }
-  $wants = @()
-  if ($AuthVerified) { $wants += ,@('cfg', @('hasCompletedOnboarding')) }
-  foreach ($d in ($Dirs | Select-Object -Unique)) { $wants += ,@('cfg', @('projects', $d, 'hasTrustDialogAccepted')) }
-  $datas = @{}; $created = @()
-  foreach ($n in $files.Keys) {
-    $datas[$n] = Read-JsonObject $files[$n]
-    if ($null -eq $datas[$n]) { $datas[$n] = [pscustomobject]@{}; $created += $files[$n] }
+function Undo-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$WorkDir) {
+  $rows = @()
+  if (Test-Path -LiteralPath $Journal -PathType Leaf) {
+    foreach ($ln in ((Get-Content -LiteralPath $Journal -Raw -Encoding UTF8) -split "`r?`n")) { if ($ln) { $rows += ,@($ln -split "`t") } }
   }
-  $changes = @(); $touched = @()
-  foreach ($w in $wants) {
-    $r = Set-JsonTrue $datas[$w[0]] $w[1]
-    if ($null -ne $r) {
-      $changes += [pscustomobject]@{ file = $files[$w[0]]; path = $w[1]; prior = $r[0]; made = $r[1] }
-      if ($touched -notcontains $w[0]) { $touched += $w[0] }
+  $datas = [ordered]@{}
+  $cfg = Join-Path $ConfigDir '.claude.json'
+  foreach ($r in (@(,@($cfg)) + $rows)) {
+    if (-not (Test-Path -LiteralPath $r[0] -PathType Leaf)) { continue }
+    if (-not $datas.Contains($r[0])) { $datas[$r[0]] = Read-JsonObject $r[0] }
+    $o = $datas[$r[0]]
+    $prj = $o.PSObject.Properties['projects']
+    if ($r.Count -eq 1) {   # 작업폴더 칸 2꼴 — 통째로
+      if ($null -ne $prj -and $null -ne $prj.Value) { foreach ($k in @($WorkDir, ($WorkDir -replace '\\', '/'))) { $prj.Value.PSObject.Properties.Remove($k) } }
+    } elseif ($r.Count -ge 3) {   # settings.json remoteControlAtStartup
+      $p = $o.PSObject.Properties[$r[1]]
+      if ($null -ne $p -and $p.Value -is [bool] -and $p.Value) {
+        if ($r[2] -eq 'absent') { $o.PSObject.Properties.Remove($r[1]) } else { $p.Value = ($r[2] | ConvertFrom-Json) }
+      }
+    } elseif ($null -ne $prj -and $null -ne $prj.Value) {
+      $ex = $prj.Value.PSObject.Properties[$r[1]]
+      if ($null -ne $ex -and $null -ne $ex.Value) {
+        $cur = $ex.Value.PSObject.Properties['hasTrustDialogAccepted']
+        if ($null -ne $cur -and $cur.Value -is [bool] -and $cur.Value) {   # 우리가 넣은 값과 같을 때만
+          $ex.Value.PSObject.Properties.Remove('hasTrustDialogAccepted')
+          if (@($ex.Value.PSObject.Properties).Count -eq 0) { $prj.Value.PSObject.Properties.Remove($r[1]) }
+        }
+      }
     }
   }
-  if ($changes.Count -eq 0) { return 'unchanged' }
-  $log = Read-JsonObject $Journal
-  if ($null -eq $log) { $log = [pscustomobject]@{ backups = [pscustomobject]@{}; created_files = @(); changes = @() } }
-  foreach ($n in $touched) {
-    $f = $files[$n]
-    if ($created -contains $f) { if (@($log.created_files) -notcontains $f) { $log.created_files = @(@($log.created_files) | Where-Object { $null -ne $_ }) + $f } }
-    elseif (-not (Test-Path -LiteralPath ($f + '.wave-bak'))) {
-      Copy-Item -LiteralPath $f -Destination ($f + '.wave-bak')
-      $log.backups | Add-Member -NotePropertyName $f -NotePropertyValue ($f + '.wave-bak') -Force
-    }
-  }
-  $log.changes = @(@($log.changes) | Where-Object { $null -ne $_ }) + $changes
-  New-Item -ItemType Directory -Force -Path $ConfigDir, (Split-Path -Parent $Journal) | Out-Null
-  Write-JsonNoBom $Journal $log   # 기록이 먼저 선다 — 기록 없는 변경을 남기지 않는다
-  foreach ($n in $touched) { Write-JsonNoBom $files[$n] $datas[$n] }
-  foreach ($w in $wants) {   # 되읽기 확인
-    $node = Read-JsonObject $files[$w[0]]
-    foreach ($k in $w[1]) { $node = if ($node -is [Management.Automation.PSCustomObject] -and $null -ne $node.PSObject.Properties[$k]) { $node.PSObject.Properties[$k].Value } else { $null } }
-    if (-not (Test-JsonTrue $node)) { throw "되읽기 확인 실패: $($w[1] -join '.')" }
-  }
-  return "changed $($changes.Count)"
-}
-
-function Undo-WaveClaudeTrust([string]$Journal) {
-  $log = Read-JsonObject $Journal
-  if ($null -eq $log) { return 'nothing' }
-  $datas = @{}; $dirty = @()
-  $list = @($log.changes); [array]::Reverse($list)
-  foreach ($c in $list) {
-    $f = [string]$c.file; $path = @($c.path)
-    if (-not $datas.ContainsKey($f)) { $datas[$f] = Read-JsonObject $f; if ($null -eq $datas[$f]) { $datas[$f] = [pscustomobject]@{} } }
-    $chain = @($datas[$f])
-    foreach ($k in $path[0..($path.Count - 2)]) {
-      if ($path.Count -eq 1) { break }
-      $p = $chain[-1].PSObject.Properties[$k]
-      if ($null -eq $p -or $p.Value -isnot [Management.Automation.PSCustomObject]) { break }
-      $chain += $p.Value
-    }
-    if ($chain.Count -ne $path.Count) { continue }
-    $leaf = $chain[-1].PSObject.Properties[$path[-1]]
-    if ($null -eq $leaf -or -not (Test-JsonTrue $leaf.Value)) { continue }   # 그 뒤 다른 값으로 바뀌었으면 그대로 둔다
-    if ($dirty -notcontains $f) { $dirty += $f }
-    if ($c.prior -is [Management.Automation.PSCustomObject] -and $null -ne $c.prior.PSObject.Properties['absent']) { $chain[-1].PSObject.Properties.Remove($path[-1]) }
-    else { $leaf.Value = $c.prior }
-    for ($i = $chain.Count - 1; $i -gt $chain.Count - 1 - [int]$c.made; $i--) {   # 우리가 만든 중간 칸이 비면 지운다
-      if (@($chain[$i].PSObject.Properties).Count -gt 0) { break }
-      $chain[$i - 1].PSObject.Properties.Remove($path[$i - 1])
-    }
-  }
-  foreach ($f in $dirty) {
-    if ((@($log.created_files) -contains $f) -and @($datas[$f].PSObject.Properties).Count -eq 0) { Remove-Item -LiteralPath $f -Force }
-    else { Write-JsonNoBom $f $datas[$f] }
-  }
-  Remove-Item -LiteralPath $Journal -Force
-  return "rolled back $(@($log.changes).Count)"
+  foreach ($f in $datas.Keys) { Write-JsonNoBom $f $datas[$f] }
+  if (Test-Path -LiteralPath $Journal) { Remove-Item -LiteralPath $Journal -Force }
+  return "rolled back $($rows.Count)"
 }
 
 function Seed-WaveClaudeTrust {
   $homeDir = ([string]$env:USERPROFILE).TrimEnd('\')
-  $root = if ($env:CYS_ACCOUNT_DIR) { $env:CYS_ACCOUNT_DIR } else { Join-Path $env:USERPROFILE '.cys\claude' }
-  $auth = $false
-  $saved = $env:CLAUDE_CONFIG_DIR
-  try { $env:CLAUDE_CONFIG_DIR = $root; & claude auth status *> $null; $auth = ($LASTEXITCODE -eq 0) } catch { } finally { $env:CLAUDE_CONFIG_DIR = $saved }
-  try {
-    $result = Set-WaveClaudeTrust $root (Join-Path $WaveHome 'trust-seed.json') $auth @($homeDir, ($homeDir -replace '\\', '/'))
-    Write-Log "폴더 신뢰 사전 기록: $result (Wave 전용 Claude 설정 · 홈 폴더 2꼴 · 로그인 $(if ($auth) { 'verified' } else { 'unproven' }))"
-  } catch {
-    Write-Log "주의: Wave 전용 Claude 설정에 폴더 신뢰를 미리 기록하지 못했습니다($($_.Exception.Message)) — 좌석에 「Quick safety check」 창이 뜨면 「Yes, I trust this folder」를 고르세요."
+  try { $r = Set-WaveClaudeTrust (Get-WaveClaudeDir) (Join-Path $WaveHome 'trust-seed.tsv') $WaveHome $homeDir }
+  catch { Say "     (사전 설정을 걸지 못했습니다. 클로드가 처음 몇 가지를 물을 수 있습니다.) $($_.Exception.Message)"; return }
+  if ($r -eq 'journal-failed') {
+    throw 'J-PERM-01: 홈 폴더 신뢰 기록을 남기지 못했습니다(쓰기 권한이 없거나 저장 공간 부족) — 그 설정은 넣지 않았고, 여기서 멈춥니다. 저장 공간과 백신 알림을 확인하신 뒤 다시 실행해 주십시오.'
   }
 }
 
@@ -1462,7 +1449,7 @@ trap {
   exit 1
 }
 
-if ($UndoTrust) { Write-Host (Undo-WaveClaudeTrust (Join-Path $WaveHome 'trust-seed.json')); exit 0 }
+if ($UndoTrust) { Write-Host (Undo-WaveClaudeTrust (Get-WaveClaudeDir) (Join-Path $WaveHome 'trust-seed.tsv') $WaveHome); exit 0 }
 Load-Config
 if ($DryRun) {
   Write-Host "dry-run: $StepsFile / $StateFile / $LogFile"
@@ -1476,9 +1463,6 @@ if (Test-RecentInstallDone) {
 if ($env:WAVE_NO_PROGRESS -ne '1' -and (Get-Command Show-HelpNotice -ErrorAction SilentlyContinue)) {
   $HelpInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and -not ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
   Show-HelpNotice
-}
-if ($ScriptDir -and (Test-Path -LiteralPath (Join-Path (Join-Path $ScriptDir 'lib') 'trust-notice.txt') -PathType Leaf)) {
-  Write-Host ((Get-Content -LiteralPath (Join-Path (Join-Path $ScriptDir 'lib') 'trust-notice.txt') -Raw -Encoding UTF8).TrimEnd())
 }
 Init-State
 if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }

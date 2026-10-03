@@ -24,69 +24,98 @@ def sha(path):
 
 
 class HelperTests(unittest.TestCase):
+    """지인 jarvis-install seed_claude_prefs 규칙(lib/trust_seed.py 머리말) + Wave 고유 remoteControlAtStartup=true."""
     def setUp(self):
         t = tempfile.TemporaryDirectory(prefix='trust-seed-')
         self.addCleanup(t.cleanup)
         self.dir = Path(t.name) / 'cys-claude'
-        self.cfg = self.dir / '.claude.json'
-        self.journal = Path(t.name) / 'wave/trust-seed.json'
+        self.dir.mkdir()
+        self.cfg, self.sf = self.dir / '.claude.json', self.dir / 'settings.json'
+        self.journal = Path(t.name) / 'wave/trust-seed.tsv'
+        self.work = Path(t.name) / 'wave'
         self.home = '/Users/first.last'  # 마침표 든 홈(맥 미니 실기와 같은 꼴)도 한 열쇠로 다룬다
 
-    def seed(self, auth='verified'):
-        return trust_seed.seed(str(self.dir), str(self.journal), auth, [self.home])
+    def seed(self):
+        return trust_seed.seed(str(self.dir), str(self.journal), str(self.work), self.home)
 
-    def test_fresh_creates_keys_then_rerun_is_noop_then_rollback_removes_file(self):
-        self.assertEqual(self.seed(), 'changed 2')
-        data = json.loads(self.cfg.read_text())
-        self.assertEqual(data, {'hasCompletedOnboarding': True, 'projects': {self.home: {'hasTrustDialogAccepted': True}}})
+    def test_fresh_writes_reference_keys_then_rerun_is_noop(self):
+        rc, msgs = self.seed()
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(self.cfg.read_text()), {
+            'hasCompletedOnboarding': True, 'fullscreenUpsellSeenCount': 99,
+            'projects': {str(self.work): {'hasTrustDialogAccepted': True}, self.home: {'hasTrustDialogAccepted': True}}})
+        self.assertEqual(json.loads(self.sf.read_text()), {'remoteControlAtStartup': True})
         self.assertEqual(self.cfg.stat().st_mode & 0o777, 0o600)
-        before, jbefore = sha(self.cfg), sha(self.journal)
-        self.assertEqual(self.seed(), 'unchanged')
-        self.assertEqual((sha(self.cfg), sha(self.journal)), (before, jbefore))
-        self.assertEqual(trust_seed.rollback(str(self.journal)), 'rolled back 2')
-        self.assertFalse(self.cfg.exists())
+        self.assertEqual(self.journal.read_text(), '%s\t%s\n%s\tremoteControlAtStartup\tabsent\n' % (self.cfg, self.home, self.sf))
+        self.assertFalse((self.dir / '.claude.json.wave-bak').exists())  # 맥 원작에는 백업 사본이 없다
+        before = (sha(self.cfg), sha(self.sf), sha(self.journal))
+        rc, msgs = self.seed()
+        self.assertEqual(rc, 0)
+        self.assertIn('홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다', msgs[0])
+        self.assertEqual((sha(self.cfg), sha(self.sf), sha(self.journal)), before)
+
+    def test_missing_profile_dir_is_skipped(self):
+        self.dir.rmdir()
+        self.assertEqual(self.seed()[0], 0)
+        self.assertFalse(self.dir.exists())
         self.assertFalse(self.journal.exists())
 
-    def test_existing_keys_are_preserved_false_is_raised_and_rollback_restores_prior(self):
-        self.dir.mkdir(parents=True)
+    def test_existing_home_false_is_kept_onboarding_overwritten_other_keys_preserved(self):
         original = {'oauthAccount': {'emailAddress': 'x'}, 'numStartups': 9007199254740993, 'hasCompletedOnboarding': False,
+                    'fullscreenUpsellSeenCount': 3,
                     'projects': {'/other': {'hasTrustDialogAccepted': False, 'allowedTools': []},
                                  self.home: {'hasTrustDialogAccepted': False, 'history': ['a']}}}
         self.cfg.write_text(json.dumps(original))
         self.cfg.chmod(0o644)
-        self.assertEqual(self.seed(), 'changed 2')
+        self.sf.write_text(json.dumps({'theme': 'light', 'remoteControlAtStartup': False}))
+        self.assertEqual(self.seed()[0], 0)
         data = json.loads(self.cfg.read_text())
         self.assertIs(data['hasCompletedOnboarding'], True)
-        self.assertEqual(data['projects'][self.home], {'hasTrustDialogAccepted': True, 'history': ['a']})
+        self.assertEqual(data['fullscreenUpsellSeenCount'], 99)
+        self.assertEqual(data['projects'][self.home], {'hasTrustDialogAccepted': False, 'history': ['a']})  # 원작: 있으면 그대로(false 도)
         self.assertEqual(data['projects']['/other'], original['projects']['/other'])
         self.assertEqual((data['oauthAccount'], data['numStartups']), (original['oauthAccount'], 9007199254740993))
         self.assertEqual(self.cfg.stat().st_mode & 0o777, 0o644)
-        self.assertEqual(json.loads((self.dir / '.claude.json.wave-bak').read_text()), original)
-        priors = [c['prior'] for c in json.loads(self.journal.read_text())['changes']]
-        self.assertEqual(priors, [False, False])
-        trust_seed.rollback(str(self.journal))
-        self.assertEqual(json.loads(self.cfg.read_text()), original)
+        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'light', 'remoteControlAtStartup': True})
+        self.assertEqual(self.journal.read_text(), '%s\tremoteControlAtStartup\tfalse\n' % self.sf)  # 홈 키는 넣지 않았으니 기록 없음
+        trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
+        data = json.loads(self.cfg.read_text())
+        self.assertNotIn(str(self.work), data['projects'])
+        self.assertEqual(data['projects'][self.home], original['projects'][self.home])
+        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'light', 'remoteControlAtStartup': False})
+
+    def test_rollback_removes_only_our_true_keys(self):
+        self.cfg.write_text(json.dumps({'projects': {self.home: {'allowedTools': ['x']}}}))
+        self.seed()
+        trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
+        self.assertEqual(json.loads(self.cfg.read_text()), {'hasCompletedOnboarding': True, 'fullscreenUpsellSeenCount': 99,
+                                                            'projects': {self.home: {'allowedTools': ['x']}}})
+        self.assertEqual(json.loads(self.sf.read_text()), {})
+        self.assertFalse(self.journal.exists())
 
     def test_rollback_leaves_values_changed_after_the_seed(self):
-        self.dir.mkdir(parents=True)
-        self.cfg.write_text(json.dumps({'projects': {}}))
         self.seed()
         data = json.loads(self.cfg.read_text())
         data['projects'][self.home]['hasTrustDialogAccepted'] = False  # 그 뒤 사람이 바꿨다
-        data['projects']['/new'] = {'hasTrustDialogAccepted': True}
         self.cfg.write_text(json.dumps(data))
-        trust_seed.rollback(str(self.journal))
-        self.assertEqual(json.loads(self.cfg.read_text()),
-                         {'projects': {self.home: {'hasTrustDialogAccepted': False}, '/new': {'hasTrustDialogAccepted': True}}})
+        self.sf.write_text(json.dumps({'remoteControlAtStartup': False}))
+        trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
+        self.assertEqual(json.loads(self.cfg.read_text())['projects'], {self.home: {'hasTrustDialogAccepted': False}})
+        self.assertEqual(json.loads(self.sf.read_text()), {'remoteControlAtStartup': False})
 
-    def test_unproven_login_writes_trust_only(self):
-        self.assertEqual(self.seed('unproven'), 'changed 1')
-        self.assertNotIn('hasCompletedOnboarding', json.loads(self.cfg.read_text()))
+    def test_journal_failure_adds_no_home_key_and_returns_3(self):
+        self.journal.parent.mkdir(parents=True)
+        self.journal.mkdir()  # 기록 파일 자리에 폴더 — 덧붙이기 실패
+        rc, msgs = self.seed()
+        self.assertEqual(rc, 3)
+        data = json.loads(self.cfg.read_text())
+        self.assertNotIn(self.home, data['projects'])
+        self.assertIs(data['hasCompletedOnboarding'], True)
+        self.assertFalse(self.sf.exists())
 
     def test_unknown_shape_is_refused_without_writing(self):
-        self.dir.mkdir(parents=True)
         self.cfg.write_text('{"projects": []}')
-        self.assertEqual(trust_seed.main(['seed', str(self.dir), str(self.journal), 'verified', self.home]), 1)
+        self.assertEqual(trust_seed.main(['seed', str(self.dir), str(self.journal), str(self.work), self.home]), 1)
         self.assertEqual(self.cfg.read_text(), '{"projects": []}')
         self.assertFalse(self.journal.exists())
 
@@ -99,6 +128,7 @@ class MacBootstrapTests(unittest.TestCase):
         self.wave = self.home / '.wave'
         (self.wave / 'bin').mkdir(parents=True)
         (self.wave / 'fleet').mkdir()
+        (self.home / '.cys/claude').mkdir(parents=True)
         # 사용자 개인 설정(가짜) — 설치 전후 바이트가 같아야 한다.
         (self.home / '.claude').mkdir()
         (self.home / '.claude.json').write_text('{"projects": {}}')
@@ -106,9 +136,6 @@ class MacBootstrapTests(unittest.TestCase):
         self.fakebin = self.home / 'fakebin'
         self.fakebin.mkdir()
         self.calls = self.home / 'calls.log'
-        claude = self.fakebin / 'claude'
-        claude.write_text('#!/bin/sh\necho "claude $* CFG=$CLAUDE_CONFIG_DIR" >> "$CALLS"\nexit "${AUTH_RC:-0}"\n')
-        claude.chmod(0o755)
         cys = self.wave / 'bin/cys'
         cys.write_text('#!/bin/sh\necho "cys $*" >> "$CALLS"\ncase "$1" in\nread-screen) cat "$SCREEN";;\nesac\n')
         cys.chmod(0o755)
@@ -128,31 +155,34 @@ class MacBootstrapTests(unittest.TestCase):
 
     def test_seed_writes_wave_profile_only_and_reruns_idempotent(self):
         before = self.personal()
-        r = self.bash('seed_claude_trust; seed_claude_trust')
-        self.assertEqual(r.returncode, 0, r.stderr)
-        real = os.path.realpath(self.home)  # 임시 폴더가 /var → /private/var 처럼 바로가기면 실경로도 함께 신뢰한다
-        self.assertIn('폴더 신뢰 사전 기록: changed %d' % (2 + (real != str(self.home))), r.stderr)
-        self.assertIn('폴더 신뢰 사전 기록: unchanged', r.stderr)
+        r = self.bash('seed_claude_trust && seed_claude_trust; echo RC=$?')
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        self.assertIn('첫 실행 질문(테마·폴더 신뢰·큰 화면 권유)을 미리 넘겨 두었습니다.', r.stderr)
+        self.assertIn('홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다', r.stderr)
         data = json.loads((self.home / '.cys/claude/.claude.json').read_text())
         self.assertIs(data['hasCompletedOnboarding'], True)
+        self.assertEqual(data['fullscreenUpsellSeenCount'], 99)
         self.assertIs(data['projects'][str(self.home)]['hasTrustDialogAccepted'], True)
-        self.assertIs(data['projects'][real]['hasTrustDialogAccepted'], True)
+        self.assertIs(data['projects'][str(self.wave)]['hasTrustDialogAccepted'], True)
+        self.assertEqual(sorted(data['projects']), sorted([str(self.home), str(self.wave)]))  # 원작처럼 실경로 칸은 따로 만들지 않는다
+        self.assertIs(json.loads((self.home / '.cys/claude/settings.json').read_text())['remoteControlAtStartup'], True)
         self.assertEqual(self.personal(), before)
-        self.assertIn('CFG=%s/.cys/claude' % self.home, self.calls.read_text())  # 로그인 확인도 좌석 설정 폴더로
-        self.assertTrue((self.wave / 'trust-seed.json').is_file())
-
-    def test_unproven_login_does_not_write_onboarding(self):
-        r = self.bash('seed_claude_trust', AUTH_RC='1')
-        self.assertIn('로그인 unproven', r.stderr)
-        data = json.loads((self.home / '.cys/claude/.claude.json').read_text())
-        self.assertNotIn('hasCompletedOnboarding', data)
-        self.assertIs(data['projects'][str(self.home)]['hasTrustDialogAccepted'], True)
+        self.assertTrue((self.wave / 'trust-seed.tsv').is_file())
+        self.assertNotIn('claude', self.calls.read_text() if self.calls.exists() else '')  # 로그인 확인 호출 없음(원작과 같다)
 
     def test_cys_account_dir_is_honoured(self):
         acct = self.home / 'acct'
+        acct.mkdir()
         self.bash('seed_claude_trust', CYS_ACCOUNT_DIR=str(acct))
         self.assertTrue((acct / '.claude.json').is_file())
+        self.assertTrue((acct / 'settings.json').is_file())
         self.assertFalse((self.home / '.cys/claude/.claude.json').exists())
+
+    def test_journal_failure_stops_step_with_j_perm_01(self):
+        (self.wave / 'trust-seed.tsv').mkdir()
+        r = self.bash('if seed_claude_trust; then echo RC=0; else echo RC=1; fi')
+        self.assertIn('RC=1', r.stdout)
+        self.assertIn('J-PERM-01', r.stderr)
 
     def gate(self, screen):
         (self.home / 'screen.txt').write_text(screen)
@@ -178,7 +208,6 @@ class MacBootstrapTests(unittest.TestCase):
 
     def test_s07_waits_on_gate_with_notice_until_human_picks(self):
         # 관문 화면 고정본에서 S07 대기 루프가 실패로 끝나지 않고 안내 후 계속 돈다(cso 가 살아날 때 통과).
-        (self.home / '.cys').mkdir()
         (self.home / '.cys/.gui-onboarded').write_text('0.0.0\n')
         (self.home / 'screen.txt').write_text(TRUST_SCREEN)
         fleet = self.home / 'fleet.json'
@@ -205,7 +234,7 @@ class MacBootstrapTests(unittest.TestCase):
 
 
 class WindowsFixtureTests(unittest.TestCase):
-    def test_windows_seed_rollback_auth_and_gate_notice(self):
+    def test_windows_seed_rollback_and_gate_notice(self):
         pwsh = os.environ.get('PWSH') or shutil.which('pwsh')
         if not pwsh:
             self.skipTest('PWSH required')
@@ -215,18 +244,9 @@ class WindowsFixtureTests(unittest.TestCase):
                                env=dict(env, TS_FIXTURE_HOME=home, TS_TRUST=TRUST_SCREEN, TS_ECHO=ECHO_ONLY_SCREEN),
                                text=True, capture_output=True, timeout=60)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-            for needle in ('PASS fresh', 'PASS preserve', 'PASS rerun', 'PASS rollback', 'PASS unproven', 'PASS gate notice'):
+            for needle in ('PASS fresh', 'PASS rerun', 'PASS preserve', 'PASS rollback', 'PASS skip', 'PASS journal', 'PASS gate notice'):
                 self.assertIn(needle, r.stdout)
             self.assertEqual(r.stderr, '')
-
-
-class NoticeTextTests(unittest.TestCase):
-    def test_notice_is_shared_and_shown_by_both_os(self):
-        text = (ROOT / 'lib/trust-notice.txt').read_text(encoding='utf-8')
-        self.assertIn('설치기가 Wave 전용 Claude 설정에 작업 폴더 신뢰를 미리 기록합니다', text)
-        self.assertIn('홈 폴더', text)
-        self.assertIn('lib/trust-notice.txt', (ROOT / 'bootstrap.sh').read_text())
-        self.assertIn("'trust-notice.txt'", (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig'))
 
 
 if __name__ == '__main__':

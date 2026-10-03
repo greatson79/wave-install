@@ -137,7 +137,8 @@ class T(unittest.TestCase):
         a, c = "a" * 64, "b" * 64
         self.assertEqual(put7({"baseline_sha256": a, "current_sha256": a})[0], gate.PASS)
         self.assertEqual(put7({"baseline_sha256": a, "current_sha256": c})[0], gate.FAIL)
-        v = put7({"baseline_sha256": a, "baseline_sha256_lf": c, "baseline_crlf": 5, "current_sha256": c}); self.assertEqual(v[0], gate.FAIL); self.assertIn("줄바꿈", v[1])
+        v = put7({"baseline_sha256": a, "baseline_sha256_lf": c, "baseline_crlf": 5, "current_sha256": c, "current_sha256_lf": c}); self.assertEqual(v[0], gate.FAIL); self.assertIn("줄바꿈", v[1])
+        v = put7({"baseline_sha256": a, "current_sha256": a, "baseline_ref": "fa4c12b8", "current_ref": "83c86da3abc", "installed_current_sha256": c}); self.assertEqual(v[0], gate.PASS); self.assertIn("fa4c12b8 → 83c86da3", v[1])  # 설치본 sha 가 달라도 판정 무관
         self.assertEqual(put7({"baseline_sha256": "x", "current_sha256": a})[0], gate.FAIL)
         f.unlink(); self.assertEqual(gate.g7b(b)[0], gate.NA)
 

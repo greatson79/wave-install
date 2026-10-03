@@ -187,8 +187,10 @@ def g7(b, c=None):
 
 
 def g7b(b, c=None):
-    """배포본 schedule.json 동결(테오 1107): 새 앱 팩의 schedule.json sha256 이 직전 릴리스(공개 v0.2.3 설치기가 핀한 앱 판)의 팩과 같아야 PASS.
-    sha 는 원값(바이트) 그대로 비교 — 줄바꿈 정규화로 맞춰 통과시키지 않는다. 줄바꿈만 다르면 FAIL 이되 사유에 그 사실을 적는다."""
+    """배포본 schedule.json 동결 — 정의 고정(테오 「배포본 == 직전 릴리스의 배포본」 · 펄스 1127):
+    기준 = 직전 공개 앱 판 **소스**의 cysjavis-pack/schedule.json git blob(윈 = v0.2.3 설치기가 핀한 앱 fa4c12b8 · 맥 = v0.1.1 소스 커밋),
+    비교 대상 = 새 앱 판(시험 중 앱 커밋) 같은 경로 blob. 원값 바이트 비교 — git 소스는 LF 정본이라 CRLF 문제가 없고, 줄바꿈 정규화로 통과시키지 않는다.
+    설치본 사본(installed_*)은 증거로만 병기하며 판정에 쓰지 않는다(데몬이 부트마다 기본 잡을 써 넣고 윈 v0.2.3 설치본은 CRLF)."""
     s = b / "G5"
     if not s.is_dir(): return NA, "증거 폴더 없음: G5/"
     d, bad = need(s, "G7b_schedule_freeze.json")
@@ -196,11 +198,12 @@ def g7b(b, c=None):
     base, cur = d.get("baseline_sha256"), d.get("current_sha256")
     if not (isinstance(base, str) and HEX64.match(base) and isinstance(cur, str) and HEX64.match(cur)):
         return FAIL, "sha256 형식 오류/누락 (baseline=%s · current=%s)" % (base, cur)
-    if base == cur: return PASS, "schedule.json 동결 — 직전 릴리스와 sha256 동일 (%s…)" % cur[:12]
+    where = "%s → %s" % (d.get("baseline_ref", "?"), str(d.get("current_ref", "?"))[:8])
+    if base == cur: return PASS, "schedule.json 동결 — 소스 blob 동일 (%s · %s…)" % (where, cur[:12])
     note = ""
-    if d.get("baseline_sha256_lf") and d.get("baseline_sha256_lf") == cur or d.get("installed_current_sha256_lf") == d.get("baseline_sha256_lf") and d.get("baseline_crlf"):
-        note = " · 줄바꿈(CRLF %s줄)만 다름 — 원값 sha 불일치이므로 FAIL" % d.get("baseline_crlf")
-    return FAIL, "schedule.json 변경됨 — baseline %s… ≠ current %s…%s" % (base[:12], cur[:12], note)
+    if d.get("baseline_sha256_lf") and d.get("baseline_sha256_lf") == d.get("current_sha256_lf") and (d.get("baseline_crlf") or d.get("current_crlf")):
+        note = " · 줄바꿈만 다름(원값 sha 불일치이므로 FAIL)"
+    return FAIL, "schedule.json 변경됨 (%s) — baseline %s… ≠ current %s…%s" % (where, base[:12], cur[:12], note)
 
 
 def g8(b, c=None):
@@ -260,7 +263,7 @@ def h6(b, c=None):
 GATES = [("G1", "G1-CI 한 줄 설치 결정론 6단계", "os", g1), ("G2", "프리플라이트 FAIL 0 · 새 WARN 0", "os", g2),
          ("G3", "주입 바이트=팩 원본 · .new 0", "os", g3), ("G4", "G4-CI 선언 ①~⑤ exit 0 · 패인 3 · 리뷰어 0(LLM 없음)", "os", g4),
          ("G5", "업그레이드 v0.2.3→ 후 G2~G4", "os", g5), ("G6", "재설치 왕복 · ~/.claude 무접촉", "os", g6),
-         ("G7", "문구 3곳 일치 · 라이선스 동봉", "common", g7), ("G7b", "배포본 schedule.json 동결(직전 릴리스와 sha256 동일)", "os", g7b), ("G8", "적대검수 젠·노아 blocking 0", "common", g8),
+         ("G7", "문구 3곳 일치 · 라이선스 동봉", "common", g7), ("G7b", "배포본 schedule.json 동결(직전 공개 앱 소스 blob == 새 앱 blob)", "os", g7b), ("G8", "적대검수 젠·노아 blocking 0", "common", g8),
          ("G9", "실기 3대(윈2+맥1) — S02·S07·S08 포함", "common", g9),
          ("H1", "막힘→펄스 inbox 60초", "os", h1), ("H2", "처방→설치 창 2분", "os", h2),
          ("H3", "가림 시험", "os", h3), ("H4", "서버 차단 fail-open", "os", h4), ("H5", "대시보드=원장", "common", h5),

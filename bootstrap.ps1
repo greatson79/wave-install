@@ -1187,6 +1187,7 @@ function Run-S07 {
       [IO.File]::WriteAllText($startedPath, [string]([DateTimeOffset]$script:AwakeningStartedAt).ToUnixTimeSeconds())
       # 앱 계약: launch-agent 가 agent 정보를 기록하고 MASTER 지침을 주입한다. 준비 표지·주입까지 기다리므로 상한 120초.
       $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
+      if (-not $created.timed_out -and $created.exit_code -eq 2) { throw '좌석은 열려 있습니다 — Wave 창에서 입력을 멈추고 같은 설치 명령을 다시 실행해 주세요' }
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
       Send-MasterDeclaration $clock $declaredPath
     } elseif ($masters.Count -eq 1 -and -not (Test-Path -LiteralPath $declaredPath) -and (Test-Path -LiteralPath $startedPath -PathType Leaf)) {

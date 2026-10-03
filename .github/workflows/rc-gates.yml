@@ -340,7 +340,7 @@ jobs:
         with: { ref: '${{ needs.cfg.outputs.gate_ref }}', path: gateref }
       - uses: actions/download-artifact@v4
         with: { pattern: 'rc-evidence-*', path: evidence, merge-multiple: true }
-      - name: Judge (exit 1 = some gate is FAIL or unmeasured; Windows and G8/G9 stay unmeasured here)
+      - name: Judge (FAIL cell fails job; unmeasured cells remain visible in the table)
         run: |
           set -u
           mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
@@ -351,6 +351,7 @@ jobs:
           [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
           { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
           python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
+          python3 tests/rc/fail-on-verdict.py gate-result.json gate-result-kr.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

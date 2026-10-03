@@ -4,37 +4,37 @@
   "version": "0.3.0",
   "platforms": ["macos", "windows"],
   "release": {
-    "repository": "greatson79/wave-terminal",
-    "macos_version": "0.1.1",
-    "version": "0.1.0",
+    "repository": "greatson79/wave-install",
+    "macos_version": "0.2.0",
+    "version": "0.2.0",
     "asset_name": {
-      "macos_arm64": "wave-terminal-0.1.1-macos-arm64.dmg",
-      "macos_x64": "wave-terminal-0.1.1-macos-x64.dmg",
-      "windows_x64": "wave-terminal-0.1.0-windows-x64-setup.exe"
+      "macos_arm64": "wave-terminal-0.2.0-macos-arm64.dmg",
+      "macos_x64": "wave-terminal-0.2.0-macos-arm64.dmg",
+      "windows_x64": "wave-terminal-0.2.0-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.1/wave-terminal-0.1.1-macos-arm64.dmg",
-      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.1/wave-terminal-0.1.1-macos-x64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-windows-x64-setup.exe"
+      "macos_arm64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/wave-terminal-0.2.0-macos-arm64.dmg",
+      "macos_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/wave-terminal-0.2.0-macos-arm64.dmg",
+      "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/wave-terminal-0.2.0-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 128814816},
+    "bytes": {"windows_x64": 128718773},
     "sha256": {
-      "macos_arm64": "c46aac889c1dfb84827a580f83cb2098eceba30c85b98c961dd74cff6fc0cadc",
-      "macos_x64": "aaee7fb8745e16e02e64f95bb698e7695742e7db906fdf1a53c99d88134cbf48",
-      "windows_x64": "733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3"
+      "macos_arm64": "97e3c9344b5ae1b20dd502aed6ee015ff5c33bfd89e686c334acc369974a966b",
+      "macos_x64": "97e3c9344b5ae1b20dd502aed6ee015ff5c33bfd89e686c334acc369974a966b",
+      "windows_x64": "0f107d409a69cb71318639762daee8e093ae92e334f8014f3e504fcc1d66c2ff"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-arm64.dmg.minisig",
-      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-macos-x64.dmg.minisig",
-      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0/wave-terminal-0.1.0-windows-x64-setup.exe.minisig"
+      "macos_arm64": null,
+      "macos_x64": null,
+      "windows_x64": null
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "86bdbce54748b3fabeecd4cfa22a73648867e23d",
-      "macos_x64": "2bdc189e25310de485de8639412b96e9aa68280b"
+      "macos_arm64": "17730251fcebff0a7ee60f72b8322255a1627f3a",
+      "macos_x64": "17730251fcebff0a7ee60f72b8322255a1627f3a"
     }
   },
   "reinstall": {

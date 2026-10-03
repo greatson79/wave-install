@@ -32,7 +32,7 @@ def main():
     assert all(re.fullmatch(r'J-[A-Z0-9]+-\d{2}', c) for c in codes)
     assert codes[-1] == 'J-UNK-00', 'fallback must be last'
     for row in rows:
-        assert all(row.values()) and row['os'] == 'win', 'incomplete row'
+        assert all(row.values()) and row['os'] in ('win', 'mac'), 'incomplete row'
     source = (args.root/'bootstrap.ps1').read_text(encoding='utf-8-sig')
     match = re.search(r"\$HelpRulesJson = @'\n(.*?)\n'@", source, re.S)
     assert match, 'embedded help rules absent'

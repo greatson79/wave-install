@@ -2,7 +2,7 @@
 
 `tests/help-rules.tsv` 정본에서 생성합니다. `python3 tests/help-rules-check.py --write`로 갱신하세요.
 
-12범주·22세부 코드입니다. 사례 열은 우리 코드·회귀 검체의 근거이며, 실기 관측과 구별합니다.
+12범주·23세부 코드입니다. 사례 열은 우리 코드·회귀 검체의 근거이며, 실기 관측과 구별합니다.
 
 <a id="j-av-01"></a>
 
@@ -165,6 +165,15 @@
 2. 앱 창을 열어 둔 채 같은 설치 명령을 다시 실행하세요.
 
 근거: 우리 S07 온보딩 표지 대기 상한 회귀; 실기 미관측 · OS: win
+
+<a id="j-ver-03"></a>
+
+## J-VER-03 — Apple Silicon이 아닌 맥(Intel 맥)에서 실행됨
+
+1. 이 판은 Apple Silicon(M1 이후) 맥 전용입니다. Intel 맥은 아직 지원하지 않습니다.
+2. Apple Silicon 맥에서 같은 설치 명령을 실행하세요.
+
+근거: 우리 S00 아키텍처 검사 회귀(x86_64 모사·Rosetta proc_translated=1 통과); 실기 미관측 · OS: mac
 
 <a id="j-dl-03"></a>
 

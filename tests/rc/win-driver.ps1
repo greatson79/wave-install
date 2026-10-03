@@ -27,4 +27,5 @@ $p = Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.e
 if (-not $p.WaitForExit(3000000)) { cmd /c "taskkill /PID $($p.Id) /T /F" | Out-Host }
 Get-CimInstance Win32_Process | ForEach-Object { $o = Invoke-CimMethod -InputObject $_ -MethodName GetOwner -ErrorAction SilentlyContinue; if ($o -and $o.User -eq $name) { cmd /c "taskkill /PID $($_.ProcessId) /T /F" | Out-Null } }
 Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0   # 정리 단계 taskkill 의 「이미 종료됨」 종료값 1 이 잡 종료값으로 새지 않게 한다(20차: 3잡 종료값 1 의 원인 — 판정은 증거 파일이 한다)
 "child exit: $($p.ExitCode)" | Out-Host

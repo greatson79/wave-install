@@ -34,7 +34,10 @@ int wmain(int argc, wchar_t **argv) {
   _snwprintf(cfg, MAX_PATH * 2 - 1, L"%lsclaude.cfg", exe); cfg[MAX_PATH * 2 - 1] = 0;
   /* 맥 런처와 같은 이유: ❯ 를 먼저 찍어 launch-agent 의 준비 확인(최대 60초)을 통과시키고, 로직은 기다리지 않고 따로 돌린다 */
   HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE); DWORD w;
-  const char ready[] = "\r\n\xE2\x9D\xAF \r\n"; WriteFile(out, ready, (DWORD)(sizeof ready - 1), &w, NULL);
+  /* 콘솔(ConPTY)에는 UTF-8 바이트를 WriteFile 로 쓰면 출력 코드페이지(OEM)로 해석돼 ❯ 가 깨진다 — launch-agent 가 표지를 못 봐 master 좌석이 75초 뒤 정리됐다(20차). 콘솔이면 와이드 API 로 쓴다 */
+  const wchar_t readyw[] = L"\r\n\x276F \r\n"; const char ready[] = "\r\n\xE2\x9D\xAF \r\n"; DWORD mode;
+  if (GetConsoleMode(out, &mode)) WriteConsoleW(out, readyw, (DWORD)wcslen(readyw), &w, NULL);
+  else WriteFile(out, ready, (DWORD)(sizeof ready - 1), &w, NULL);
   if (read_cfg(cfg, py, logic, MAX_PATH * 2)) {
     static wchar_t cmd[MAX_PATH * 6];
     _snwprintf(cmd, MAX_PATH * 6 - 1, L"\"%ls\" \"%ls\" --logic-only", py, logic); cmd[MAX_PATH * 6 - 1] = 0;

@@ -907,7 +907,7 @@ PY_OPTIONAL
 )"
     if [[ "$optional" == "true" ]]; then
       state_patch "$step_id" "skipped_with_reason" "$rc" "$(step_error_id "$step_id")" "$STEP_OBSERVED"
-      log "[$step_id] 선택 단계 실패 — 이유를 기록하고 계속 진행합니다."
+      log "[$HELP_STEP] 선택 단계 실패 — 이유를 기록하고 계속 진행합니다."
       return 0
     fi
     state_patch "$step_id" "failed" "$rc" "$(step_error_id "$step_id")" "$STEP_OBSERVED"
@@ -941,26 +941,26 @@ main() {
   HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
   show_help_notice
   init_state
-  local id status step_no=0
-  while IFS= read -r id; do
-    step_no=$((step_no + 1))
-    HELP_STEP="${step_no}/10"
+  # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)
+  local id idx title status
+  while IFS=$'\t' read -r id idx title; do
+    HELP_STEP="$((idx + 1))/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
     if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
-      log "[$id] resume: 이미 $status — 건너뜀"
+      log "[$HELP_STEP] $title — 이미 완료 — 건너뜀"
       help_progress end
       continue
     fi
     if [[ "$id" == "S09_COMPLETE" ]]; then
       mark_required_complete || return 1
     fi
-    log "[$id] 시작"
+    log "[$HELP_STEP] $title — 시작"
     run_step "$id" || { help_request; return 1; }
   done < <(python3 - "$STEPS_FILE" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as handle:
-    for step in json.load(handle)["steps"]:
-        print(step["id"])
+    for step in sorted(json.load(handle)["steps"], key=lambda s: s["index"]):
+        print("%s\t%d\t%s" % (step["id"], step["index"], step["title"]))
 PY
 )
   mark_install_complete

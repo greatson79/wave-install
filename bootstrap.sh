@@ -226,16 +226,29 @@ with open(state_path, "w", encoding="utf-8") as handle:
 PY
 }
 
-# 설치 시도의 시작 시각을 $WAVE_HOME/attempt-started 에 기록한다. --resume 은 새로 잡지 않고 그 값을 읽는다 —
-# 첫 시도 중 복원이 만든 master 는 표식을 쓰기 전에 실패한 뒤 재개해도 같은 시도의 master 로 남아야 한다.
-# --reinstall·새 설치(--resume 아님)·기록 없음/깨짐은 새로 기록한다(오래된 표식을 재사용하지 않는다).
+# 설치 시도의 시작 시각을 $WAVE_HOME/attempt-started 에 기록한다(시도 기록 1개·규칙 1벌).
+# 이어받는 경우 = 기록이 유효(숫자·미래 아님·24시간 이내)하고, --reinstall 이 아니며, 그리고
+#   (--resume 이거나) 끝나지 않은 시도일 때(설치 기록의 status 가 complete·complete_with_exceptions 가 아님 — 인자 없는 재실행도 이어받음).
+# 그 밖에는 새로 기록한다(오래된·미래·깨진·없는 기록, 끝난 설치 뒤의 새 설치, --reinstall).
+# 이어받는 이유: 첫 시도 중 복원이 만든 master 는 표식을 쓰기 전에 실패한 뒤 다시 실행해도 같은 시도의 master 로 남아야 하고,
+# 24시간 한도는 완료된 설치 뒤 며칠 전 시각이 기준이 돼 「시작 전 master 거부」 보호가 약해지는 것을 막는다.
 attempt_start() {
-  local f="$WAVE_HOME/attempt-started" saved=
-  if [[ "$RESUME" == 1 && "$REINSTALL" != 1 && -f "$f" ]]; then
+  local f="$WAVE_HOME/attempt-started" saved= st= keep=0
+  if [[ "$REINSTALL" != 1 && -f "$f" ]]; then
     saved="$(head -n1 "$f" 2>/dev/null)"
-    # 미래 값·24시간보다 오래된 값은 읽지 않는다 — 완료된 설치 뒤 --resume 만 붙여도 며칠 전 시각이 기준이 되면
-    # 「시작 전부터 있던 master 거부」 보호가 약해지고, 미래 값은 판정이 영영 거짓이 된다.
-    if [[ "$saved" =~ ^[0-9]{1,12}$ ]] && (( 10#$saved <= RUN_STARTED && RUN_STARTED - 10#$saved <= 86400 )); then RUN_STARTED=$((10#$saved)); return 0; fi
+    if [[ "$saved" =~ ^[0-9]{1,12}$ ]] && (( 10#$saved <= RUN_STARTED && RUN_STARTED - 10#$saved <= 86400 )); then
+      if [[ "$RESUME" == 1 ]]; then
+        keep=1
+      else
+        st="$(json_value "$STATE_FILE" status 2>/dev/null)" || st=
+        case "$st" in ""|null|complete|complete_with_exceptions) ;; *) keep=1 ;; esac
+      fi
+    fi
+  fi
+  if [[ "$keep" == 1 ]]; then
+    RUN_STARTED=$((10#$saved))
+    log "이전 설치를 이어서 진행합니다."
+    return 0
   fi
   mkdir -p "$WAVE_HOME" && printf '%s\n' "$RUN_STARTED" > "$f"
 }
@@ -671,7 +684,7 @@ PY_VERIFY
 # master 는 앱 계약대로 `cys launch-agent --role master` 로 띄운다(앱이 agent 정보를 기록하고 MASTER 지침을 주입한다).
 step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
-  local ref started deadline remaining existing reused=false
+  local ref started deadline remaining existing reused=false restored= master_source=created
   started="$(date +%s)"
   deadline=$((SECONDS + 420))
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
@@ -713,7 +726,9 @@ PY_EXISTING
 )" || return 1
   if [[ -n "$existing" ]]; then
     read -r ref started restored <<< "$existing"
+    master_source=reused
     if [[ "$restored" == restored ]]; then
+      master_source=restored
       rm -f "$WAVE_HOME/fleet/declared"   # 낡은 선언 표식 — 이 master 에는 선언을 확인·재전송한다
       printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
     fi
@@ -741,7 +756,9 @@ PY_EXISTING
     (( remaining > 5 )) && remaining=5
     if WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys status --json > "$WAVE_HOME/fleet/status.json" &&
        verify_live_fleet "$ref" "$started" && (( SECONDS < deadline )); then
-      STEP_OBSERVED="{\"seats\":3,\"roles\":[\"master\",\"cso\",\"worker\"],\"fleet_started\":true,\"master_marker_verified\":true,\"master_reused\":$reused}"
+      # 사후 대조용: 이 설치가 받아들인 master 좌석 번호와 출처(created=이 설치가 만듦 · reused=이 설치가 앞서 만든 것 · restored=자동복원이 만든 것)
+      log "master 좌석 $ref 을(를) 사용합니다($master_source)."
+      STEP_OBSERVED="{\"seats\":3,\"roles\":[\"master\",\"cso\",\"worker\"],\"fleet_started\":true,\"master_marker_verified\":true,\"master_reused\":$reused,\"master_ref\":\"$ref\",\"master_source\":\"$master_source\"}"
       return 0
     fi
     notice_first_run_gate

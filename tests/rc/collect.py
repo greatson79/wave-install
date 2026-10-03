@@ -78,7 +78,9 @@ elif a.cmd == "g4":
     bl = pathlib.Path(os.path.expanduser("~/.cys/state/boot-last.json")); data = json.loads(bl.read_text(encoding="utf-8"))
     st = {}
     for x in data["steps"]:  # ①preflight ②ping ③claim-role ④boot ... ⑤check#N(마지막 시도가 최종)
-        n = "①②③④⑤".find(x["step"][0]) + 1
+        step = x["step"]
+        n = {"①preflight": 1, "②ping": 2, "③claim-role": 3, "④boot": 4}.get(step)
+        if step.startswith("⑤check#"): n = 5
         if n: st[n] = x["exit"]
     r = subprocess.run([a.cys, "status", "--json"], capture_output=True, text=True, timeout=60); r.check_returncode()
     (out / "G4_status.json").write_text(r.stdout, encoding="utf-8")

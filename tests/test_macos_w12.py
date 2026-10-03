@@ -29,7 +29,7 @@ class W12Tests(unittest.TestCase):
             marker=cys/'.master-bootstrapped'
             marker.write_text(json.dumps({'surface_ref':'surface:1','orchestra_check':'exit 0'}))
             lib=home/'lib.sh'; lib.write_text((ROOT/'bootstrap.sh').read_text().rsplit('\nmain "$@"',1)[0])
-            seats=[dict(surface_ref=f'surface:{i+1}',role=role,exited=False,agent_alive=True,directive_verified=True,awakened_at=since,created_at=since) for i,role in enumerate(['master','cso','worker'])]
+            seats=[dict(surface_ref=f'surface:{i+1}',role=role,exited=False,agent_alive=True,created_at=since) for i,role in enumerate(['master','cso','worker'])]
             def check(rows):
                 (fleet/'status.json').write_text(json.dumps({'surfaces':rows}))
                 return subprocess.run(['bash','-c','source "$1"; verify_live_fleet surface:1 "$2"','fixture',str(lib),str(since)],env=dict(os.environ,HOME=td,WAVE_HOME=str(wave)),capture_output=True,timeout=5).returncode
@@ -53,4 +53,29 @@ class W12Tests(unittest.TestCase):
             result=subprocess.run(['bash','-c','source "$1"; SECONDS=420; awakening_command 420 echo SHOULD_NOT_RUN','fixture',str(lib)],capture_output=True,timeout=4)
             self.assertEqual(result.returncode,124)
             self.assertEqual(result.stdout,b'')
+    def test_onboarding_marker_wait_matches_app_version(self):
+        with tempfile.TemporaryDirectory() as td:
+            home=Path(td); wave=home/'wave'; (wave/'bin').mkdir(parents=True); (home/'.cys').mkdir()
+            (wave/'bin/cys').write_text('#!/bin/sh\n[ "$1" = --version ] && echo "cys 9.9.9"\n'); (wave/'bin/cys').chmod(0o755)
+            lib=home/'lib.sh'; lib.write_text((ROOT/'bootstrap.sh').read_text().rsplit('\nmain "$@"',1)[0])
+            def wait():
+                return subprocess.run(['bash','-c','source "$1"; wait_gui_onboarded $((SECONDS+2))','fixture',str(lib)],env=dict(os.environ,HOME=td,WAVE_HOME=str(wave)),capture_output=True,text=True,timeout=10)
+            r=wait(); self.assertNotEqual(r.returncode,0); self.assertIn('J-VER-02',r.stderr)
+            (home/'.cys/.gui-onboarded').write_text('9.9.8\n'); self.assertNotEqual(wait().returncode,0,'other app version accepted')
+            (home/'.cys/.gui-onboarded').write_text('9.9.9\n'); self.assertEqual(wait().returncode,0)
+    def test_master_awake_needs_assistant_record_after_start(self):
+        import time
+        with tempfile.TemporaryDirectory() as td:
+            home=Path(td); wave=home/'wave'; (wave/'fleet').mkdir(parents=True)
+            cwd='/Users/설치 user'; proj=home/'.cys/claude/projects/-Users----user'; proj.mkdir(parents=True)
+            (wave/'fleet/status.json').write_text(json.dumps({'surfaces':[{'surface_ref':'surface:1','role':'master','cwd':cwd}]}))
+            lib=home/'lib.sh'; lib.write_text((ROOT/'bootstrap.sh').read_text().rsplit('\nmain "$@"',1)[0])
+            env=dict(os.environ,HOME=td,WAVE_HOME=str(wave)); env.pop('CYS_ACCOUNT_DIR',None)
+            def state(since):
+                return subprocess.run(['bash','-c','source "$1"; master_awake_state surface:1 "$2"','fixture',str(lib),str(since)],env=env,capture_output=True,text=True,timeout=10).stdout.strip()
+            now=int(time.time())-5
+            self.assertEqual(state(now),'unconfirmed')
+            (proj/'s.jsonl').write_text('{"type":"user"}\n'); self.assertEqual(state(now),'unconfirmed')
+            (proj/'s.jsonl').write_text('{"type":"user"}\n{"type":"assistant"}\n'); self.assertEqual(state(now),'confirmed')
+            self.assertEqual(state(now+3600),'unconfirmed','stale transcript must not count')
 if __name__=='__main__': unittest.main()

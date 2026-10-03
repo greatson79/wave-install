@@ -221,6 +221,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         (self.wave / 'bin').mkdir(parents=True)
         (self.wave / 'fleet').mkdir()
         (self.home / '.cys').mkdir()
+        (self.home / '.cys/.gui-onboarded').write_text('0.0.0\n')
         self.fakebin = self.home / 'fakebin'
         self.fakebin.mkdir()
         (self.fakebin / 'open').write_text('#!/bin/sh\nexit 0\n')
@@ -228,7 +229,8 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.log = self.home / 'cys-calls.log'
         cys = self.wave / 'bin/cys'
         cys.write_text('#!/bin/sh\necho "$*" >> "$CYS_LOG"\ncase "$1" in\n'
-                       'status) cat "$FLEET_JSON";;\nnew-surface) echo surface:9;;\n'
+                       'status) cat "$FLEET_JSON";;\nsend) exit "${SEND_RC:-0}";;\n'
+                       'launch-agent) [ -n "$FLEET_AFTER" ] && cp "$FLEET_AFTER" "$FLEET_JSON"; touch "$HOME/.cys/.master-bootstrapped"; echo surface:5;;\n'
                        'pack-manifest) cat "$MANIFEST_JSON";;\ninit-pack) sh -c "$INIT_PACK_ACTION";;\nesac\n')
         cys.chmod(0o755)
         self.lib = functions_sh(self.home)
@@ -243,8 +245,7 @@ class MacResumeAndPackTests(unittest.TestCase):
                               text=True, capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
 
     def seat(self, ref, role, created):
-        return dict(surface_ref=ref, role=role, exited=False, agent_alive=True, directive_verified=True,
-                    awakened_at=created, created_at=created)
+        return dict(surface_ref=ref, role=role, exited=False, agent_alive=True, created_at=created)
 
     def prepare(self, masters, saved_ref='surface:5', master_created=None):
         created = self.since + 5 if master_created is None else master_created
@@ -257,7 +258,7 @@ class MacResumeAndPackTests(unittest.TestCase):
             (self.wave / 'fleet/started-at').write_text(str(self.since) + '\n')
 
     def new_surface_called(self):
-        return self.log.exists() and 'new-surface' in self.log.read_text()
+        return self.log.exists() and 'launch-agent' in self.log.read_text()
 
     def test_resume_reuses_verified_master_of_this_install(self):
         self.prepare(['surface:5'])
@@ -267,6 +268,26 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
         self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(self.since))
         self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+
+    def test_new_master_gets_queued_declaration_after_launch_agent(self):
+        future = int(time.time()) + 100
+        self.prepare([], saved_ref=None)
+        after = self.home / 'fleet-after.json'
+        after.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', future), self.seat('surface:20', 'cso', future),
+                                                  self.seat('surface:21', 'worker-1', future)]}))
+        self.env['FLEET_AFTER'] = str(after)
+        r = self.bash('step_s07; echo "RC=$?"')
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        calls = self.log.read_text().splitlines()
+        launch = next(i for i, c in enumerate(calls) if c.startswith('launch-agent --role master'))
+        send = next(i for i, c in enumerate(calls) if c.startswith('send --queued --to master 너는 마스터다 — '))
+        self.assertLess(launch, send)
+        self.assertNotIn('\n', calls[send])
+        self.log.unlink(); self.fleet.write_text(json.dumps({'surfaces': []})); self.env['SEND_RC'] = '3'
+        (self.wave / 'fleet/master-ref').unlink(); (self.wave / 'fleet/started-at').unlink()
+        r = self.bash('step_s07; echo "RC=$?"')
+        self.assertNotIn('RC=0', r.stdout)
+        self.assertIn('J-PATH-02', r.stderr)
 
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),

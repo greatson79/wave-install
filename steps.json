@@ -200,8 +200,8 @@
       "total": 10,
       "title": "자동 각성: master 표지·cso·worker 생존 확인(상한 7분)",
       "command": {
-        "macos": "cys new-surface --role master --cmd <UTF-8 각성 파일>; cys status --json",
-        "windows": "cys new-surface --role master --cmd <UTF-8 각성 파일>; cys status --json"
+        "macos": "cys launch-agent --role master --agent claude; cys status --json",
+        "windows": "cys launch-agent --role master --agent claude; cys status --json"
       },
       "pass": [
         {

@@ -587,26 +587,14 @@ PY_VERIFY
   STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","embedded_directives_verified":true,"pending_new":0,"cys_dept":"'"$dept_state"'"}'
 }
 
-# Adapted from oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT).
-# Source: https://github.com/oogisoogi/jarvis-install/blob/main/bootstrap.sh
-# License retained in LICENSES/jarvis-install-MIT.txt.
+# master 는 앱 계약대로 `cys launch-agent --role master` 로 띄운다(앱이 agent 정보를 기록하고 MASTER 지침을 주입한다).
 step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
-  local wake="$WAVE_HOME/fleet/wake.sh" command ref started deadline remaining existing reused=false
+  local ref started deadline remaining existing reused=false
   started="$(date +%s)"
   deadline=$((SECONDS + 420))
-  cat > "$wake" <<'WAKE'
-#!/usr/bin/env bash
-export PATH="$HOME/.local/bin:$PATH"
-exec claude '너는 마스터다
-설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.'
-WAKE
-  command="$(python3 - "$wake" <<'PY_QUOTE'
-import shlex, sys
-print('bash ' + shlex.quote(sys.argv[1]))
-PY_QUOTE
-)"
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
+  wait_gui_onboarded "$deadline" || return 1
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   # 재실행·resume(Windows Run-S07 과 같은 동작): 이 설치가 앞서 만든 master(master-ref·started-at 기록과 일치,
   # 그 시각 이후 생성) 하나만 살아 있으면 새로 만들지 않고 재사용해 각성을 확인한다. 기록과 다른 master·둘 이상·
@@ -636,10 +624,17 @@ PY_EXISTING
     reused=true
     log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."
   else
-    ref="$(awakening_command "$deadline" "$WAVE_HOME/bin/cys" new-surface --role master --cmd "$command")" || return 1
+    # launch-agent 는 준비 표지(❯)·지침 주입까지 기다리므로 30초 상한(awakening_command)보다 길게 준다.
+    remaining=$((deadline - SECONDS)); (( remaining > 120 )) && remaining=120
+    ref="$(WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys launch-agent --role master --agent claude --cwd "$HOME")" || return 1
     [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+    # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
+    # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
+    awakening_command "$deadline" "$WAVE_HOME/bin/cys" send --queued --to master \
+      '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.' >/dev/null ||
+      fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
   fi
   while (( SECONDS < deadline )); do
     remaining=$((deadline - SECONDS))
@@ -658,6 +653,21 @@ PY_EXISTING
 
 }
 
+# S07: 앱 첫 실행 온보딩(팩·훅 설치)이 끝난 뒤에 master 를 만든다 — 온보딩의 팩 교체와 좌석이 겹치지 않게.
+# 표지 ~/.cys/.gui-onboarded 의 내용은 앱 버전이다(앱 needs_gui_onboard). 읽히면 `cys --version` 과 대조한다.
+wait_gui_onboarded() {
+  local marker="$HOME/.cys/.gui-onboarded" version limit=$((SECONDS + 180))
+  (( limit < $1 )) || limit="$1"
+  version="$(awakening_command "$1" "$WAVE_HOME/bin/cys" --version 2>/dev/null | awk '{print $NF}')" || version=""
+  while (( SECONDS < limit )); do
+    if [[ -f "$marker" ]]; then
+      [[ -z "$version" || ! -r "$marker" || "$(tr -d '[:space:]' < "$marker")" == "$version" ]] && return 0
+    fi
+    sleep 1
+  done
+  fail_message "J-VER-02 — W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다. 앱 창을 열어 둔 채 같은 설치 명령을 --resume 으로 다시 실행하세요."
+}
+
 verify_live_fleet() {
   python3 - "$WAVE_HOME/fleet/status.json" "$HOME/.cys/.master-bootstrapped" "$1" "$2" <<'PY_LIVE'
 import json, sys
@@ -665,7 +675,7 @@ from pathlib import Path
 status, marker = map(Path, sys.argv[1:3]); ref, since = sys.argv[3:]
 try:
     m = json.loads(marker.read_text())
-    live = [s for s in json.loads(status.read_text())['surfaces'] if s.get('exited') is False and s.get('agent_alive') is True and s.get('directive_verified') is True and s.get('awakened_at') is not None]
+    live = [s for s in json.loads(status.read_text())['surfaces'] if s.get('exited') is False and s.get('agent_alive') is True]
     masters = [s for s in live if s.get('surface_ref') == ref and s.get('role') == 'master']
     csos = [s for s in live if s.get('role') == 'cso' and s.get('created_at', 0) >= float(since)]
     children = [s for s in live if str(s.get('role', '')).startswith('worker') and s.get('created_at', 0) >= float(since)]
@@ -708,13 +718,37 @@ print(json.dumps(dict(original_match=True,new_file_count=0,roles=result,
 PY_G3
 }
 
+# 각성 증거(3갈래: 확인 / 미확인 카드 / 실패=위 생존·주입 검증). master 좌석 Claude 세션 기록(jsonl)에 답 레코드 ≥1.
+# Adapted from oogisoogi/jarvis-install bootstrap.sh seat_session_file/seat_session_counts/master_assistant_count (MIT),
+# axis (1) of Confirm-MasterAwake — commit df5efc8a, bootstrap.sh L4092-4127·L4242, bootstrap.ps1 L4808-4857·L5025.
+# Source: https://github.com/oogisoogi/jarvis-install · License: LICENSES/jarvis-install-MIT.txt.
+master_awake_state() {
+  python3 - "$WAVE_HOME/fleet/status.json" "$1" "$2" "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}/projects" <<'PY_AWAKE'
+import json, re, sys
+from pathlib import Path
+status, ref, since, root = sys.argv[1], sys.argv[2], float(sys.argv[3]), Path(sys.argv[4])
+try:
+    cwd = next(s['cwd'] for s in json.loads(Path(status).read_text())['surfaces'] if s.get('surface_ref') == ref)
+    files = (root / re.sub(r'[^A-Za-z0-9]', '-', cwd)).glob('*.jsonl')
+    ok = any(f.stat().st_mtime >= since and b'"type":"assistant"' in f.read_bytes() for f in files)
+except (OSError, ValueError, KeyError, TypeError, StopIteration):
+    ok = False
+print('confirmed' if ok else 'unconfirmed')
+PY_AWAKE
+}
+
 step_s08() {
-  local ref started
+  local ref started observed awake
   ref="$(cat "$WAVE_HOME/fleet/master-ref")" || return 1
   started="$(cat "$WAVE_HOME/fleet/started-at")" || return 1
   bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
   verify_live_fleet "$ref" "$started" || return 1
-  STEP_OBSERVED="$(verify_original_injection)" || return 1
+  observed="$(verify_original_injection)" || return 1
+  awake="$(master_awake_state "$ref" "$started")"
+  if [[ "$awake" != confirmed ]]; then
+    log "각성 미확인: master 좌석은 살아 있지만 Claude 세션 기록에서 답변을 찾지 못했습니다. 설치는 계속합니다. Wave Terminal 의 master 창에서 자비스가 응답하는지 확인해 주세요."
+  fi
+  STEP_OBSERVED="${observed%\}},\"master_awake\":\"$awake\"}"
 }
 
 summarize_state() {

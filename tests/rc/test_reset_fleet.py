@@ -119,6 +119,26 @@ class ResetFleetTest(unittest.TestCase):
         self.assertIsNotNone(procs["loop"].poll(), "diagnostic loop must be stopped before the daemon check")
         self.assertIsNone(procs["bystander"].poll(), "unrelated process must survive")
 
+    def test_office_bridge_and_its_events_clients_are_stopped_but_other_installs_survive(self):
+        # 오피스 브리지(cysd 의 자식)와 그 이벤트 구독 클라이언트는 데몬이 launchd 소유가 아니면 cysd 정지로 안 죽는다
+        # (클라이언트는 데몬이 없어도 재연결 루프로 남아 앱 번들 cys 를 연 채 다음 설치를 막는다).
+        def line_proc(line):
+            return subprocess.Popen([line, "60"], executable="/bin/sleep")  # argv[0] 만 명령줄처럼 보이게
+        def spawn(home):
+            return {
+                "bridge": line_proc("%s/.wave/apps/Wave Terminal.app/Contents/Resources/python/bin/python3 %s/.cys/pack/bin/javis_hud_bridge.py" % (home, home)),
+                "events-link": line_proc("%s/.wave/bin/cys events --reconnect --cursor-file x" % home),
+                "events-app": line_proc("%s/.wave/apps/Wave Terminal.app/Contents/MacOS/cys events --reconnect" % home),
+                "other-bridge": line_proc("python3 %s/other/.cys/pack/bin/javis_hud_bridge.py" % home),
+                "status-call": line_proc("%s/.wave/bin/cys status --json" % home),
+            }
+        home, procs, result = self.run_with_fakes(spawn)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for name in ("bridge", "events-link", "events-app"):
+            self.assertIsNotNone(procs[name].poll(), "%s must be stopped" % name)
+        for name in ("other-bridge", "status-call"):
+            self.assertIsNone(procs[name].poll(), "%s must survive" % name)
+
     def test_failure_dumps_process_and_daemon_state_to_the_given_file(self):
         def spawn(home):
             daemon = subprocess.Popen(["/bin/sleep", "60"])  # 패턴에 안 맞는 데몬 = 안 죽는 경로

@@ -13,13 +13,17 @@ if [[ "$processes" == *"$app_bin"* ]]; then
 fi
 # 이전 fleet 의 합성 좌석(claude)과 그 진단 루프(.wave/rc/ 아래 명령줄)를 먼저 정리한다 — 루프의 `cys status` 한 번이
 # 데몬 부재 시 자동기동으로 데몬을 되살려 정지 확인을 깬다(양상 2). 데몬 정지보다 앞서야 되살릴 틈이 없다.
+esc="$(printf '%s' "$HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
 pkill -f "$HOME/.local/bin/claude" 2>/dev/null || true
 pkill -f "$HOME/.wave/rc/" 2>/dev/null || true
+# 오피스 브리지(cysd 의 자식)를 먼저 — 데몬이 launchd 소유가 아니면 cysd 정지로 안 죽고, 살아 있는 동안 이벤트 구독
+# 클라이언트(cys events --reconnect)를 계속 새로 띄운다(양상 4). 이 HOME 의 브리지 스크립트만(설치기 안내와 같은 패턴).
+pkill -f "^.*python[0-9.]* $esc/\.cys/pack/bin/javis_hud_bridge\.py( |\$)" 2>/dev/null || true
 "$HOME/.wave/bin/cys" daemon uninstall
 # launchd 소유가 아닌 데몬(공개판 v0.2.3 이 CLI 자동기동으로 만든 것)은 daemon uninstall 로 안 멈춘다(양상 1).
 # 설치기가 사용자에게 안내하는 정지 한 줄(bootstrap.sh S04 보류 안내)과 같은 패턴: 이 HOME 의 cysd 로 시작하는 명령줄만.
-esc="$(printf '%s' "$HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
-pkill -f "^$esc/\.wave/(apps/Wave Terminal\.app/Contents/MacOS|bin)/cysd( |\$)" 2>/dev/null || true
+# 데몬과 그 이벤트 구독 클라이언트(데몬이 없어도 재연결 루프로 남아 앱 번들 cys 를 연 채 다음 설치를 막는다).
+pkill -f "^$esc/\.wave/(apps/Wave Terminal\.app/Contents/MacOS|bin)/(cysd|cys events)( |\$)" 2>/dev/null || true
 settled() {
   status="$(env -u CYS_SOCKET -u JAVIS_SOCKET -u AITERM_SOCKET "$HOME/.wave/bin/cys" daemon status)"
   processes="$(ps -axo comm=)" || exit 1

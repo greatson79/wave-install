@@ -132,17 +132,17 @@ class WaitLoop(S07Base):
         self.assertIn('RC=1', r.stdout, r.stderr)
 
     def test_open_gate_stops_the_budget(self):
-        # 상한 6초인데 확인 창이 ~10초 떠 있다가 사람이 고른 뒤 마커가 생긴다 — 예산이 멈췄으면 통과해야 한다.
+        # 상한 10초인데 확인 창이 ~14초 떠 있다가 사람이 고른 뒤 마커가 생긴다 — 예산이 멈췄으면 통과해야 한다(부하에도 흔들리지 않게 여유를 둠).
         self.status(['master', 'cso', 'worker'])
         (self.wave / 'gate.on').write_text('')
 
         def human():
-            time.sleep(10)
+            time.sleep(14)
             (self.wave / 'gate.on').unlink()
             self.marker()
         t = threading.Thread(target=human)
         t.start()
-        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '6'})
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '10'})
         t.join()
         self.assertIn('RC=0', r.stdout, r.stderr)
 

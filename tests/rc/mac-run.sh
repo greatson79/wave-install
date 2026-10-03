@@ -53,6 +53,7 @@ PY
 bash "$HERE/reset-fleet.sh" "$EV/G6/reset-fail.txt" || { log "G6 재설치 전 정지 실패"; exit 1; }
 python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
 cp "$HOME/.wave/install-state.json" "$EV/G6/install-state.json" 2>/dev/null || log "G6 설치 상태 수집 실패"
+bash "$HERE/collect-fleet.sh" "$EV/G6"   # 설치기가 쓴 시도·좌석 기록(실패한 재설치의 마지막 상태 포함)
 python3 - "$EV/G6/before-state.json" "$EV/G6/install-state.json" "$EV/G6/attempt.json" <<'PY'
 import json, pathlib, sys
 def stamp(path):

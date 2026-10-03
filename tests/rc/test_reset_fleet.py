@@ -154,6 +154,37 @@ class ResetFleetTest(unittest.TestCase):
         self.assertIn("socket_alive=true", text)
         self.assertIn("sleep", text)  # ps 목록
 
+    def test_collect_fleet_copies_the_whole_fleet_dir_install_log_and_attempt_record(self):
+        collect = SCRIPT.with_name("collect-fleet.sh")
+        with tempfile.TemporaryDirectory() as tmp:
+            home, out = pathlib.Path(tmp) / "home", pathlib.Path(tmp) / "evidence"
+            fleet = home / ".wave" / "fleet"
+            fleet.mkdir(parents=True)
+            files = {"started-at": "100\n", "status.json": "{}", "master-ref": "surface:5\n", "declared": "", "before.json": "{}"}
+            for name, body in files.items():
+                (fleet / name).write_text(body)
+            (home / ".wave" / "install.log").write_text("log")
+            (home / ".wave" / "attempt-started").write_text("90\n")
+            env = dict(os.environ, HOME=str(home))
+            result = subprocess.run(["bash", str(collect), str(out)], env=env, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for name, body in files.items():
+                self.assertEqual((out / "fleet" / name).read_text(), body, name)
+            self.assertEqual((out / "install.log").read_text(), "log")
+            self.assertEqual((out / "attempt-started").read_text(), "90\n")
+            # 원천이 하나도 없어도 실패하지 않는다(증거 수집이 잡을 죽이면 안 됨)
+            empty = pathlib.Path(tmp) / "empty"
+            empty.mkdir()
+            result = subprocess.run(["bash", str(collect), str(pathlib.Path(tmp) / "ev2")], env=dict(os.environ, HOME=str(empty)),
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_both_mac_scripts_call_collect_fleet_right_after_the_install_run(self):
+        run = SCRIPT.with_name("mac-run.sh").read_text()
+        up = SCRIPT.with_name("mac-upgrade.sh").read_text()
+        self.assertRegex(run, r'run_to\.py[^\n]*G6/run\.log[^\n]*\n(?:[^\n]*\n){0,3}bash "\$HERE/collect-fleet\.sh" "\$EV/G6"')
+        self.assertRegex(up, r'echo \$\? > "\$EV/exit"\nbash "\$HERE/collect-fleet\.sh" "\$EV"')
+
 
 if __name__ == "__main__":
     unittest.main()

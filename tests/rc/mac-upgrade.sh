@@ -26,6 +26,7 @@ SUM="$(shasum -a 256 "$EV/from_v023_state.json" | awk '{print $1}')"
 printf '{"from_version":"%s","raw":[{"path":"from_v023_state.json","sha256":"%s"}]}\n' "$FROM" "$SUM" > "$EV/G5_meta.json"
 bash "$HERE/reset-fleet.sh" "$EV/reset-fail.txt" || exit 1
 CURL_CA_BUNDLE="$CA" python3 "$HERE/run_to.py" 1500 "$EV/run.log" -- bash -c "cd \"\$HOME\" && $ONE"; echo $? > "$EV/exit"
+bash "$HERE/collect-fleet.sh" "$EV"   # 설치기가 쓴 시도·좌석 기록(실패한 업그레이드의 마지막 상태 포함)
 PATH="$HOME/.wave/bin:$PATH"
 python3 "$HERE/collect.py" g2 --out "$EV" --preflight "$HOME/.cys/pack/bin/javis_preflight.py"
 cys pack-manifest > "$EV/pack-manifest.src.json" 2>/dev/null

@@ -15,8 +15,8 @@ def sub(path, pairs):
         assert t.count(old) == want, "%s: %r %d곳(기대 %d)" % (path.name, old, t.count(old), want)
         t = t.replace(old, new)
     path.write_text(t, encoding="utf-8")
-sub(st, [(old_sha, new_sha, 1), ('"windows_x64": %d' % old_n, '"windows_x64": %d' % new_n, 1), ("/download/%s/wave-terminal" % old_tag, "/download/%s/wave-terminal" % tag, 1), ("/download/%s/SHA256SUMS" % old_tag, "/download/%s/SHA256SUMS" % tag, 1)])
-sub(root / "tests/test_release_mapping.py", [(old_sha, new_sha, 1), ("windows_x64\": %d" % old_n, "windows_x64\": %d" % new_n, 1), ("/download/%s\"" % old_tag, "/download/%s\"" % tag, 1)])
+sub(st, [(old_sha, new_sha, 1), ('"windows_x64": %d' % old_n, '"windows_x64": %d' % new_n, 1), ("/download/%s/%s" % (old_tag, exe.name), "/download/%s/%s" % (tag, exe.name), 1), ('"windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/%s/' % old_tag, '"windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/%s/' % tag, 1)])   # 윈 줄만(맥 주소가 같은 태그여도 안 건드림)
+sub(root / "tests/test_release_mapping.py", [(old_sha, new_sha, 1), ("windows_x64\": %d" % old_n, "windows_x64\": %d" % new_n, 1), ("WIN_BASE = \"https://github.com/greatson79/wave-install/releases/download/%s\"" % old_tag, "WIN_BASE = \"https://github.com/greatson79/wave-install/releases/download/%s\"" % tag, 1)])
 readme = root / "README.md"
 if "`%s`" % old_tag in readme.read_text(encoding="utf-8"): sub(readme, [("`%s`" % old_tag, "`%s`" % tag, 1)])   # README 에 윈 시험판 태그가 적혀 있을 때만
 (root / "site" / "steps.json").write_bytes(st.read_bytes())   # 배포 사본은 steps.json 과 바이트 동일해야 한다(시험 3곳이 단언)

@@ -13,6 +13,7 @@ class ApplyWinPin(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             rel = json.loads((t / "steps.json").read_text(encoding="utf-8"))["release"]
             self.assertEqual((rel["sha256"]["windows_x64"], rel["bytes"]["windows_x64"]), (hashlib.sha256(exe.read_bytes()).hexdigest(), 4096))
+            self.assertEqual(rel["asset_url"]["macos_arm64"], json.loads((ROOT / "steps.json").read_text(encoding="utf-8"))["release"]["asset_url"]["macos_arm64"])   # 맥 주소는 그대로
             self.assertIn("v0.3.0-rc.9", rel["asset_url"]["windows_x64"]); self.assertIn("v0.3.0-rc.9", rel["windows_sha256sums_url"])
             self.assertEqual((t / "site/steps.json").read_bytes(), (t / "steps.json").read_bytes())
             m = subprocess.run([sys.executable, str(t / "tests/test_release_mapping.py")], capture_output=True, text=True, cwd=t)

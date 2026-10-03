@@ -441,12 +441,26 @@ class MacResumeAndPackTests(unittest.TestCase):
 
     def test_plain_rerun_after_a_finished_install_or_with_reinstall_starts_a_new_attempt(self):
         base = 1700000000
-        for status in ('complete', 'complete_with_exceptions', None):          # 끝난 설치·설치 기록 없음
+        for status in ('complete', 'complete_with_exceptions'):                # 끝난 설치
             with self.subTest(status):
                 self.assertEqual(self.implicit(status, base - 100), (base, False, str(base)))
         # --reinstall 은 끝나지 않은 시도가 있어도 새로 기록, --resume 은 끝난 설치여도 24시간 안이면 이어받음(종전 동작)
         self.assertEqual(self.implicit('running', base - 100, flags='REINSTALL=1;'), (base, False, str(base)))
         self.assertEqual(self.implicit('complete', base - 100, flags='RESUME=1;'), (base - 100, True, str(base - 100)))
+
+    def test_missing_install_state_unit_view_versus_real_main_order(self):
+        base = 1700000000
+        # 단위 시험 보기: attempt_start 를 init_state 없이 부르면 설치 기록 파일이 없어 「끝나지 않았음」을 증명 못 함 → 새로 기록.
+        self.assertEqual(self.implicit(None, base - 100), (base, False, str(base)))
+        # 실제 main 순서: init_state 가 먼저 돌아 설치 기록이 없으면 템플릿(status=not_started)을 만든 뒤 attempt_start 가 읽는다
+        # → 24시간 이내의 시도 기록이 있으면 이어받는다(동작은 이것이 실제다 — 규칙 「미완료 시도는 인자 없이도 이어받음」의 결과).
+        (self.wave / 'attempt-started').write_text(str(base - 100) + '\n')
+        (self.wave / 'install-state.json').unlink(missing_ok=True)
+        shutil.copyfile(ROOT / 'install-state.json', self.home / 'install-state.json')  # init_state 가 복사하는 템플릿(설치 폴더 쪽)
+        r = self.bash('RUN_STARTED=%d; init_state; attempt_start; echo "RUN=$RUN_STARTED"' % base)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(int(r.stdout.split('RUN=')[1].split()[0]), base - 100)
+        self.assertIn('이전 설치를 이어서 진행합니다', r.stdout + r.stderr)
 
     def test_resumed_attempt_still_takes_over_the_master_restored_in_the_first_attempt(self):
         # 첫 시도: 복원이 master 를 만든 뒤 S07 이 표식을 쓰기 전에 실패 → --resume. 새 RUN_STARTED 로는 그 master 가

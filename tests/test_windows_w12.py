@@ -17,6 +17,8 @@ class WindowsW12Tests(unittest.TestCase):
             result = subprocess.run([pwsh, "-NoProfile", "-File", str(ROOT / "tests/windows_w12_fixture.ps1")], cwd=ROOT, env=dict(os.environ, W12_FIXTURE_HOME=home), text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("PASS stale marker rejected; custom directive preserved; mismatch/new blocked", result.stdout)
+            self.assertIn("PASS onboarding marker wait", result.stdout)
+            self.assertIn("PASS master awake evidence", result.stdout)
             self.assertEqual(result.stderr, "", result.stderr)
 
 if __name__ == "__main__":

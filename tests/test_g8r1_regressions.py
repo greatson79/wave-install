@@ -221,6 +221,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         (self.wave / 'bin').mkdir(parents=True)
         (self.wave / 'fleet').mkdir()
         (self.home / '.cys').mkdir()
+        (self.home / '.cys/.gui-onboarded').write_text('0.0.0\n')
         self.fakebin = self.home / 'fakebin'
         self.fakebin.mkdir()
         (self.fakebin / 'open').write_text('#!/bin/sh\nexit 0\n')
@@ -228,7 +229,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.log = self.home / 'cys-calls.log'
         cys = self.wave / 'bin/cys'
         cys.write_text('#!/bin/sh\necho "$*" >> "$CYS_LOG"\ncase "$1" in\n'
-                       'status) cat "$FLEET_JSON";;\nnew-surface) echo surface:9;;\n'
+                       'status) cat "$FLEET_JSON";;\nlaunch-agent) echo surface:9;;\n'
                        'pack-manifest) cat "$MANIFEST_JSON";;\ninit-pack) sh -c "$INIT_PACK_ACTION";;\nesac\n')
         cys.chmod(0o755)
         self.lib = functions_sh(self.home)
@@ -243,8 +244,7 @@ class MacResumeAndPackTests(unittest.TestCase):
                               text=True, capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
 
     def seat(self, ref, role, created):
-        return dict(surface_ref=ref, role=role, exited=False, agent_alive=True, directive_verified=True,
-                    awakened_at=created, created_at=created)
+        return dict(surface_ref=ref, role=role, exited=False, agent_alive=True, created_at=created)
 
     def prepare(self, masters, saved_ref='surface:5', master_created=None):
         created = self.since + 5 if master_created is None else master_created
@@ -257,7 +257,7 @@ class MacResumeAndPackTests(unittest.TestCase):
             (self.wave / 'fleet/started-at').write_text(str(self.since) + '\n')
 
     def new_surface_called(self):
-        return self.log.exists() and 'new-surface' in self.log.read_text()
+        return self.log.exists() and 'launch-agent' in self.log.read_text()
 
     def test_resume_reuses_verified_master_of_this_install(self):
         self.prepare(['surface:5'])

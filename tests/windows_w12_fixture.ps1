@@ -20,16 +20,16 @@ Run-S06
 if($env:CYS_PACK_DIR -ne 'sentinel-parent-pack'){throw 'pack environment leaked'}
 if(Test-Path ($target+'.new')){throw 'legacy sidecar left behind'}
 if(-not $StepObserved.directive_bytes_match -or $StepObserved.legacy_backed_up.Count -ne 1){throw 'S06 migration assertion'}
-$live=[pscustomobject]@{surfaces=@([pscustomobject]@{surface_ref='surface:1';role='master';exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1},[pscustomobject]@{surface_ref='surface:2';role='worker-1';exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1})}
+$live=[pscustomobject]@{surfaces=@([pscustomobject]@{surface_ref='surface:1';role='master';exited=$false;agent_alive=$true},[pscustomobject]@{surface_ref='surface:2';role='worker-1';exited=$false;agent_alive=$true})}
 $marker=Join-Path $env:USERPROFILE '.cys/.master-bootstrapped'
 '{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker
 if(Test-AwakenedFleet $live){throw 'missing CSO accepted'}
-$live.surfaces += [pscustomobject]@{surface_ref='surface:3';role='cso';exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1}
+$live.surfaces += [pscustomobject]@{surface_ref='surface:3';role='cso';exited=$false;agent_alive=$true}
 if(-not(Test-AwakenedFleet $live)){throw 'valid three-seat fleet rejected'}
 $live.surfaces[2].agent_alive=$false
 if(Test-AwakenedFleet $live){throw 'dead CSO accepted'}
 $live.surfaces[2].agent_alive=$true
-$live.surfaces += [pscustomobject]@{surface_ref='surface:4';role='reviewer';exited=$true;agent_alive=$false;directive_verified=$false;awakened_at=$null}
+$live.surfaces += [pscustomobject]@{surface_ref='surface:4';role='reviewer';exited=$true;agent_alive=$false}
 if(-not(Test-AwakenedFleet $live)){throw 'reviewer incorrectly required'}
 $live.surfaces[1].agent_alive=$false
 if(Test-AwakenedFleet $live){throw 'dead child accepted'}
@@ -56,6 +56,18 @@ $runText=($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.
 if($runText -match 'for \(\$attempt' -or $runText -notmatch 'Stopwatch.*StartNew' -or $runText -notmatch 'Get-LiveFleet \(Get-AwakeningBudgetMs'){throw 'deadline wiring absent'}
 Write-Host 'PASS CSO required/alive; reviewer excluded; 420-second remaining budget boundaries'
 function Start-WaveApp { }
+$HelpRules=[object[]]([regex]::Match((Get-Content (Join-Path $PWD 'bootstrap.ps1') -Raw),"(?s)\`$HelpRulesJson = @'\r?\n(.*?)\r?\n'@").Groups[1].Value|ConvertFrom-Json)
+function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){ return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout="cys 9.9.9`n"} }
+$onboarded=Join-Path $env:USERPROFILE '.cys/.gui-onboarded'
+$clock=[Diagnostics.Stopwatch]::StartNew()
+$blocked=$false; try {Wait-GuiOnboarded $clock 300} catch {$blocked=($_.Exception.Message -match 'W-ONBOARD' -and (Get-JCode $_.Exception.Message) -eq 'J-VER-02')}
+if(-not $blocked){throw 'missing onboarding marker accepted or wrong J-code'}
+'9.9.8'|Set-Content $onboarded
+$blocked=$false; try {Wait-GuiOnboarded $clock 300} catch {$blocked=$true}
+if(-not $blocked){throw 'onboarding marker of another app version accepted'}
+"9.9.9`n"|Set-Content $onboarded
+Wait-GuiOnboarded $clock 300
+Write-Host 'PASS onboarding marker wait: absent/mismatch blocked (J-VER-02), matching version accepted'
 function Get-LiveFleet([int]$TimeoutMs=5000) {
   if($TimeoutMs -le 0 -or $TimeoutMs -gt 5000){throw 'invalid status timeout budget'}
   return $live
@@ -63,3 +75,15 @@ function Get-LiveFleet([int]$TimeoutMs=5000) {
 Run-S07
 if(-not $StepObserved.fleet_started -or $StepObserved.seats -ne 3 -or ($StepObserved.roles -join ',') -ne 'master,cso,worker'){throw 'three-seat observed contract mismatch'}
 Write-Host 'PASS S07 observed roles and live status timeout budget'
+$live.surfaces[0] | Add-Member -NotePropertyName cwd -NotePropertyValue 'C:\Users\설치 user'
+if((Get-MasterAwakeState $live) -ne 'unconfirmed'){throw 'awake confirmed without transcript'}
+$proj=Join-Path $env:USERPROFILE '.cys/claude/projects/C--Users----user'
+New-Item -ItemType Directory -Force $proj|Out-Null
+'{"type":"user"}'|Set-Content (Join-Path $proj 's.jsonl')
+if((Get-MasterAwakeState $live) -ne 'unconfirmed'){throw 'user-only transcript counted as awake'}
+'{"type":"user"}','{"type":"assistant"}'|Set-Content (Join-Path $proj 's.jsonl')
+if((Get-MasterAwakeState $live) -ne 'confirmed'){throw 'assistant reply not detected'}
+$script:AwakeningStartedAt=[DateTime]::UtcNow.AddMinutes(1)
+if((Get-MasterAwakeState $live) -ne 'unconfirmed'){throw 'stale transcript counted as awake'}
+$script:AwakeningStartedAt=$null
+Write-Host 'PASS master awake evidence: assistant record confirmed; user-only/stale/missing unconfirmed'

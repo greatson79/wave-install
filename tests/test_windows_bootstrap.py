@@ -346,7 +346,7 @@ $bin = Join-Path $WaveHome 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 New-Item -ItemType Directory -Force $PackHome | Out-Null
 $live = [ordered]@{surfaces=@('master','cso','worker' | ForEach-Object {
-  [ordered]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1}
+  [ordered]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true}
 })}
 $verify=Join-Path $WaveHome 'verify'
 New-Item -ItemType Directory -Force $verify,(Join-Path $PackHome 'directives')|Out-Null
@@ -385,6 +385,7 @@ if (-not $control) { throw 'PS5.1 native stderr control did not reproduce' }
 Run-S08
 if ($StepObserved.identify_exit -ne 0 -or $ErrorActionPreference -ne 'Stop') { throw 'S08 lost exit or preference' }
 if (-not $StepObserved.original_match -or $StepObserved.roles.Count -ne 3) { throw 'three-role G3 proof missing' }
+if ($StepObserved.master_awake -ne 'unconfirmed') { throw 'awake evidence must be unconfirmed without a session transcript' }
 if ((Get-Content (Join-Path $WaveHome 'verify/identify.stderr.log') -Raw) -notmatch 'autostarting fixture') { throw 'S08 native stderr lost' }
 $env:WAVE_TEST_CYS_FAIL = '1'
 Run-S08
@@ -400,7 +401,7 @@ Load-Config
 Init-State
 New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.cys')|Out-Null
 $script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | ForEach-Object {
-  [pscustomobject]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true;directive_verified=$true;awakened_at=1}
+  [pscustomobject]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true}
 })}
 $script:appCalls=0
 function Start-WaveApp { $script:appCalls++ }
@@ -411,6 +412,7 @@ function Invoke-BoundedCheck {
 }
 if (Test-AwakenedFleet $fixtureStatus) { throw 'missing master marker accepted' }
 '{"surface_ref":"surface:master","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
+'0.0.0'|Set-Content (Join-Path $env:USERPROFILE '.cys/.gui-onboarded') -Encoding UTF8
 Run-S07
 if ($StepObserved.seats -ne 3 -or ($StepObserved.roles -join ',') -ne 'master,cso,worker') { throw 'three-role fleet contract' }
 if (-not $StepObserved.fleet_started -or $appCalls -ne 1) { throw 'fleet evidence missing' }

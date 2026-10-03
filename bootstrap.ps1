@@ -454,6 +454,16 @@ $HelpRulesJson = @'
     "sample": "중단: Claude Code 2.1.278 이상 필요"
   },
   {
+    "code": "J-VER-02",
+    "symptom": "Wave Terminal 첫 실행 준비가 끝나지 않음",
+    "pattern": "W-ONBOARD",
+    "action1": "Wave Terminal 창이 열려 첫 실행 준비를 마쳤는지 확인하세요.",
+    "action2": "앱 창을 열어 둔 채 같은 설치 명령을 다시 실행하세요.",
+    "case": "우리 S07 온보딩 표지 대기 상한 회귀; 실기 미관측",
+    "os": "win",
+    "sample": "W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다"
+  },
+  {
     "code": "J-DL-03",
     "symptom": "파일 지문 측정 실패",
     "pattern": "W-HASH-READ",
@@ -886,9 +896,9 @@ function Get-LiveFleet([int]$TimeoutMs = 5000) {
 
 function Test-AwakenedFleet([object]$Status) {
   $live = @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true })
-  $master = @($live | Where-Object { $_.role -eq 'master' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
-  $children = @($live | Where-Object { $_.role -like 'worker*' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
-  $cso = @($live | Where-Object { $_.role -eq 'cso' -and $_.directive_verified -eq $true -and $null -ne $_.awakened_at })
+  $master = @($live | Where-Object { $_.role -eq 'master' })
+  $children = @($live | Where-Object { $_.role -like 'worker*' })
+  $cso = @($live | Where-Object { $_.role -eq 'cso' })
   if ($master.Count -lt 1 -or $children.Count -lt 1 -or $cso.Count -lt 1) { return $false }
   $markerPath = Join-Path $env:USERPROFILE '.cys\.master-bootstrapped'
   if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { return $false }
@@ -903,25 +913,38 @@ function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {
   return [int][Math]::Min($LimitMs, $remaining)
 }
 
+# S07: 앱 첫 실행 온보딩(팩·훅 설치)이 끝난 뒤에 master 를 만든다 — 온보딩의 팩 교체와 좌석이 겹치지 않게.
+# 표지 ~/.cys/.gui-onboarded 의 내용은 앱 버전이다(앱 needs_gui_onboard). 읽히면 `cys --version` 과 대조한다.
+function Wait-GuiOnboarded([Diagnostics.Stopwatch]$Clock, [int]$CapMs = 180000) {
+  $marker = Join-Path $env:USERPROFILE '.cys\.gui-onboarded'
+  $version = ''
+  try {
+    $v = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('--version') 'cys-version' (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds)
+    if (-not $v.timed_out -and $v.exit_code -eq 0) { $version = @($v.stdout.Trim() -split '\s+')[-1] }
+  } catch { Write-Log "cys --version 확인 실패: $($_.Exception.Message)" }
+  $wait = [Diagnostics.Stopwatch]::StartNew()
+  while ($wait.ElapsedMilliseconds -lt $CapMs -and (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds) -gt 0) {
+    if (Test-Path -LiteralPath $marker -PathType Leaf) {
+      $text = $null
+      try { $text = ([string](Get-Content -LiteralPath $marker -Raw -ErrorAction Stop)).Trim() } catch { }
+      if (-not $version -or $null -eq $text -or $text -ceq $version) { return }
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw 'W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다. 앱 창을 열어 둔 채 같은 설치 명령을 다시 실행하세요.'
+}
+
 function Run-S07 {
   $clock = [Diagnostics.Stopwatch]::StartNew()
   Start-WaveApp
+  Wait-GuiOnboarded $clock
   $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
   if (-not (Test-AwakenedFleet $status)) {
     $masters = @($status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })
     if ($masters.Count -eq 0) {
       $script:AwakeningStartedAt = [DateTime]::UtcNow
-      # oogisoogi/jarvis-install write_wake_file/step_wake (MIT): 프롬프트는 UTF-8 파일로 전달.
-      $wakePath = Join-Path $WaveHome 'wake-master.ps1'
-      $wakeBody = @'
-$ErrorActionPreference = 'Stop'
-& claude "너는 마스터다`n설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 각각 한 좌석씩 소환해 마스터를 포함한 세 좌석의 각성을 확인해 주세요. 리뷰어는 기다리지 마세요."
-exit $LASTEXITCODE
-'@
-      Set-Content -LiteralPath $wakePath -Value $wakeBody -Encoding UTF8
-      $command = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $wakePath + '"'
-      $quotedCommand = '"' + $command.Replace('"', '\"') + '"'
-      $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('new-surface', '--role', 'master', '--cmd', $quotedCommand) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 15000)
+      # 앱 계약: launch-agent 가 agent 정보를 기록하고 MASTER 지침을 주입한다. 준비 표지·주입까지 기다리므로 상한 120초.
+      $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
     }
   }
@@ -987,8 +1010,8 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
       catch { if (-not $process.HasExited) { $killError = $_.Exception.Message } }
     }
     # Keep the final wait bounded: descendants may retain redirected handles.
-    $cleanupMs = [int][Math]::Min(1000, [Math]::Max(0, $TimeoutMs - $checkClock.ElapsedMilliseconds))
-    if (-not $process.WaitForExit($cleanupMs) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
+    # Kill 직후에도 종료 확인 대기는 1000ms 를 준다 — 남은 예산(0)으로 자르면 정상 종료도 kill_error 로 오판한다.
+    if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
   } finally { $process.Dispose() }
   # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
   $stdout = Read-SharedCheckLog $stdoutPath
@@ -1036,6 +1059,23 @@ function Test-OriginalInjection {
   return [ordered]@{ original_match = $true; new_file_count = 0; roles = $verified; injected_bytes = $null; injection_reason = 'RC 러너 G3_inject.json 판정'; source = 'app-manifest+installed-pack' }
 }
 
+# 각성 증거(3갈래: 확인 / 미확인 카드 / 실패=생존·주입 검증). master 좌석 Claude 세션 기록(jsonl)에 답 레코드 ≥1.
+# Adapted from oogisoogi/jarvis-install bootstrap.ps1 ConvertTo-ClaudeProjectSlug/Get-SeatSessionFile/Get-SeatSessionCounts (MIT),
+# axis (1) of Confirm-MasterAwake — commit df5efc8a, bootstrap.ps1 L4808-4857·L5025, bootstrap.sh L4092-4127·L4242.
+# Source: https://github.com/oogisoogi/jarvis-install · License: LICENSES/jarvis-install-MIT.txt.
+function Get-MasterAwakeState([object]$Status) {
+  try {
+    $master = @($Status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })[0]
+    $root = if ($env:CYS_ACCOUNT_DIR) { $env:CYS_ACCOUNT_DIR } else { Join-Path $env:USERPROFILE '.cys\claude' }
+    $dir = Join-Path (Join-Path $root 'projects') ([string]$master.cwd -replace '[^A-Za-z0-9]', '-')
+    $since = if ($null -ne $script:AwakeningStartedAt) { $script:AwakeningStartedAt } else { [DateTime]::MinValue }
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter '*.jsonl' -File -ErrorAction Stop | Where-Object { $_.LastWriteTimeUtc -ge $since })) {
+      if ((Read-SharedCheckLog $f.FullName).Contains('"type":"assistant"')) { return 'confirmed' }
+    }
+  } catch { }
+  return 'unconfirmed'
+}
+
 function Run-S08 {
   $cys = Join-Path $WaveHome 'bin\cys.exe'
   try { $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000 }
@@ -1061,6 +1101,10 @@ function Run-S08 {
   $script:StepObserved = $evidence
   $script:StepObserved['identify_exit'] = 0
   $script:StepObserved['fleet_verified'] = $true
+  $script:StepObserved['master_awake'] = Get-MasterAwakeState $status
+  if ($script:StepObserved['master_awake'] -ne 'confirmed') {
+    Say '각성 미확인: master 좌석은 살아 있지만 Claude 세션 기록에서 답변을 찾지 못했습니다. 설치는 계속합니다. Wave Terminal 의 master 창에서 자비스가 응답하는지 확인해 주세요.'
+  }
 }
 
 function Test-SyntheticBypass([object]$Value) {

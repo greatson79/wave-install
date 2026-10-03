@@ -399,13 +399,12 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   win-nonhome-cwd:
-    # 테오 2238: 설치기 실행 기본은 홈(win-gates 등)으로 옮기되 홈 아닌 폴더에서 재설치하는 잡 1개는 남겨 결함이 계속 보이게 한다.
-    # 앱 수리(v0.3.1) 전까지 이 잡의 FAIL 은 알려진 결함 — continue-on-error 로 전체 실행을 붉게 만들지 않되 증거는 올린다. 판정기·gate.py 입력 아님.
-    name: Windows reinstall from a non-home folder (KNOWN FAIL until app v0.3.1)
+    # 회귀 감시(테오 2238 · 펄스 0105 안①): 설치기를 홈 아닌 폴더에서 시작해 재설치까지 해도 세 좌석(master·cso·worker)의 cwd 는 사용자 홈이어야 한다.
+    # 설치기 af6630a(앱·데몬·모든 cys 호출을 사용자 홈에서 시작)가 고친 것을 지킨다. 앱 쪽 근본수리(v0.3.1 복원 폴백)와 별개. 판정기·gate.py 입력 아님 · 이 잡의 실패는 진짜 실패.
+    name: Windows install started from a non-home folder keeps the three seats in the user home
     needs: [cfg, assemble-win]
     runs-on: windows-latest
     timeout-minutes: 90
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -414,16 +413,14 @@ jobs:
         with:
           name: rcrel-win-${{ github.run_id }}
           path: ${{ runner.temp }}/rcrel
-      - name: Trust test cert, serve https, run as a fresh standard user
+      - name: Trust test cert, serve https, run as a fresh standard user (start folder = evidence folder, not home)
         shell: powershell
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode main -Cwd evidence -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
-      - name: Show the reinstall result (known FAIL is expected here)
-        if: always()
-        shell: powershell
-        run: |
-          $f = "$env:RUNNER_TEMP\ev\win\G6\exit"; if (Test-Path $f) { 'G6 reinstall exit: ' + (Get-Content $f -Raw) } else { 'G6\exit 없음' }
+      - name: Seats must be in the user home after the install and after the reinstall
+        shell: bash
+        run: python tests/rc/check_seat_cwd.py "$RUNNER_TEMP/ev/identity.json" "$RUNNER_TEMP/ev/win/G4_status.json" "$RUNNER_TEMP/ev/win/G6/G4_status.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

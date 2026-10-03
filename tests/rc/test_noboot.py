@@ -49,12 +49,17 @@ class FakeClaudeSwitch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             pack = os.path.join(home, "pack"); os.makedirs(os.path.join(pack, "bin"))
             open(os.path.join(pack, "bin", "javis_bootstrap.py"), "w").write("import os;open(os.path.expanduser('~/ran'),'w').write('x')\n")
-            os.makedirs(os.path.join(home, ".wave"))
+            os.makedirs(os.path.join(home, ".wave")); os.makedirs(os.path.join(home, "bin"))
+            cys = os.path.join(home, "bin", "cys")   # 가짜 cys: 호출 인자만 기록(실제 좌석 기동 흉내는 cys boot 호출 여부로 증명)
+            open(cys, "w").write("#!/bin/sh\necho \"$@\" >> \"$HOME/cys_calls\"\n"); os.chmod(cys, 0o755)
             if skip: open(os.path.join(home, ".wave", "rc-skip-bootstrap"), "w").write("")
-            env = dict(os.environ, HOME=home, USERPROFILE=home, CYS_ROLE="master", CYS_PACK_DIR=pack, PYTHONDONTWRITEBYTECODE="1")
+            env = dict(os.environ, HOME=home, USERPROFILE=home, CYS_ROLE="master", CYS_PACK_DIR=pack, PYTHONDONTWRITEBYTECODE="1", PATH=os.path.join(home, "bin") + os.pathsep + os.environ["PATH"])
             subprocess.run([sys.executable, os.path.join(HERE, "fake_claude.py"), "--logic-only"], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)  # 파이프를 쓰면 fake_claude 의 백그라운드 진단이 닫을 때까지 막힌다
-            return os.path.exists(os.path.join(home, "ran")), open(os.path.join(home, ".wave", "rc", "bootstrap.rc")).read()
-    def test_default_runs_bootstrap(self): self.assertEqual(self.boot(False), (True, "0"))
-    def test_marker_skips_bootstrap(self): self.assertEqual(self.boot(True), (False, "skipped"))
+            calls = open(os.path.join(home, "cys_calls")).read().split("\n") if os.path.exists(os.path.join(home, "cys_calls")) else []
+            return os.path.exists(os.path.join(home, "ran")), open(os.path.join(home, ".wave", "rc", "bootstrap.rc")).read(), [c for c in calls if c == "boot"]
+    def test_default_runs_bootstrap_and_does_not_boot_itself(self): self.assertEqual(self.boot(False), (True, "0", []))
+    def test_marker_skips_bootstrap_but_still_boots_the_seats(self):
+        ran, rc, boots = self.boot(True)
+        self.assertFalse(ran); self.assertEqual(rc, "skipped(cys boot rc=0)"); self.assertEqual(boots, ["boot"])   # 부트 스크립트·표지 없음 + cys boot 정확히 1회
 
 if __name__ == "__main__": unittest.main()

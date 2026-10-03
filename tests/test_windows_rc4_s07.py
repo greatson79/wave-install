@@ -21,9 +21,9 @@ class WindowsRc4S07Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             r = self.run_fixture("unit", {"RC4_FIXTURE_DIR": td})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("PASS waiting line: marker / seats n/3 / injection n/3", r.stdout)
+        self.assertIn("PASS waiting line: marker / seats n/3", r.stdout)
         self.assertIn("PASS budget = 420s + paused gate time", r.stdout)
-        self.assertIn("PASS unfinished: alive seats -> alive_unconfirmed, none alive -> failure", r.stdout)
+        self.assertIn("PASS unfinished: three live seats -> alive_unconfirmed (no failure wording), fewer/dead -> failure", r.stdout)
 
     def test_alive_unconfirmed_exits_2_with_dedicated_code(self):
         with tempfile.TemporaryDirectory() as td:

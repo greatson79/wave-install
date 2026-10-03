@@ -492,7 +492,7 @@ $HelpRulesJson = @'
     "code": "J-VER-04",
     "symptom": "세 칸은 살아 있지만 설치기가 각성 확인을 끝내지 못함",
     "pattern": "W-FLEET-ALIVE-UNCONFIRMED",
-    "action1": "세 칸 생존 · Wave 창에서 master 첫 답을 확인하세요.",
+    "action1": "세 칸이 살아 있습니다 · master 첫 답을 확인하세요.",
     "action2": "확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행하세요.",
     "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 사용자 실기 관측(원인 표지 미기록은 추론)",
     "os": "win",
@@ -1222,18 +1222,22 @@ function Run-S07 {
   Complete-S07Unfinished
 }
 
-# 상한에 닿았을 때: master·cso·worker 세 칸이 살아 있고 지침 주입(launch-agent 완료 신호 launch_complete)까지 끝났으면
-# 설치 실패가 아니라 「세 칸 생존 · 확인 미완」(종료값 2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
-# 그 밖(좌석 부족·주입 미확인)은 진척이 부족한 것이므로 실패(1).
+# 상한에 닿았을 때: master·cso·worker 세 역할 좌석이 모두 살아 있으면(exited=false ∧ agent_alive=true) 설치 실패가 아니라
+# 「세 칸 생존 · 확인 미완」(종료값 2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 좌석 부족·사망은 진척이 부족한 것이므로 실패(1). 지침 주입 여부는 판정에 쓰지 않는다 — `cys status --json` 에는 그 신호가 없다
+# (launch_complete 는 데몬 surface.list 응답에만 있음). 신호가 있으면 관측값에 개수만 기록한다.
 function Get-LiveRoleSeats([object]$Status) {
   if ($null -eq $Status) { return @() }
   return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique)
 }
 
-function Get-InjectedRoleCount([object]$Status) {
-  if ($null -eq $Status) { return 0 }
-  return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and $_.launch_complete -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
+# 관측값 기록용: launch_complete 가 true 인 살아 있는 역할 수. 응답에 그 속성이 없으면 $null(StrictMode 예외 없이).
+function Get-LaunchCompleteObserved([object]$Status) {
+  if ($null -eq $Status) { return $null }
+  $with = @($Status.surfaces | Where-Object { $null -ne $_.PSObject.Properties['launch_complete'] })
+  if ($with.Count -eq 0) { return $null }
+  return @($with | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and $_.launch_complete -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique).Count
 }
 
@@ -1241,22 +1245,21 @@ function Get-InjectedRoleCount([object]$Status) {
 function Write-WaitingFor([object]$Status) {
   $mark = if (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.cys\.master-bootstrapped') -PathType Leaf) { '있음' } else { '없음' }
   $gate = if ($script:GateVisible) { ' · 확인 창 대기 중(예산 정지)' } else { '' }
-  Write-Log "기다리는 것: 각성 표지 $mark · 좌석 $(@(Get-LiveRoleSeats $Status).Count)/3 · 지침 주입 $(Get-InjectedRoleCount $Status)/3$gate"
+  Write-Log "기다리는 것: 각성 표지 $mark · 좌석 $(@(Get-LiveRoleSeats $Status).Count)/3$gate"
 }
 
 function Complete-S07Unfinished {
   $last = $null
   try { $last = Get-LiveFleet 5000 } catch { }
   $roles = @(Get-LiveRoleSeats $last)
-  $injected = Get-InjectedRoleCount $last
-  if ($roles.Count -eq 3 -and $injected -eq 3) {
+  if ($roles.Count -eq 3) {
     $script:AliveUnconfirmed = $true
-    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = 3; roles_alive = ($roles -join ','); launch_complete = 3; j_code = 'J-VER-04'; source = 'cys status --json' }
-    Say "세 칸 생존 · master 첫 답을 확인하세요. 세 칸($($roles -join ','))이 살아 있고 지침도 들어갔으며, 설치기는 각성 표지를 아직 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = 3; roles_alive = ($roles -join ','); launch_complete = (Get-LaunchCompleteObserved $last); j_code = 'J-VER-04'; source = 'cys status --json' }
+    Say "세 칸이 살아 있습니다 · master 첫 답을 확인하세요. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     throw 'W-FLEET-ALIVE-UNCONFIRMED'
   }
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
-  throw "마스터·CSO·워커 각성 확인 420초 안에 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 $($roles.Count)/3 · 지침 주입 확인 $injected/3)"
+  throw "마스터·CSO·워커 각성 확인 420초 안에 세 칸의 생존을 확인하지 못했습니다(살아 있는 칸 $($roles.Count)/3)"
 }
 
 function Get-StateField([object]$Object, [string]$Name) {

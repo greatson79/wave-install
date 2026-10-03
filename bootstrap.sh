@@ -798,23 +798,25 @@ PY_EXISTING
   s07_unfinished
 }
 
-# 상한에 닿았을 때: master·cso·worker 세 칸이 살아 있고 지침 주입(launch-agent 완료 신호)까지 끝났으면 설치 실패가 아니라
+# 상한에 닿았을 때: master·cso·worker 세 역할 좌석이 모두 살아 있으면(exited=false ∧ agent_alive=true) 설치 실패가 아니라
 # 「세 칸 생존 · 확인 미완」(2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
-# 그 밖(좌석 부족·주입 미확인)은 진척이 부족한 것이므로 실패(1).
+# 좌석 부족·사망은 진척이 부족한 것이므로 실패(1). 지침 주입 여부는 판정에 쓰지 않는다 — `cys status --json` 에는 그 신호가 없다
+# (launch_complete 는 데몬 surface.list 응답에만 있음). 신호가 있으면 관측값에 개수만 기록한다.
 s07_unfinished() {
-  local n roles injected
+  local n roles injected signal lc=null
   WAVE_COMMAND_TIMEOUT=5 bounded_cys status --json > "$WAVE_HOME/fleet/status.json" 2>/dev/null || true
-  read -r n roles injected <<< "$(live_role_seats)"
-  if [[ "${n:-0}" -eq 3 && "${injected:-0}" -eq 3 ]]; then
-    STEP_OBSERVED="{\"fleet_started\":false,\"fleet_state\":\"alive_unconfirmed\",\"seats_alive\":3,\"roles_alive\":\"$roles\",\"launch_complete\":3,\"j_code\":\"J-VER-04\"}"
-    log "J-VER-04 — 세 칸 생존 · master 첫 답을 확인하세요. 세 칸($roles)이 살아 있고 지침도 들어갔으며, 설치기는 각성 표지를 아직 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+  read -r n roles injected signal <<< "$(live_role_seats)"
+  if [[ "${n:-0}" -eq 3 ]]; then
+    [[ "${signal:-0}" == 1 ]] && lc="${injected:-0}"
+    STEP_OBSERVED="{\"fleet_started\":false,\"fleet_state\":\"alive_unconfirmed\",\"seats_alive\":3,\"roles_alive\":\"$roles\",\"launch_complete\":$lc,\"j_code\":\"J-VER-04\"}"
+    log "J-VER-04 — 세 칸이 살아 있습니다 · master 첫 답을 확인하세요. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     return 2
   fi
-  fail_message "420초 안에 마스터·CSO·worker 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 ${n:-0}/3 · 지침 주입 확인 ${injected:-0}/3)"
+  fail_message "420초 안에 마스터·CSO·worker 세 칸의 생존을 확인하지 못했습니다(살아 있는 칸 ${n:-0}/3)"
 }
 
-# 살아 있는 master·cso·worker 좌석: 「<역할 수> <역할,역할> <주입 끝난 역할 수>」 (status.json 기준 · 없으면 「0 - 0」).
-# 주입 끝남 = 데몬의 launch_complete(launch-agent 가 준비 표지·지침 주입까지 마쳤다는 신호).
+# 살아 있는 master·cso·worker 좌석: 「<역할 수> <역할,역할> <launch_complete 가 true 인 역할 수> <launch_complete 신호 유무 1|0>」
+# (status.json 기준 · 없으면 「0 - 0 0」). 뒤 두 값은 관측값 기록용일 뿐 판정에 쓰지 않는다.
 live_role_seats() {
   python3 - "$WAVE_HOME/fleet/status.json" <<'PY_LIVE_ROLES'
 import json, sys
@@ -826,17 +828,18 @@ live = [s for s in rows if s.get('exited') is False and s.get('agent_alive') is 
 base = lambda s: str(s['role']).split('-')[0]
 roles = sorted({base(s) for s in live})
 done = {base(s) for s in live if s.get('launch_complete') is True}
-print(len(roles), ','.join(roles) or '-', len(done))
+signal = 1 if any('launch_complete' in s for s in rows) else 0
+print(len(roles), ','.join(roles) or '-', len(done), signal)
 PY_LIVE_ROLES
 }
 
 # S07 대기 중 30초마다 기다리는 것을 한 줄로 남긴다(표지 · 좌석 n/3 · 확인 창).
 log_waiting_for() {
-  local n roles injected mark=없음 gate=
-  read -r n roles injected <<< "$(live_role_seats)"
+  local n roles mark=없음 gate=
+  read -r n roles _ _ <<< "$(live_role_seats)"
   [[ -f "$HOME/.cys/.master-bootstrapped" ]] && mark=있음
   [[ "$GATE_VISIBLE" == 1 ]] && gate=" · 확인 창 대기 중(예산 정지)"
-  log "기다리는 것: 각성 표지 ${mark} · 좌석 ${n:-0}/3 · 지침 주입 ${injected:-0}/3${gate}"
+  log "기다리는 것: 각성 표지 ${mark} · 좌석 ${n:-0}/3${gate}"
 }
 
 # 좌석 첫 실행 질문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit) 사전 설정.

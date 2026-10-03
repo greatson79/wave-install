@@ -1,13 +1,19 @@
 """rc.4 S07: 상한 도달 시 좌석이 살아 있으면 실패가 아니라 종료값 2 · 사람 확인 창이 떠 있는 동안은 상한을 멈춘다."""
-import json, os, subprocess, tempfile, threading, time, unittest
+import copy, json, os, subprocess, tempfile, threading, time, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+REAL = ROOT / 'tests/fixtures/real_cys'   # 실물 cys 바이너리 출력의 녹취 고정본(머리 provenance 에 명령·시각·바이너리 커밋)
+
+
+def real(name):
+    """녹취 고정본의 응답 본문. 손으로 쓴 응답은 쓰지 않는다 — 부정 사례는 이 응답의 행을 고르거나 한 필드를 뒤집어 만든다."""
+    return copy.deepcopy(json.loads((REAL / name).read_text(encoding='utf-8'))['response'])
 GATE = "WARNING: Claude Code running in Bypass Permissions mode\n 1. No, exit\n 2. Yes, I accept\n"
 FAKE_CYS = r'''#!/bin/sh
 D="$(dirname "$0")/.."
 case "$1" in
-  launch-agent) echo surface:1 ;;
+  launch-agent) cat "$D/master_ref" ;;
   status) cat "$D/status.json" ;;
   read-screen) if [ -f "$D/gate.on" ]; then cat "$D/gate.txt"; else echo "welcome"; fi ;;
   send) echo "$*" >> "$D/sent.log" ;;
@@ -34,13 +40,22 @@ class S07Base(unittest.TestCase):
     def tearDown(self):
         self.td.cleanup()
 
-    def status(self, roles, alive=True, created=None, injected=True):
-        created = created if created is not None else int(time.time()) + 5
-        rows = [dict(surface_ref='surface:%d' % (i + 1), role=r, exited=False, agent_alive=alive, created_at=created,
-                     launch_complete=injected)
-                for i, r in enumerate(roles)]
+    def status(self, roles, alive=True, created=None, source='mac_status_three_seats.json'):
+        """녹취 고정본(RC 증거의 실물 `cys status --json`)에서 roles 에 해당하는 행만 고른다. alive=False 는 agent_alive 한 필드 뒤집기,
+        created 는 created_at 시각만 이번 시험 시각으로 옮긴다(설치기가 시작 시각과 비교하므로). 그 밖의 키·값은 녹취 그대로."""
+        resp = real(source)
+        rows = [r for r in resp['surfaces'] if r['role'] in roles]
+        ts = created if created is not None else int(time.time()) + 5
+        for r in rows:
+            r['created_at'] = ts
+            if alive is False:
+                r['agent_alive'] = False
+        resp['surfaces'] = rows
+        masters = [r for r in rows if r['role'] == 'master']
+        self.master_ref = masters[0]['surface_ref'] if masters else 'surface:1'
+        (self.wave / 'master_ref').write_text(self.master_ref + '\n')
         for d in (self.wave, self.wave / 'fleet'):   # 가짜 cys 는 앞쪽을, 직접 호출 시험은 fleet/ 쪽을 읽는다
-            (d / 'status.json').write_text(json.dumps({'surfaces': rows}))
+            (d / 'status.json').write_text(json.dumps(resp))
 
     def bash(self, script, extra_env=None, timeout=90):
         env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), **(extra_env or {}))
@@ -55,27 +70,64 @@ class S07Base(unittest.TestCase):
         return self.bash(stubs + 'step_s07; echo RC=$?; echo "OBS=$STEP_OBSERVED"', extra_env)
 
 
+class RecordedShapes(S07Base):
+    """루트 원인의 고정: `cys status --json` 에는 launch_complete 가 없고, 데몬 surface.list 응답에만 있다(실물 녹취로 확인)."""
+
+    def test_status_recordings_have_no_launch_complete_but_surface_list_has_it(self):
+        for name in ('mac_status_three_seats.json', 'mac_status_noboot.json', 'win_status_three_seats.json',
+                     'win_status_noboot.json', 'mac_status_json.json'):
+            for row in real(name)['surfaces']:
+                self.assertNotIn('launch_complete', row, name)
+        rows = real('mac_surface_list.json')['result']['surfaces']
+        self.assertTrue(rows and all('launch_complete' in r for r in rows))
+        self.assertEqual(sorted(r['launch_complete'] for r in rows), [False, True, True])   # launch-agent 를 거친 두 좌석만 true
+
+    def test_every_recording_carries_its_provenance(self):
+        for f in sorted(REAL.glob('*.json')):
+            prov = json.loads(f.read_text(encoding='utf-8'))['provenance']
+            for key in ('command', 'recorded_at', 'binary'):
+                self.assertTrue(prov.get(key), (f.name, key))
+
+
 class LiveRoleSeats(S07Base):
     def count(self):
-        r = self.bash('live_role_seats')
-        return r.stdout.strip()
+        return self.bash('live_role_seats').stdout.strip()
 
-    def test_counts_only_live_agent_roles(self):
+    def test_counts_live_master_cso_worker_from_the_real_status(self):
         self.status(['master', 'cso', 'worker'])
-        self.assertEqual(self.count(), '3 cso,master,worker 3')
-        self.status(['master', 'worker-2', 'reviewer-codex'])
-        self.assertEqual(self.count(), '2 master,worker 2')
-        self.status(['master', 'cso', 'worker'], injected=False)
-        self.assertEqual(self.count(), '3 cso,master,worker 0')   # 지침 주입 신호(launch_complete)가 없으면 0
+        self.assertEqual(self.count(), '3 cso,master,worker 0 0')   # 실물 status: launch_complete 없음 → 신호 0
+        self.status(['master', 'worker'])
+        self.assertEqual(self.count(), '2 master,worker 0 0')
         self.status(['master', 'cso', 'worker'], alive=False)
-        self.assertEqual(self.count(), '0 - 0')
+        self.assertEqual(self.count(), '0 - 0 0')
+        self.status(['master'], source='win_status_noboot.json')
+        self.assertEqual(self.count(), '1 master 0 0')
+
+    def test_a_response_with_launch_complete_is_only_recorded(self):
+        # surface.list 녹취의 행(launch_complete 있음)을 살아 있다고 뒤집어(agent_alive 한 필드) 읽혀 본다 — 신호는 기록용 값으로만 나온다.
+        resp = real('mac_surface_list.json')['result']
+        for r in resp['surfaces']:
+            r['agent_alive'] = True
+        (self.wave / 'fleet/status.json').write_text(json.dumps(resp))
+        self.assertEqual(self.count(), '3 cso,master,worker 2 1')
+
+    def test_reviewer_and_numbered_workers(self):
+        resp = real('mac_status_three_seats.json')
+        for r in resp['surfaces']:
+            if r['role'] == 'worker':
+                r['role'] = 'worker-2'
+            if r['role'] == 'cso':
+                r['role'] = 'reviewer-codex'
+        (self.wave / 'fleet/status.json').write_text(json.dumps(resp))
+        self.assertEqual(self.count(), '2 master,worker 0 0')
 
     def test_missing_status_is_zero(self):
-        self.assertEqual(self.count(), '0 - 0')
+        self.assertEqual(self.count(), '0 - 0 0')
 
 
 class UnfinishedOutcome(S07Base):
-    def test_alive_seats_are_exit_2_not_a_failure(self):
+    def test_three_live_seats_in_the_real_status_are_exit_2_not_a_failure(self):
+        # rc.4 RC 37134620023 의 실물 모양(launch_complete 없음)에서도 세 칸 생존이면 종료값 2 — 결재 (가).
         self.status(['master', 'cso', 'worker'])
         r = self.bash('s07_unfinished; echo RC=$?; echo "OBS=$STEP_OBSERVED"')
         self.assertIn('RC=2', r.stdout)
@@ -83,16 +135,27 @@ class UnfinishedOutcome(S07Base):
         self.assertIs(obs['fleet_started'], False)
         self.assertEqual(obs['fleet_state'], 'alive_unconfirmed')
         self.assertEqual(obs['seats_alive'], 3)
+        self.assertIsNone(obs['launch_complete'])   # 신호가 없으면 null — 판정에 쓰지 않는다
         self.assertEqual(obs['j_code'], 'J-VER-04')   # J-UNK-00 대신 전용 진단 코드
         self.assertNotIn('실패', r.stderr)   # 사용자 화면에는 부정형 포함 「실패」 글자 없음(관측 사실만)
-        self.assertIn('세 칸 생존 · master 첫 답을 확인하세요', r.stderr)
+        self.assertNotIn('주입', r.stderr)   # 지침을 확인했다는 표현 없음
+        self.assertIn('세 칸이 살아 있습니다 · master 첫 답을 확인하세요', r.stderr)
         self.assertIn('같은 설치 명령을 다시 실행', r.stderr)
 
-    def test_three_alive_but_not_injected_is_a_failure(self):
-        self.status(['master', 'cso', 'worker'], injected=False)
+    def test_launch_complete_when_present_is_recorded_not_decided_on(self):
+        resp = real('mac_surface_list.json')['result']
+        for r in resp['surfaces']:
+            r['agent_alive'] = True
+        (self.wave / 'status.json').write_text(json.dumps(resp))   # 가짜 cys 의 `status --json` 응답
+        r = self.bash('s07_unfinished; echo RC=$?; echo "OBS=$STEP_OBSERVED"')
+        self.assertIn('RC=2', r.stdout)
+        self.assertEqual(json.loads(r.stdout.split('OBS=')[1])['launch_complete'], 2)
+
+    def test_the_real_noboot_status_is_a_failure(self):
+        self.status(['master'], source='mac_status_noboot.json')
         r = self.bash('s07_unfinished; echo RC=$?')
         self.assertIn('RC=1', r.stdout)
-        self.assertIn('지침 주입 확인 0/3', r.stderr)
+        self.assertIn('살아 있는 칸 1/3', r.stderr)
 
     def test_fewer_than_three_alive_is_a_failure(self):
         self.status(['master', 'worker'])
@@ -110,7 +173,7 @@ class UnfinishedOutcome(S07Base):
 class WaitLoop(S07Base):
     def marker(self):
         m = self.home / '.cys/.master-bootstrapped'
-        m.write_text(json.dumps({'surface_ref': 'surface:1', 'orchestra_check': 'exit 0'}))
+        m.write_text(json.dumps({'surface_ref': self.master_ref, 'orchestra_check': 'exit 0'}))
         os.utime(m, (time.time() + 20, time.time() + 20))
 
     def test_all_good_still_passes(self):
@@ -159,7 +222,7 @@ class WaitLoop(S07Base):
         now = int(time.time())
         self.status(['master', 'cso', 'worker'], created=now + 5)
         (self.wave / 'fleet/started-at').write_text('%d\n' % (now - 10))
-        (self.wave / 'fleet/master-ref').write_text('surface:1\n')
+        (self.wave / 'fleet/master-ref').write_text(self.master_ref + '\n')
         (self.wave / 'fleet/declared').write_text('')
         before = (self.wave / 'status.json').read_text()
         stubs = ('wait_gui_onboarded(){ return 0; }; seed_claude_trust(){ return 0; }; '
@@ -172,9 +235,10 @@ class WaitLoop(S07Base):
         self.assertIn('각성 표지가 아직 없어', r.stderr)
 
     def test_waiting_line_reports_marker_and_seats(self):
-        self.status(['master', 'cso'])
+        self.status(['master'], source='mac_status_noboot.json')   # 실물 noboot 모양: master 만 생존
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '5', 'WAVE_WAIT_REPORT_SECONDS': '1'})
-        self.assertIn('기다리는 것: 각성 표지 없음 · 좌석 2/3 · 지침 주입 2/3', r.stderr)
+        self.assertIn('기다리는 것: 각성 표지 없음 · 좌석 1/3', r.stderr)
+        self.assertNotIn('주입', r.stderr)
 
     def test_every_app_gate_wording_pauses_the_budget(self):
         # 앱 first_run_gate.rs 의 질문 문면 전부(폴더 신뢰 4 · 권한 경고 2 · 큰 화면 권유)가 예산을 멈춘다.

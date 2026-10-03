@@ -2,7 +2,8 @@
 param(
   [switch]$Reinstall,
   [switch]$Resume,
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$UndoTrust
 )
 
 Set-StrictMode -Version Latest
@@ -964,10 +965,161 @@ function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$Declared
   [IO.File]::WriteAllText($DeclaredPath, '')
 }
 
+# 좌석이 첫 실행 관문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit)에서 Enter 한 번에 죽지 않게,
+# 좌석이 읽는 Wave 전용 설정 폴더(CLAUDE_CONFIG_DIR = CYS_ACCOUNT_DIR 또는 %USERPROFILE%\.cys\claude)의
+# .claude.json(projects.<폴더>.hasTrustDialogAccepted · hasCompletedOnboarding)에만 미리 기록한다.
+# 대상 폴더 = 좌석 cwd: master 는 Run-S07 launch-agent --cwd $env:USERPROFILE, cso·worker 는 master 가 홈에서 부르는 `cys boot`(cwd 미지정 → 호출 폴더).
+# 폴더 키는 두 꼴(C:\Users\x · C:/Users/x)을 함께 쓴다 — Claude 는 자기 꼴만 본다(원본 실측). 사용자 ~/.claude·~/.claude.json 은 읽지도 쓰지도 않는다.
+# 규칙은 lib/trust_seed.py(맥)와 같다: false 도 true 로 세우고 바꾸기 전 값을 기록 → 되돌리기는 우리가 세운 칸만(bootstrap.ps1 -UndoTrust).
+# Adapted from oogisoogi/jarvis-install bootstrap.ps1:3078-3195 Set-ClaudePrefs (df5efc8a, MIT, LICENSES/jarvis-install-MIT.txt).
+function Test-JsonTrue($Value) { return ($Value -is [bool] -and $Value) }
+
+function Read-JsonObject([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  $o = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+  if ($o -isnot [Management.Automation.PSCustomObject]) { throw "$(Split-Path -Leaf $Path) 최상위가 객체가 아님" }
+  return $o
+}
+
+function Write-JsonNoBom([string]$Path, [object]$Value) {
+  $tmp = $Path + '.wave-tmp'
+  [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $Value -Depth 100), [Text.UTF8Encoding]::new($false))
+  if (Test-Path -LiteralPath $Path -PathType Leaf) { [IO.File]::Replace($tmp, $Path, [NullString]::Value) } else { [IO.File]::Move($tmp, $Path) }
+}
+
+# 경로 끝 칸을 true 로. 이미 true 면 $null, 아니면 @(바꾸기 전 값, 새로 만든 중간 칸 수).
+function Set-JsonTrue([object]$Node, [string[]]$Path) {
+  $made = 0
+  foreach ($k in $Path[0..($Path.Count - 2)]) {
+    if ($Path.Count -eq 1) { break }
+    $p = $Node.PSObject.Properties[$k]
+    if ($null -eq $p) { $Node | Add-Member -NotePropertyName $k -NotePropertyValue ([pscustomobject]@{}); $p = $Node.PSObject.Properties[$k]; $made++ }
+    if ($p.Value -isnot [Management.Automation.PSCustomObject]) { throw "$k 칸이 객체가 아님" }
+    $Node = $p.Value
+  }
+  $leaf = $Node.PSObject.Properties[$Path[-1]]
+  if ($null -ne $leaf -and (Test-JsonTrue $leaf.Value)) { return $null }
+  $prior = if ($null -eq $leaf) { [pscustomobject]@{ absent = $true } } else { $leaf.Value }
+  $Node | Add-Member -NotePropertyName $Path[-1] -NotePropertyValue $true -Force
+  return ,@($prior, $made)
+}
+
+# hasCompletedOnboarding 은 로그인 관문까지 지우므로 $AuthVerified(좌석과 같은 설정 폴더로 claude auth status 통과)일 때만 넣는다
+# (원작 idoforgod/cys-terminal src/pack.rs U-19 V-h 실측 ③ — 미로그인 좌석이 「Not logged in」 인 채 살아 있다).
+function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [bool]$AuthVerified, [string[]]$Dirs) {
+  $files = [ordered]@{ cfg = (Join-Path $ConfigDir '.claude.json') }
+  $wants = @()
+  if ($AuthVerified) { $wants += ,@('cfg', @('hasCompletedOnboarding')) }
+  foreach ($d in ($Dirs | Select-Object -Unique)) { $wants += ,@('cfg', @('projects', $d, 'hasTrustDialogAccepted')) }
+  $datas = @{}; $created = @()
+  foreach ($n in $files.Keys) {
+    $datas[$n] = Read-JsonObject $files[$n]
+    if ($null -eq $datas[$n]) { $datas[$n] = [pscustomobject]@{}; $created += $files[$n] }
+  }
+  $changes = @(); $touched = @()
+  foreach ($w in $wants) {
+    $r = Set-JsonTrue $datas[$w[0]] $w[1]
+    if ($null -ne $r) {
+      $changes += [pscustomobject]@{ file = $files[$w[0]]; path = $w[1]; prior = $r[0]; made = $r[1] }
+      if ($touched -notcontains $w[0]) { $touched += $w[0] }
+    }
+  }
+  if ($changes.Count -eq 0) { return 'unchanged' }
+  $log = Read-JsonObject $Journal
+  if ($null -eq $log) { $log = [pscustomobject]@{ backups = [pscustomobject]@{}; created_files = @(); changes = @() } }
+  foreach ($n in $touched) {
+    $f = $files[$n]
+    if ($created -contains $f) { if (@($log.created_files) -notcontains $f) { $log.created_files = @(@($log.created_files) | Where-Object { $null -ne $_ }) + $f } }
+    elseif (-not (Test-Path -LiteralPath ($f + '.wave-bak'))) {
+      Copy-Item -LiteralPath $f -Destination ($f + '.wave-bak')
+      $log.backups | Add-Member -NotePropertyName $f -NotePropertyValue ($f + '.wave-bak') -Force
+    }
+  }
+  $log.changes = @(@($log.changes) | Where-Object { $null -ne $_ }) + $changes
+  New-Item -ItemType Directory -Force -Path $ConfigDir, (Split-Path -Parent $Journal) | Out-Null
+  Write-JsonNoBom $Journal $log   # 기록이 먼저 선다 — 기록 없는 변경을 남기지 않는다
+  foreach ($n in $touched) { Write-JsonNoBom $files[$n] $datas[$n] }
+  foreach ($w in $wants) {   # 되읽기 확인
+    $node = Read-JsonObject $files[$w[0]]
+    foreach ($k in $w[1]) { $node = if ($node -is [Management.Automation.PSCustomObject] -and $null -ne $node.PSObject.Properties[$k]) { $node.PSObject.Properties[$k].Value } else { $null } }
+    if (-not (Test-JsonTrue $node)) { throw "되읽기 확인 실패: $($w[1] -join '.')" }
+  }
+  return "changed $($changes.Count)"
+}
+
+function Undo-WaveClaudeTrust([string]$Journal) {
+  $log = Read-JsonObject $Journal
+  if ($null -eq $log) { return 'nothing' }
+  $datas = @{}; $dirty = @()
+  $list = @($log.changes); [array]::Reverse($list)
+  foreach ($c in $list) {
+    $f = [string]$c.file; $path = @($c.path)
+    if (-not $datas.ContainsKey($f)) { $datas[$f] = Read-JsonObject $f; if ($null -eq $datas[$f]) { $datas[$f] = [pscustomobject]@{} } }
+    $chain = @($datas[$f])
+    foreach ($k in $path[0..($path.Count - 2)]) {
+      if ($path.Count -eq 1) { break }
+      $p = $chain[-1].PSObject.Properties[$k]
+      if ($null -eq $p -or $p.Value -isnot [Management.Automation.PSCustomObject]) { break }
+      $chain += $p.Value
+    }
+    if ($chain.Count -ne $path.Count) { continue }
+    $leaf = $chain[-1].PSObject.Properties[$path[-1]]
+    if ($null -eq $leaf -or -not (Test-JsonTrue $leaf.Value)) { continue }   # 그 뒤 다른 값으로 바뀌었으면 그대로 둔다
+    if ($dirty -notcontains $f) { $dirty += $f }
+    if ($c.prior -is [Management.Automation.PSCustomObject] -and $null -ne $c.prior.PSObject.Properties['absent']) { $chain[-1].PSObject.Properties.Remove($path[-1]) }
+    else { $leaf.Value = $c.prior }
+    for ($i = $chain.Count - 1; $i -gt $chain.Count - 1 - [int]$c.made; $i--) {   # 우리가 만든 중간 칸이 비면 지운다
+      if (@($chain[$i].PSObject.Properties).Count -gt 0) { break }
+      $chain[$i - 1].PSObject.Properties.Remove($path[$i - 1])
+    }
+  }
+  foreach ($f in $dirty) {
+    if ((@($log.created_files) -contains $f) -and @($datas[$f].PSObject.Properties).Count -eq 0) { Remove-Item -LiteralPath $f -Force }
+    else { Write-JsonNoBom $f $datas[$f] }
+  }
+  Remove-Item -LiteralPath $Journal -Force
+  return "rolled back $(@($log.changes).Count)"
+}
+
+function Seed-WaveClaudeTrust {
+  $homeDir = ([string]$env:USERPROFILE).TrimEnd('\')
+  $root = if ($env:CYS_ACCOUNT_DIR) { $env:CYS_ACCOUNT_DIR } else { Join-Path $env:USERPROFILE '.cys\claude' }
+  $auth = $false
+  $saved = $env:CLAUDE_CONFIG_DIR
+  try { $env:CLAUDE_CONFIG_DIR = $root; & claude auth status *> $null; $auth = ($LASTEXITCODE -eq 0) } catch { } finally { $env:CLAUDE_CONFIG_DIR = $saved }
+  try {
+    $result = Set-WaveClaudeTrust $root (Join-Path $WaveHome 'trust-seed.json') $auth @($homeDir, ($homeDir -replace '\\', '/'))
+    Write-Log "폴더 신뢰 사전 기록: $result (Wave 전용 Claude 설정 · 홈 폴더 2꼴 · 로그인 $(if ($auth) { 'verified' } else { 'unproven' }))"
+  } catch {
+    Write-Log "주의: Wave 전용 Claude 설정에 폴더 신뢰를 미리 기록하지 못했습니다($($_.Exception.Message)) — 좌석에 「Quick safety check」 창이 뜨면 「Yes, I trust this folder」를 고르세요."
+  }
+}
+
+# S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고)이 보이면 안내를 한 번 띄우고 계속 기다린다.
+# 설치기는 어떤 키도 보내지 않는다 — 사람이 Wave 창에서 고른다. 판별은 질문문으로만 한다: 선택지 「Yes, I trust this folder」·확인 에코는
+# 근거가 아니다(원작 idoforgod/cys-terminal src/first_run_gates.rs needles · 2026-07-29 사고 원인).
+function Show-FirstRunGateNotice([object]$Status) {
+  if ((Get-Variable -Scope Script -Name GateNoticed -ValueOnly -ErrorAction SilentlyContinue) -or $null -eq $Status) { return }
+  $needles = @('Quicksafetycheck', 'Isthisaprojectyoucreatedoroneyoutrust', 'Doyoutrustthefilesinthisfolder', 'WARNING:ClaudeCoderunninginBypassPermissionsmode')
+  foreach ($seat in @($Status.surfaces | Where-Object { $_.exited -eq $false -and ([string]$_.role) -match '^(master|cso|worker)' -and $_.surface_ref })) {
+    try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { continue }
+    if ($screen.timed_out -or $screen.exit_code -ne 0) { continue }
+    $flat = ([string]$screen.stdout) -replace '\s', ''
+    foreach ($n in $needles) {
+      if ($flat.Contains($n)) {
+        Write-Log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($($seat.surface_ref))이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."
+        $script:GateNoticed = $true
+        return
+      }
+    }
+  }
+}
+
 function Run-S07 {
   $clock = [Diagnostics.Stopwatch]::StartNew()
   Start-WaveApp
   Wait-GuiOnboarded $clock
+  Seed-WaveClaudeTrust
   $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
   if (-not (Test-AwakenedFleet $status)) {
     $masters = @($status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })
@@ -1001,6 +1153,7 @@ function Run-S07 {
       $script:StepObserved = [ordered]@{ fleet_started = $true; master_awakened = $true; child_alive = $true; cso_alive = $true; seats = 3; roles = @('master','cso','worker'); source = 'cys status --json' }
       return
     }
+    Show-FirstRunGateNotice $status
     $sleepMs = Get-AwakeningBudgetMs $clock.ElapsedMilliseconds
     if ($sleepMs -gt 0) { Start-Sleep -Milliseconds $sleepMs }
   }
@@ -1309,6 +1462,7 @@ trap {
   exit 1
 }
 
+if ($UndoTrust) { Write-Host (Undo-WaveClaudeTrust (Join-Path $WaveHome 'trust-seed.json')); exit 0 }
 Load-Config
 if ($DryRun) {
   Write-Host "dry-run: $StepsFile / $StateFile / $LogFile"
@@ -1322,6 +1476,9 @@ if (Test-RecentInstallDone) {
 if ($env:WAVE_NO_PROGRESS -ne '1' -and (Get-Command Show-HelpNotice -ErrorAction SilentlyContinue)) {
   $HelpInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and -not ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
   Show-HelpNotice
+}
+if ($ScriptDir -and (Test-Path -LiteralPath (Join-Path (Join-Path $ScriptDir 'lib') 'trust-notice.txt') -PathType Leaf)) {
+  Write-Host ((Get-Content -LiteralPath (Join-Path (Join-Path $ScriptDir 'lib') 'trust-notice.txt') -Raw -Encoding UTF8).TrimEnd())
 }
 Init-State
 if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }

@@ -84,7 +84,7 @@ class UnfinishedOutcome(S07Base):
         self.assertEqual(obs['fleet_state'], 'alive_unconfirmed')
         self.assertEqual(obs['seats_alive'], 3)
         self.assertEqual(obs['j_code'], 'J-VER-04')   # J-UNK-00 대신 전용 진단 코드
-        self.assertNotIn('실패:', r.stderr)
+        self.assertNotIn('실패', r.stderr)   # 사용자 화면에는 부정형 포함 「실패」 글자 없음(관측 사실만)
         self.assertIn('세 칸 생존 · master 첫 답을 확인하세요', r.stderr)
         self.assertIn('같은 설치 명령을 다시 실행', r.stderr)
 

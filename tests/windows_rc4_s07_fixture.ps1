@@ -35,6 +35,7 @@ if ($Mode -eq 'unit') {
   if ($msg -ne 'W-FLEET-ALIVE-UNCONFIRMED' -or -not $script:AliveUnconfirmed) { throw "alive fleet not flagged ($msg)" }
   if ($StepObserved.fleet_started -ne $false -or $StepObserved.fleet_state -ne 'alive_unconfirmed' -or $StepObserved.seats_alive -ne 3 -or $StepObserved.j_code -ne 'J-VER-04') { throw 'observed contract' }
   if ((Get-JCode $msg) -ne 'J-VER-04') { throw 'W-FLEET-ALIVE-UNCONFIRMED not mapped to J-VER-04' }
+  if (($script:Said -join ' ') -match '실패') { throw 'failure wording on the exit-2 screen' }
   if (($script:Said -join ' ') -notmatch '세 칸 생존 · master 첫 답을 확인하세요' -or ($script:Said -join ' ') -notmatch '같은 설치 명령을 다시 실행') { throw 'next-step line missing' }
   foreach ($case in @(
       @{ rows = @((Row 'surface:1' 'master'), (Row 'surface:2' 'cso'), (Row 'surface:3' 'worker' $true $false $false)); want = '지침 주입 확인 2/3' },

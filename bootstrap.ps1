@@ -492,7 +492,7 @@ $HelpRulesJson = @'
     "code": "J-VER-04",
     "symptom": "세 칸은 살아 있지만 설치기가 각성 확인을 끝내지 못함",
     "pattern": "W-FLEET-ALIVE-UNCONFIRMED",
-    "action1": "설치 실패가 아닙니다. Wave 창에서 master 첫 답을 확인하세요.",
+    "action1": "세 칸 생존 · Wave 창에서 master 첫 답을 확인하세요.",
     "action2": "확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행하세요.",
     "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 주인님 윈 rc.3 실기 관측(원인 표지 미기록은 추론)",
     "os": "win",
@@ -1252,7 +1252,7 @@ function Complete-S07Unfinished {
   if ($roles.Count -eq 3 -and $injected -eq 3) {
     $script:AliveUnconfirmed = $true
     $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = 3; roles_alive = ($roles -join ','); launch_complete = 3; j_code = 'J-VER-04'; source = 'cys status --json' }
-    Say "세 칸 생존 · master 첫 답을 확인하세요. 설치 실패가 아닙니다: 세 칸($($roles -join ','))이 살아 있고 지침도 들어갔지만 설치기가 각성 표지를 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+    Say "세 칸 생존 · master 첫 답을 확인하세요. 세 칸($($roles -join ','))이 살아 있고 지침도 들어갔으며, 설치기는 각성 표지를 아직 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     throw 'W-FLEET-ALIVE-UNCONFIRMED'
   }
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }

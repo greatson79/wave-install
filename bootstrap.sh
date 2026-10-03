@@ -791,7 +791,7 @@ s07_unfinished() {
   read -r n roles injected <<< "$(live_role_seats)"
   if [[ "${n:-0}" -eq 3 && "${injected:-0}" -eq 3 ]]; then
     STEP_OBSERVED="{\"fleet_started\":false,\"fleet_state\":\"alive_unconfirmed\",\"seats_alive\":3,\"roles_alive\":\"$roles\",\"launch_complete\":3,\"j_code\":\"J-VER-04\"}"
-    log "J-VER-04 — 세 칸 생존 · master 첫 답을 확인하세요. 설치 실패가 아닙니다: 세 칸($roles)이 살아 있고 지침도 들어갔지만 설치기가 각성 표지를 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+    log "J-VER-04 — 세 칸 생존 · master 첫 답을 확인하세요. 세 칸($roles)이 살아 있고 지침도 들어갔으며, 설치기는 각성 표지를 아직 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     return 2
   fi
   fail_message "420초 안에 마스터·CSO·worker 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 ${n:-0}/3 · 지침 주입 확인 ${injected:-0}/3)"

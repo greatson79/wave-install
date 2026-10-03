@@ -35,11 +35,12 @@ elif a.cmd == "g2":
         rt = home / ".wave/bin/runtime"
         dirs = [rt / "python", rt / "git/cmd", rt / "git/usr/bin", rt / "node"]
     dirs = [str(d) for d in dirs if d.is_dir()]
-    env = dict(os.environ, PATH=os.pathsep.join(dirs + [os.environ.get("PATH", "")]))
+    env = dict(os.environ, PATH=os.pathsep.join(dirs + [os.environ.get("PATH", "")]), PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # 윈 기본 cp1252 에서는 한글 출력이 UnicodeEncodeError → stdout 빈 값(16차 G2 공백 근인 추정)
     (out / "G2_path.txt").write_text("runtime_dirs_prepended=%s\nPATH=%s\nuvx=%s\n" % (dirs, env["PATH"], shutil.which("uvx", path=env["PATH"])), encoding="utf-8")
     if os.name != "nt":
         (out / "G2_todo_files.txt").write_text(subprocess.run("ls -la ~/.cys/pack/round/*_TODO.md ~/.cys/pack/round 2>&1 | head -30; echo '--- pack.prev/round (init-pack 통째 교체에 밀린 곳):'; ls -la ~/.cys/pack.prev/round 2>&1 | head -30; echo '--- onboarding marker / mtimes:'; ls -la ~/.cys/.gui-onboarded 2>&1; cat ~/.cys/.gui-onboarded 2>&1 | head -3; stat -f '%Sm %N' -t '%H:%M:%S' ~/.cys/pack ~/.cys/pack.prev ~/.cys/pack/round ~/.cys/.pack-version 2>&1", shell=True, capture_output=True, text=True).stdout, encoding="utf-8")
-    r = subprocess.run([a.python, a.preflight, "--json"], capture_output=True, text=True, timeout=300, env=env)
+    r = subprocess.run([a.python, a.preflight, "--json"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, env=env)
+    (out / "G2_preflight.stderr").write_text(r.stderr or "", encoding="utf-8")
     json.loads(r.stdout)  # 깨진 JSON 이면 여기서 실패 — 증거를 만들지 않는다
     (out / "G2_preflight.json").write_text(r.stdout, encoding="utf-8")
     (out / "G2_preflight.exit").write_text(str(r.returncode))

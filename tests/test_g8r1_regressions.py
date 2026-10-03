@@ -372,6 +372,54 @@ class MacResumeAndPackTests(unittest.TestCase):
                 if want_rc:
                     self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5', name)  # 거부는 표식을 건드리지 않는다
 
+    def attempt(self, flags, recorded=None):
+        f = self.wave / 'attempt-started'
+        f.unlink(missing_ok=True)
+        if recorded is not None:
+            f.write_text(recorded)
+        r = self.bash('%s; attempt_start; echo "RUN=$RUN_STARTED"' % flags)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return int(r.stdout.split('RUN=')[1].split()[0]), f.read_text().strip()
+
+    def test_attempt_start_is_read_on_resume_and_rewritten_otherwise(self):
+        old = int(time.time()) - 500
+        now = int(time.time())
+        got, written = self.attempt('RESUME=1', str(old) + '\n')
+        self.assertEqual((got, written), (old, str(old)))                       # 재개 = 기록값을 읽는다
+        got, written = self.attempt('RESUME=0', str(old) + '\n')               # 새 설치 = 옛 값을 재사용하지 않는다
+        self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))
+        got, written = self.attempt('RESUME=1; REINSTALL=1', str(old) + '\n')  # --reinstall 은 --resume 과 같이 와도 새로 기록
+        self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))
+        for recorded in (None, 'garbage\n', '\n'):                            # 기록 없음·깨짐 = 새로 기록
+            got, written = self.attempt('RESUME=1', recorded)
+            self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))
+
+    def test_resumed_attempt_still_takes_over_the_master_restored_in_the_first_attempt(self):
+        # 첫 시도: 복원이 master 를 만든 뒤 S07 이 표식을 쓰기 전에 실패 → --resume. 새 RUN_STARTED 로는 그 master 가
+        # 「시작 전부터 있던 것」으로 보여 막혔다. 기록된 시도 시작을 읽으면 같은 시도의 master 로 수용된다.
+        first = int(time.time()) - 100
+        (self.wave / 'attempt-started').write_text(str(first) + '\n')
+        rows = [self.seat('surface:9', 'master', first + 10), self.seat('surface:20', 'cso', first + 12),
+                self.seat('surface:21', 'worker-1', first + 14)]
+        self.fleet.write_text(json.dumps({'surfaces': rows}))
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+        (self.wave / 'fleet/master-ref').write_text('surface:5\n')           # 이전 설치의 낡은 표식
+        (self.wave / 'fleet/started-at').write_text(str(first - 9999) + '\n')
+        r = self.bash('RESUME=1; attempt_start; step_s07; echo "RC=$?"')
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertFalse(self.new_surface_called())
+        self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:9')
+        # 반대: 기록된 시도 시작보다 먼저 있던 master 는 재개해도 거부
+        (self.wave / 'attempt-started').write_text(str(first + 11) + '\n')
+        (self.wave / 'fleet/master-ref').write_text('surface:5\n')
+        r = self.bash('RESUME=1; attempt_start; step_s07; echo "RC=$?"')
+        self.assertNotIn('RC=0', r.stdout)
+        self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
+
+    def test_main_records_the_attempt_start_right_after_init_state(self):
+        main = (ROOT / 'bootstrap.sh').read_text().split('\nmain() {', 1)[1]
+        self.assertRegex(main, r'\n  init_state\n  attempt_start\n')
+
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),
                  'duplicate': (['surface:5', 'surface:6'], 'surface:5', None),

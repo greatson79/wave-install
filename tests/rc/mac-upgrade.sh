@@ -24,7 +24,7 @@ echo "[rc-mac-upgrade] 기존 설치기 버전: $FROM"
 [ "$FROM" = "0.2.3" ] || { echo "v0.2.3 이 아님($FROM) — G5 측정 불가"; exit 1; }
 SUM="$(shasum -a 256 "$EV/from_v023_state.json" | awk '{print $1}')"
 printf '{"from_version":"%s","raw":[{"path":"from_v023_state.json","sha256":"%s"}]}\n' "$FROM" "$SUM" > "$EV/G5_meta.json"
-bash "$HERE/reset-fleet.sh"
+bash "$HERE/reset-fleet.sh" || exit 1
 CURL_CA_BUNDLE="$CA" python3 "$HERE/run_to.py" 1500 "$EV/run.log" -- bash -c "cd \"\$HOME\" && $ONE"; echo $? > "$EV/exit"
 PATH="$HOME/.wave/bin:$PATH"
 python3 "$HERE/collect.py" g2 --out "$EV" --preflight "$HOME/.cys/pack/bin/javis_preflight.py"

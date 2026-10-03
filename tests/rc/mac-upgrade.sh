@@ -11,6 +11,7 @@ cc -O0 -DLOGIC="\"$HOME/.local/share/rc-fake/logic.py\"" -o "$HOME/.local/bin/cl
 for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(4차 run: cys boot 가 claude 를 못 찾아 60초 미확인)
 python3 "$HERE/run_to.py" 1500 "$EV/from_v023.log" -- bash -c "cd \"\$HOME\" && $OLD"; echo $? > "$EV/from_v023.exit"
 cp "$HOME/.wave/install-state.json" "$EV/from_v023_state.json"
+cp "$HOME/.cys/pack/schedule.json" "$EV/baseline_schedule.json" 2>/dev/null   # 직전 릴리스(v0.2.3) 팩의 schedule.json — 동결 관문 기준값
 # 공개 v0.2.3 의 상태 파일 installer_version 은 0.1.3 으로 안 올려진 채 배포됐다(10/3 실측) → 받은 설치팩 주소·팩 steps.json 의 version 으로 판정
 FROM="$(python3 - "$EV/from_v023.log" "$HOME/.wave/src/pack/steps.json" <<'PY'
 import json, re, sys
@@ -30,5 +31,6 @@ python3 "$HERE/collect.py" g2 --out "$EV" --preflight "$HOME/.cys/pack/bin/javis
 cys pack-manifest > "$EV/pack-manifest.src.json" 2>/dev/null
 python3 "$HERE/collect.py" g3 --out "$EV" --manifest "$EV/pack-manifest.src.json"
 python3 "$HERE/collect.py" g4 --out "$EV"
+python3 "$HERE/collect.py" freeze --out "$EV" --baseline "$EV/baseline_schedule.json" --manifest "$EV/pack-manifest.src.json" --installed "$HOME/.cys/pack/schedule.json"
 miss=0; for f in G5_meta.json G2_preflight.json G3_inject.json G4_boot.json; do [ -s "$EV/$f" ] || { echo "증거 없음: $f"; miss=1; }; done
 exit $miss

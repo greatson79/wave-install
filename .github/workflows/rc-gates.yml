@@ -248,6 +248,37 @@ jobs:
           name: rc-evidence-win-kr-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
+  win-ctrlc:
+    # 측정 전용(관문 미산입): 윈도우에서 설치 중 도움 대기를 Ctrl+C 로 끝냈을 때의 종료값·상태 파일·남는 프로세스·도움 서버 close 호출 (노아 rc030-final major)
+    name: Windows Ctrl+C during the help wait (measurement only)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Fail the install on purpose, wait in help, send a real Ctrl+C
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode ctrlc -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Print the result
+        if: always()
+        shell: powershell
+        run: |
+          $f = "$env:RUNNER_TEMP\ev\win\ctrlc\ctrlc_result.json"; if (Test-Path $f) { Get-Content $f -Raw } else { Write-Host 'ctrlc_result.json 없음' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-ctrlc-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: warn
   win-upgrade:
     name: Windows G5 (public v0.2.3 then test release)
     needs: [cfg, assemble-win]

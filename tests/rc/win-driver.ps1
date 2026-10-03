@@ -9,7 +9,15 @@ function Native([scriptblock]$cmd) { $old = $ErrorActionPreference; $ErrorAction
 Native { & $ossl req -x509 -newkey rsa:2048 -nodes -keyout "$tls\k.pem" -out "$tls\c.pem" -days 1 -subj /CN=127.0.0.1 -addext 'subjectAltName=IP:127.0.0.1' }
 Native { & $ossl x509 -in "$tls\c.pem" -outform der -out "$tls\c.cer" }
 Import-Certificate -FilePath "$tls\c.cer" -CertStoreLocation Cert:\LocalMachine\Root | Out-Null   # 러너 로컬 신뢰(폐기 대상 시험 인증서)
-$srv = Start-Process $Py -ArgumentList @((Join-Path $Repo 'tests\rc\serve_https.py'), $RcDir, '8443', "$tls\c.pem", "$tls\k.pem") -PassThru -WindowStyle Hidden
+$serveDir = $RcDir
+if ($Mode -eq 'ctrlc') {
+  # 측정 전용(윈 Ctrl+C): 앱 설치 파일을 뺀 사본을 서빙해 S03 이 실패하게 하고, 도움 요청 API 흉내(serve_https.py)의 요청 로그를 증거 폴더에 남긴다
+  $serveDir = "$RcDir-ctrlc"; Copy-Item $RcDir $serveDir -Recurse -Force
+  Get-ChildItem $serveDir -Filter '*-setup.exe' | Remove-Item -Force
+  New-Item -ItemType Directory -Force "$Evidence\win\ctrlc" | Out-Null
+  $env:RC_HELP_LOG = "$Evidence\win\ctrlc\help_server.log"
+}
+$srv = Start-Process $Py -ArgumentList @((Join-Path $Repo 'tests\rc\serve_https.py'), $serveDir, '8443', "$tls\c.pem", "$tls\k.pem") -PassThru -WindowStyle Hidden
 Start-Sleep 3
 (Invoke-WebRequest -UseBasicParsing 'https://127.0.0.1:8443/rc-release.json').StatusCode | Out-Host
 $name = 'waverc' + (Get-Random -Minimum 10000 -Maximum 99999)

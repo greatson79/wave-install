@@ -925,7 +925,7 @@ function Test-AwakenedFleet([object]$Status) {
   if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { return $false }
   if ($null -ne $script:AwakeningStartedAt -and (Get-Item -LiteralPath $markerPath -Force).LastWriteTimeUtc -lt $script:AwakeningStartedAt) { return $false }
   try { $marker = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json } catch { return $false }
-  return ($marker.orchestra_check -eq 'exit 0' -and @($master.surface_ref) -contains $marker.surface_ref)
+  return ($marker.orchestra_check -eq 'exit 0' -and @($master | ForEach-Object { $_.surface_ref; ([string]$_.surface_ref -replace '^surface:', '') }) -contains [string]$marker.surface_ref)
 }
 
 function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {

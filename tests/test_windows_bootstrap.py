@@ -10,6 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get('PWSH') or shutil.which('pwsh')
 
 class BootstrapTests(unittest.TestCase):
+    def test_s07_accepts_full_and_numeric_master_surface_refs(self):
+        source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
+        contract = source.split('function Test-AwakenedFleet', 1)[1].split('function Get-AwakeningBudgetMs', 1)[0]
+        self.assertIn("$_.surface_ref; ([string]$_.surface_ref -replace '^surface:', '')", contract)
+        self.assertIn('-contains [string]$marker.surface_ref', contract)
+
     def test_release_pins_are_read_from_config_and_refreshed(self):
         self.run_ps(r'''
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'

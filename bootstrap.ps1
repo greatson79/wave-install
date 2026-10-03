@@ -928,30 +928,6 @@ function Test-AwakenedFleet([object]$Status) {
   return ($marker.orchestra_check -eq 'exit 0' -and @($master | ForEach-Object { $_.surface_ref; ([string]$_.surface_ref -replace '^surface:', '') }) -contains [string]$marker.surface_ref)
 }
 
-function Save-S07PredicateEvidence([string]$Phase, [object]$Status) {
-  # CI 진단 전용: 원문을 보존하되 설치 판정에는 관여하지 않는다.
-  try {
-    $markerPath = Join-Path $env:USERPROFILE '.cys\.master-bootstrapped'
-    $marker = Get-Item -LiteralPath $markerPath -Force -ErrorAction SilentlyContinue
-    $masters = @($Status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false } |
-      ForEach-Object { [ordered]@{ surface_ref = $_.surface_ref; agent_alive = $_.agent_alive } })
-    $startedUtc = $null; if ($null -ne $script:AwakeningStartedAt) { $startedUtc = $script:AwakeningStartedAt.ToString('o') }
-    $markerUtc = $null; $markerRaw = $null
-    if ($marker) { $markerUtc = $marker.LastWriteTimeUtc.ToString('o'); $markerRaw = [IO.File]::ReadAllText($markerPath) }
-    $trace = [ordered]@{
-      phase = $Phase; observed_at_utc = [DateTime]::UtcNow.ToString('o')
-      awakening_started_at_utc = $startedUtc
-      master = $masters; marker_exists = ($null -ne $marker)
-      marker_last_write_time_utc = $markerUtc
-      marker_raw = $markerRaw
-    }
-    $verify = Join-Path $WaveHome 'verify'
-    New-Item -ItemType Directory -Force -Path $verify | Out-Null
-    $path = Join-Path $verify ("s07-predicate-$Phase.json")
-    [IO.File]::WriteAllText($path, (ConvertTo-Json -InputObject $trace -Depth 6), [Text.UTF8Encoding]::new($false))
-  } catch { Write-Log "S07 판정 증거 수집 실패 ($Phase): $($_.Exception.Message)" }
-}
-
 function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {
   $remaining = 420000L - $ElapsedMs
   if ($remaining -le 0) { return 0 }
@@ -1187,6 +1163,7 @@ function Run-S07 {
       [IO.File]::WriteAllText($startedPath, [string]([DateTimeOffset]$script:AwakeningStartedAt).ToUnixTimeSeconds())
       # 앱 계약: launch-agent 가 agent 정보를 기록하고 MASTER 지침을 주입한다. 준비 표지·주입까지 기다리므로 상한 120초.
       $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
+      if (-not $created.timed_out -and $created.exit_code -eq 2) { throw '좌석은 열려 있습니다 — Wave 창에서 입력을 멈추고 같은 설치 명령을 다시 실행해 주세요' }
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
       Send-MasterDeclaration $clock $declaredPath
     } elseif ($masters.Count -eq 1 -and -not (Test-Path -LiteralPath $declaredPath) -and (Test-Path -LiteralPath $startedPath -PathType Leaf)) {
@@ -1201,8 +1178,7 @@ function Run-S07 {
   }
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {
     $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
-    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { Save-S07PredicateEvidence 'before-timeout' $status; break }
-    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 5000) { Save-S07PredicateEvidence 'before-timeout' $status }
+    if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { break }
     if (Test-AwakenedFleet $status) {
       $script:StepObserved = [ordered]@{ fleet_started = $true; master_awakened = $true; child_alive = $true; cso_alive = $true; seats = 3; roles = @('master','cso','worker'); source = 'cys status --json' }
       return
@@ -1211,7 +1187,6 @@ function Run-S07 {
     $sleepMs = Get-AwakeningBudgetMs $clock.ElapsedMilliseconds
     if ($sleepMs -gt 0) { Start-Sleep -Milliseconds $sleepMs }
   }
-  Save-S07PredicateEvidence 'after-timeout' $status
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
   throw '마스터·CSO·워커 각성 확인 420초 시간 초과'
 }
@@ -1268,22 +1243,8 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
     if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
   } finally { $process.Dispose() }
   # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
-  $stdout = $null; $stderr = $null; $readError = $null
-  try {
-    $stdout = Read-SharedCheckLog $stdoutPath
-    $stderr = Read-SharedCheckLog $stderrPath
-  } catch { $readError = $_.Exception.Message }
-  if ($Name -eq 'fleet-status') {
-    # S07 실패 뒤에도 마지막 조회의 응답·종료값·소요를 남긴다. 설치 판정은 바꾸지 않는다.
-    $trace = [ordered]@{ command = 'cys status --json'; timeout_ms = $TimeoutMs; elapsed_ms = $checkClock.ElapsedMilliseconds;
-      timed_out = (-not $finished); exit_code = $exitCode; kill_error = $killError;
-      stdout = $stdout; stderr = $stderr; read_error = $readError }
-    try {
-      $tracePath = Join-Path $verify ('fleet-status-' + [guid]::NewGuid().ToString('N') + '.json')
-      [IO.File]::WriteAllText($tracePath, (ConvertTo-Json -InputObject $trace -Depth 4), [Text.UTF8Encoding]::new($false))
-    } catch { }
-  }
-  if ($readError) { throw $readError }
+  $stdout = Read-SharedCheckLog $stdoutPath
+  $stderr = Read-SharedCheckLog $stderrPath
   return [pscustomobject]@{ timed_out = (-not $finished); timeout_ms = $TimeoutMs; exit_code = $exitCode; stdout = $stdout; stderr = $stderr; kill_error = $killError }
 }
 

@@ -24,7 +24,7 @@ Wave Terminal은 원개발자 idoforgod의 [`cys-terminal`](https://github.com/i
 
 ## 운영체제 안내
 
-Wave Terminal 앱 0.2.0 설치 자산은 macOS arm64 DMG가 시험판 `v0.3.0-rc.1`, Windows setup.exe가 시험판 `v0.3.0-rc.2` 주소에 연결됩니다. macOS DMG는 CI 빌드 앱(97bf4fc)을 ad-hoc 서명으로 다시 봉인한 재패키징이고(공증 없음), 별도 x64 빌드가 없어 `macos_x64` 항목도 같은 arm64 DMG를 가리킵니다.
+Wave Terminal 앱 0.2.0 설치 자산은 macOS arm64 DMG가 시험판 `v0.3.0-rc.1`, Windows setup.exe가 시험판 `v0.3.0-rc.3` 주소에 연결됩니다. macOS DMG는 CI 빌드 앱(97bf4fc)을 ad-hoc 서명으로 다시 봉인한 재패키징이고(공증 없음), 별도 x64 빌드가 없어 `macos_x64` 항목도 같은 arm64 DMG를 가리킵니다.
 
 공식 도메인은 별도 결재 후 연결하며, 그 전까지는 배포된 임시 URL만 검증 대상으로 삼습니다.
 

@@ -10,6 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get('PWSH') or shutil.which('pwsh')
 
 class BootstrapTests(unittest.TestCase):
+    def test_s07_retained_seat_exit_message_contract(self):
+        source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
+        contract = source.split("'master-create' (Get-AwakeningBudgetMs", 1)[1].split('Send-MasterDeclaration $clock $declaredPath', 1)[0]
+        self.assertIn("$created.exit_code -eq 2", contract)
+        self.assertIn("좌석은 열려 있습니다 — Wave 창에서 입력을 멈추고 같은 설치 명령을 다시 실행해 주세요", contract)
+        self.assertLess(contract.index("$created.exit_code -eq 2"), contract.index("throw '마스터 좌석 생성 실패'"))
+        self.assertIn("$created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패'", contract)
+
     def test_s07_accepts_full_and_numeric_master_surface_refs(self):
         source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
         contract = source.split('function Test-AwakenedFleet', 1)[1].split('function Get-AwakeningBudgetMs', 1)[0]

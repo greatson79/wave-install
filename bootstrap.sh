@@ -279,6 +279,10 @@ step_s00() {
   require_command zsh || return 1
   require_command df || return 1
   [[ "$(uname -s)" == "Darwin" ]] || fail_message "macOS가 아님" || return 1
+  # Apple Silicon 전용. Rosetta 셸은 uname -m 이 x86_64 라도 proc_translated=1(실제 Apple Silicon)이다.
+  [[ "$(uname -m)" == "arm64" || "$(sysctl -n sysctl.proc_translated 2>/dev/null)" == "1" ||
+     "$(sysctl -n hw.optional.arm64 2>/dev/null)" == "1" ]] ||
+    fail_message "J-VER-03 — W-ARCH: 이 판은 Apple Silicon(M1 이후) 맥 전용입니다 — Intel 맥은 아직 지원하지 않습니다" || return 1
   local free_kb min_kb probe
   free_kb="$(df -Pk "$HOME" | awk 'NR==2 {print $4}')"
   min_kb=$(( $(json_value "$STEPS_FILE" 'tooling.min_free_bytes') / 1024 ))

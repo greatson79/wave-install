@@ -407,6 +407,37 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertLess(body.index('release_cdhash_pin'), body.index('curl --fail'))
 
 
+class MacArchGateTests(unittest.TestCase):
+    """S00 stops on Intel macs; arm64 and Rosetta (proc_translated=1) pass. uname/sysctl are faked."""
+    def run_s00(self, machine, translated, arm64_flag):
+        with tempfile.TemporaryDirectory(prefix='wave-arch-') as tmp:
+            home = Path(tmp)
+            fakebin = home / 'fakebin'; fakebin.mkdir()
+            (fakebin / 'uname').write_text('#!/bin/sh\n[ "$1" = -m ] && echo %s || echo Darwin\n' % machine)
+            (fakebin / 'sysctl').write_text('#!/bin/sh\ncase "$2" in sysctl.proc_translated) %s;; hw.optional.arm64) %s;; esac\n'
+                                            % (translated, arm64_flag))
+            for f in fakebin.iterdir():
+                f.chmod(0o755)
+            steps = home / 'steps.json'
+            steps.write_text(json.dumps({'tooling': {'min_free_bytes': 1}}))
+            env = dict(os.environ, HOME=str(home), WAVE_HOME=str(home / 'wave'), STEPS_FILE=str(steps),
+                       PATH=str(fakebin) + ':' + os.environ['PATH'])
+            return subprocess.run(['bash', '-c', 'source "$1"; STEPS_FILE="$STEPS_FILE"; step_s00; echo "RC=$?"', 'arch',
+                                   str(functions_sh(home))], env=env, text=True, capture_output=True, timeout=30)
+
+    def test_intel_mac_stops_at_s00_with_message(self):
+        r = self.run_s00('x86_64', 'echo 0', 'echo 0')
+        self.assertNotIn('RC=0', r.stdout)
+        self.assertIn('J-VER-03', r.stderr)
+        self.assertIn('이 판은 Apple Silicon(M1 이후) 맥 전용입니다 — Intel 맥은 아직 지원하지 않습니다', r.stderr)
+
+    def test_arm64_and_rosetta_shell_pass(self):
+        for name, args in (('arm64', ('arm64', 'exit 1', 'exit 1')), ('rosetta', ('x86_64', 'echo 1', 'echo 0'))):
+            with self.subTest(name):
+                r = self.run_s00(*args)
+                self.assertIn('RC=0', r.stdout, r.stderr)
+
+
 class RedactionPatternTests(unittest.TestCase):
     SAMPLES = [
         'key AIzaSyA1234567890abcdefghijklmnopqrstuv end',

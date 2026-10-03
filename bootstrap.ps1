@@ -474,6 +474,16 @@ $HelpRulesJson = @'
     "sample": "W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다"
   },
   {
+    "code": "J-VER-03",
+    "symptom": "Apple Silicon이 아닌 맥(Intel 맥)에서 실행됨",
+    "pattern": "W-ARCH",
+    "action1": "이 판은 Apple Silicon(M1 이후) 맥 전용입니다. Intel 맥은 아직 지원하지 않습니다.",
+    "action2": "Apple Silicon 맥에서 같은 설치 명령을 실행하세요.",
+    "case": "우리 S00 아키텍처 검사 회귀(x86_64 모사·Rosetta proc_translated=1 통과); 실기 미관측",
+    "os": "mac",
+    "sample": "J-VER-03 — W-ARCH: 이 판은 Apple Silicon(M1 이후) 맥 전용입니다 — Intel 맥은 아직 지원하지 않습니다"
+  },
+  {
     "code": "J-DL-03",
     "symptom": "파일 지문 측정 실패",
     "pattern": "W-HASH-READ",

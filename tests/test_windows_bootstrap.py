@@ -409,6 +409,7 @@ New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.cys')|Out-Null
 $script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | ForEach-Object {
   [pscustomobject]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true}
 })}
+$fixtureStatus.surfaces[0].surface_ref = 'surface:1'
 $script:appCalls=0
 function Start-WaveApp { $script:appCalls++ }
 function Invoke-BoundedCheck {
@@ -417,11 +418,16 @@ function Invoke-BoundedCheck {
   return [pscustomobject]@{timed_out=$false;exit_code=0;stdout=($fixtureStatus|ConvertTo-Json -Depth 8);stderr=''}
 }
 if (Test-AwakenedFleet $fixtureStatus) { throw 'missing master marker accepted' }
-'{"surface_ref":"surface:master","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
+'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 '0.0.0'|Set-Content (Join-Path $env:USERPROFILE '.cys/.gui-onboarded') -Encoding UTF8
 Run-S07
 if ($StepObserved.seats -ne 3 -or ($StepObserved.roles -join ',') -ne 'master,cso,worker') { throw 'three-role fleet contract' }
 if (-not $StepObserved.fleet_started -or $appCalls -ne 1) { throw 'fleet evidence missing' }
+'{"surface_ref":"1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
+if (-not (Test-AwakenedFleet $fixtureStatus)) { throw 'numeric marker rejected for surface:1' }
+'{"surface_ref":"2","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
+if (Test-AwakenedFleet $fixtureStatus) { throw 'wrong numeric marker accepted' }
+'{"surface_ref":"1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 $fixtureStatus.surfaces[1].agent_alive=$false
 if (Test-AwakenedFleet $fixtureStatus) { throw 'dead CSO accepted' }
 ''')

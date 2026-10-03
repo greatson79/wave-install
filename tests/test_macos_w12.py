@@ -34,6 +34,9 @@ class W12Tests(unittest.TestCase):
                 (fleet/'status.json').write_text(json.dumps({'surfaces':rows}))
                 return subprocess.run(['bash','-c','source "$1"; verify_live_fleet surface:1 "$2"','fixture',str(lib),str(since)],env=dict(os.environ,HOME=td,WAVE_HOME=str(wave)),capture_output=True,timeout=5).returncode
             self.assertEqual(check(seats),0, 'three roles need no reviewer')
+            marker.write_text(json.dumps({'surface_ref':'1','orchestra_check':'exit 0'}))
+            self.assertEqual(check(seats),0, 'numeric master marker must match surface:1')
+            marker.write_text(json.dumps({'surface_ref':'surface:1','orchestra_check':'exit 0'}))
             self.assertNotEqual(check([seats[0],seats[2]]),0, 'missing CSO must fail')
             self.assertNotEqual(check([seats[0],seats[1]]),0, 'missing worker must fail')
             dead=[dict(s) for s in seats]; dead[1]['agent_alive']=False

@@ -598,7 +598,8 @@ bounded_command() {
   python3 - "$@" <<'PY_BOUND'
 import os, subprocess, sys
 try:
-    result = subprocess.run(sys.argv[1:], timeout=float(os.environ.get("WAVE_COMMAND_TIMEOUT", "30")))
+    # 자식(데몬을 자동기동하는 cys 포함)은 사용자 홈에서 시작한다 — 호출자 폴더를 물려받지 않게(2238 · 윈 -WorkingDirectory 와 대칭). 인자는 모두 절대 경로다.
+    result = subprocess.run(sys.argv[1:], timeout=float(os.environ.get("WAVE_COMMAND_TIMEOUT", "30")), cwd=os.environ.get("HOME") or None)
     sys.exit(result.returncode)
 except subprocess.TimeoutExpired:
     print("cys command timed out", file=sys.stderr)

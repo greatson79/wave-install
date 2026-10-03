@@ -167,3 +167,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/g
 ```
 
 압축 해제한 설치팩에는 `reinstall.sh`·`reinstall.ps1`도 동봉합니다. 이 보조 스크립트의 옛 환경/Run 정리는 위 bootstrap 명령과 별도 경로입니다.
+
+## 좌석 초기 설정과 reset
+
+CYS 좌석 설정 폴더(`CYS_ACCOUNT_DIR`, 기본 `~/.cys/claude`)의 settings.json에
+`autoUpdatesChannel=stable`을 기록합니다. theme는 맥에서 dark로 맞추고, 윈도에서는
+키가 없을 때만 dark를 넣습니다. 개인 `~/.claude` 설정은 수정하지 않습니다.
+
+설치팩에 동봉된 `reset.sh --apply --target wave|all` 및 `reset.ps1 -Apply -Target wave|all`은
+`.wave`를 삭제하기 전에 `trust-seed.tsv`에 기록된 홈 신뢰와 remoteControlAtStartup 값을
+되돌리고 작업폴더 신뢰 칸을 제거합니다. 원복 실패 시 삭제를 중단하고 저널을 남깁니다.
+`--list`/`-List`(기본값)와 `--target pack`/`-Target pack`은 이 설정을 바꾸지 않습니다.
+온보딩·fullscreen·theme·autoUpdatesChannel은 원작처럼 남습니다. reset은 기본 사용자
+`.wave`가 대상이며, 별도 WAVE_HOME 환경값을 원복 경로로 사용하지 않습니다.

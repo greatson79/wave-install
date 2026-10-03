@@ -56,7 +56,7 @@ $runText=($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.
 if($runText -match 'for \(\$attempt' -or $runText -notmatch 'Stopwatch.*StartNew' -or $runText -notmatch 'Get-LiveFleet \(Get-AwakeningBudgetMs'){throw 'deadline wiring absent'}
 Write-Host 'PASS CSO required/alive; reviewer excluded; 420-second remaining budget boundaries'
 function Start-WaveApp { }
-function Seed-WaveClaudeTrust { }  # 신뢰 사전 기록은 windows_trust_seed_fixture.ps1 이 따로 본다(여기서 진짜 claude 를 부르지 않게)
+function Seed-WaveClaudeTrust { }  # 신뢰 사전 기록은 windows_trust_seed_fixture.ps1 이 따로 본다(여기서 좌석 설정 파일을 쓰지 않게)
 $HelpRules=[object[]]([regex]::Match((Get-Content (Join-Path $PWD 'bootstrap.ps1') -Raw),"(?s)\`$HelpRulesJson = @'\r?\n(.*?)\r?\n'@").Groups[1].Value|ConvertFrom-Json)
 function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){ return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout="cys 9.9.9`n"} }
 $onboarded=Join-Path $env:USERPROFILE '.cys/.gui-onboarded'

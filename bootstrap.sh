@@ -599,7 +599,7 @@ step_s07() {
   deadline=$((SECONDS + 420))
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
   wait_gui_onboarded "$deadline" || return 1
-  seed_claude_trust
+  seed_claude_trust || return 1
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   # 재실행·resume: 이 설치가 앞서 만든 master(started-at 이후 생성, master-ref 기록이 있으면 그것과 일치) 하나만
   # 살아 있으면 새로 만들지 않고 재사용한다. master-ref 가 없으면 launch-agent 가 상한에 걸려 ref 를 못 받은 경우다.
@@ -669,22 +669,22 @@ PY_EXISTING
 
 }
 
-# 좌석이 첫 실행 관문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit)에서 Return 한 번에 죽지 않게,
-# 좌석이 읽는 Wave 전용 설정 폴더(CLAUDE_CONFIG_DIR = ${CYS_ACCOUNT_DIR:-$HOME/.cys/claude})의
-# .claude.json(projects.<폴더>.hasTrustDialogAccepted · hasCompletedOnboarding)에만 미리 기록한다.
-# 대상 폴더 = 좌석 cwd: master 는 아래 launch-agent --cwd "$HOME", cso·worker 는 master 가 홈에서 부르는 `cys boot`(cwd 미지정 → 호출 폴더).
-# 사용자 ~/.claude·~/.claude.json 은 읽지도 쓰지도 않는다. 되돌리기: python3 lib/trust_seed.py rollback "$WAVE_HOME/trust-seed.json"
-# Adapted from oogisoogi/jarvis-install bootstrap.sh:2711-3002 seed_claude_prefs/TRUST_SEED_FILE (df5efc8a, MIT, LICENSES/jarvis-install-MIT.txt).
-# hasCompletedOnboarding 은 로그인 관문까지 지우므로 좌석과 같은 설정 폴더로 `claude auth status` 가 통과할 때만 넣는다(trust_seed.py 머리말).
+# 좌석 첫 실행 질문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit) 사전 설정.
+# 지인 oogisoogi/jarvis-install bootstrap.sh:2713-3019 seed_claude_prefs·step_prepare 와 같은 규칙(df5efc8a, MIT,
+# LICENSES/jarvis-install-MIT.txt) — 키·범위·되돌리기는 lib/trust_seed.py 머리말. 대상 = 좌석이 읽는 설정 폴더
+# CLAUDE_CONFIG_DIR = ${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}(원작 :2716 의 「자비스 전용」 자리 · 있을 때만).
+# 작업 폴더 = $WAVE_HOME(원작 $JARVIS_HOME) · 홈 = 좌석 cwd. 기록 = $WAVE_HOME/trust-seed.tsv(원작 :99).
+# 되돌리기: python3 lib/trust_seed.py rollback "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" "$WAVE_HOME/trust-seed.tsv" "$WAVE_HOME"
+# 기록 실패만 단계 실패(J-PERM-01 · 원작 :3011-3019), 그 밖의 실패는 안내 후 계속(원작 :2862-2863 human).
 seed_claude_trust() {
-  local cfg="${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" dirs=("$HOME") real result auth=unproven
-  real="$(cd "$HOME" && pwd -P)" && [[ "$real" != "$HOME" ]] && dirs+=("$real")
-  PATH="$PATH:$HOME/.local/bin" CLAUDE_CONFIG_DIR="$cfg" WAVE_COMMAND_TIMEOUT=20 bounded_command claude auth status >/dev/null 2>&1 && auth=verified
-  if result="$(python3 "$SCRIPT_DIR/lib/trust_seed.py" seed "$cfg" "$WAVE_HOME/trust-seed.json" "$auth" "${dirs[@]}")"; then
-    log "폴더 신뢰 사전 기록: $result (Wave 전용 Claude 설정 · 폴더 ${#dirs[@]}곳 · 로그인 $auth)"
-  else
-    log "주의: Wave 전용 Claude 설정에 폴더 신뢰를 미리 기록하지 못했습니다 — 좌석에 「Quick safety check」 창이 뜨면 「Yes, I trust this folder」를 고르세요."
-  fi
+  local out rc=0
+  out="$(python3 "$SCRIPT_DIR/lib/trust_seed.py" seed "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" "$WAVE_HOME/trust-seed.tsv" "$WAVE_HOME" "$HOME")" || rc=$?
+  [[ -n "$out" ]] && log "     $out"
+  case "$rc" in
+    0) ;;
+    3) fail_message "J-PERM-01 — 홈 폴더 신뢰 기록을 남기지 못했습니다(쓰기 권한이 없거나 저장 공간 부족) — 그 설정은 넣지 않았고, 여기서 멈춥니다. 저장 공간과 백신 알림을 확인하신 뒤 다시 실행해 주십시오." ;;
+    *) log "     (사전 설정을 걸지 못했습니다. 클로드가 처음 몇 가지를 물을 수 있습니다.)" ;;
+  esac
 }
 
 # S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고)이 보이면 안내를 한 번 띄우고 계속 기다린다.
@@ -1013,7 +1013,6 @@ main() {
   fi
   HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
   show_help_notice
-  [[ -f "$SCRIPT_DIR/lib/trust-notice.txt" ]] && cat -- "$SCRIPT_DIR/lib/trust-notice.txt"
   init_state
   # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)
   local id idx title status

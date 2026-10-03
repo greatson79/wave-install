@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 NAME="wave-install-$VER"; TGZ="$OUT/$NAME.tar.gz"; ZIP="$OUT/$NAME.zip"
 mkdir -p "$OUT"; STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/$NAME"
-(cd "$ROOT" && cp -R bootstrap.sh bootstrap.ps1 steps.json install-state.json wave-pack LICENSES LICENSE reinstall.sh reinstall.ps1 README.md lib "$STAGE/$NAME/")
+(cd "$ROOT" && cp -R bootstrap.sh bootstrap.ps1 steps.json install-state.json wave-pack LICENSES LICENSE reinstall.sh reinstall.ps1 reset.sh reset.ps1 README.md lib "$STAGE/$NAME/")
 find "$STAGE/$NAME/lib" -name '__pycache__' -prune -exec rm -rf {} +  # 설치 도움 lib(R5): 소스만 동봉
 [[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$STAGE/$NAME/steps.json")" == "$VER" ]] \
   || { echo "steps.json version 이 $VER 와 다름" >&2; exit 1; }

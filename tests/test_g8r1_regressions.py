@@ -226,8 +226,6 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.fakebin.mkdir()
         (self.fakebin / 'open').write_text('#!/bin/sh\nexit 0\n')
         (self.fakebin / 'open').chmod(0o755)
-        (self.fakebin / 'claude').write_text('#!/bin/sh\nexit 1\n')  # S07 신뢰 사전 기록의 로그인 확인이 진짜 claude 를 부르지 않게
-        (self.fakebin / 'claude').chmod(0o755)
         self.log = self.home / 'cys-calls.log'
         cys = self.wave / 'bin/cys'
         cys.write_text('#!/bin/sh\necho "$*" >> "$CYS_LOG"\ncase "$1" in\n'

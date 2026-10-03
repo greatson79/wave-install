@@ -229,7 +229,8 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.log = self.home / 'cys-calls.log'
         cys = self.wave / 'bin/cys'
         cys.write_text('#!/bin/sh\necho "$*" >> "$CYS_LOG"\ncase "$1" in\n'
-                       'status) cat "$FLEET_JSON";;\nlaunch-agent) echo surface:9;;\n'
+                       'status) cat "$FLEET_JSON";;\nsend) exit "${SEND_RC:-0}";;\n'
+                       'launch-agent) [ -n "$FLEET_AFTER" ] && cp "$FLEET_AFTER" "$FLEET_JSON"; touch "$HOME/.cys/.master-bootstrapped"; echo surface:5;;\n'
                        'pack-manifest) cat "$MANIFEST_JSON";;\ninit-pack) sh -c "$INIT_PACK_ACTION";;\nesac\n')
         cys.chmod(0o755)
         self.lib = functions_sh(self.home)
@@ -267,6 +268,26 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
         self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(self.since))
         self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+
+    def test_new_master_gets_queued_declaration_after_launch_agent(self):
+        future = int(time.time()) + 100
+        self.prepare([], saved_ref=None)
+        after = self.home / 'fleet-after.json'
+        after.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', future), self.seat('surface:20', 'cso', future),
+                                                  self.seat('surface:21', 'worker-1', future)]}))
+        self.env['FLEET_AFTER'] = str(after)
+        r = self.bash('step_s07; echo "RC=$?"')
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        calls = self.log.read_text().splitlines()
+        launch = next(i for i, c in enumerate(calls) if c.startswith('launch-agent --role master'))
+        send = next(i for i, c in enumerate(calls) if c.startswith('send --queued --to master 너는 마스터다 — '))
+        self.assertLess(launch, send)
+        self.assertNotIn('\n', calls[send])
+        self.log.unlink(); self.fleet.write_text(json.dumps({'surfaces': []})); self.env['SEND_RC'] = '3'
+        (self.wave / 'fleet/master-ref').unlink(); (self.wave / 'fleet/started-at').unlink()
+        r = self.bash('step_s07; echo "RC=$?"')
+        self.assertNotIn('RC=0', r.stdout)
+        self.assertIn('J-PATH-02', r.stderr)
 
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),

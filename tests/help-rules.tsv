@@ -8,6 +8,7 @@ J-NET-02	설치 설정 서버에서 응답을 받지 못함	W-CONFIG-NET	설치 
 J-NET-03	릴리스 서버에서 응답을 받지 못함	W-DOWNLOAD-NET|(?i:timed out|timeout|connection.*reset)	릴리스 서버 연결과 프록시 설정을 확인하세요.	잠시 뒤 다시 실행하세요. 진행 보고 실패는 설치를 막지 않습니다.	우리 S03 다운로드 실패 회귀; 실기 미관측	win	W-DOWNLOAD-NET: 릴리스 요청 실패
 J-RM-01	파일이 사용 중이라 설치 작업 실패	(?i)being used by another process|sharing violation|파일.*사용 중	열려 있는 Wave Terminal 창을 닫으세요.	같은 설치 명령을 다시 실행하세요.	우리 파일 잠금 오류 주입 회귀; 실기 미관측	win	The file is being used by another process
 J-PATH-01	필요한 명령 또는 설치 결과 경로가 없음	명령 없음|셸 경로 불일치|cys/cysd 경로가 없음|cysd 없음	새 PowerShell 창에서 명령과 사용자 설치 경로를 확인하세요.	claude 또는 minisign이 없으면 해당 도구 설치를 완료하세요.	우리 S04 설치 결과 누락 회귀 및 S01 명령 검사	win	claude 명령 없음
+J-PATH-02	master 좌석에 선언 문구를 전달하지 못함	W-DECLARE	Wave Terminal 창에 master 좌석이 열려 있는지 확인하세요.	같은 설치 명령을 다시 실행하세요.	우리 S07 선언 큐 전달 실패 회귀; 실기 미관측	win	W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다
 J-LOGIN-01	Claude 인증 상태 확인 실패	Claude 로그인 상태 확인 실패	claude auth login으로 브라우저 승인을 마치세요.	같은 설치 명령을 다시 실행하세요. 토큰은 보내지 마세요.	우리 S02 비정상 종료 회귀; 실제 계정 로그인 미검증	win	Claude 로그인 상태 확인 실패
 J-LOGIN-02	인증 코드가 거부됨	(?i)invalid.*(?:authorization|authentication).*code|로그인 코드.*거부	새 로그인 흐름에서 발급된 코드를 사용하세요.	계속 실패하면 오류 코드만 담당자에게 알려 주세요.	우리 인증 오류 주입 회귀; 현 S02는 코드 입력을 수집하지 않음	win	Invalid authentication code
 J-HOME-01	허용되지 않는 작업 폴더	사용자 프로필 밖 경로|W-HOME	WAVE_HOME을 해제하고 사용자 프로필 안 기본 경로로 다시 실행하세요.	기존 사용자 파일은 삭제하지 마세요.	우리 Assert-UserPath 경계 검사 회귀	win	사용자 프로필 밖 경로는 허용하지 않음

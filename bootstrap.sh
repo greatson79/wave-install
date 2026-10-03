@@ -630,6 +630,11 @@ PY_EXISTING
     [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+    # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
+    # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
+    awakening_command "$deadline" "$WAVE_HOME/bin/cys" send --queued --to master \
+      '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.' >/dev/null ||
+      fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
   fi
   while (( SECONDS < deadline )); do
     remaining=$((deadline - SECONDS))

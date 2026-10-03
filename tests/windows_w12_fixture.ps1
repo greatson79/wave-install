@@ -87,3 +87,19 @@ $script:AwakeningStartedAt=[DateTime]::UtcNow.AddMinutes(1)
 if((Get-MasterAwakeState $live) -ne 'unconfirmed'){throw 'stale transcript counted as awake'}
 $script:AwakeningStartedAt=$null
 Write-Host 'PASS master awake evidence: assistant record confirmed; user-only/stale/missing unconfirmed'
+$script:calls=@(); $script:launched=$false; $script:sendExit=0
+'9.9.9'|Set-Content $onboarded
+function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:launched){return $live}; return [pscustomobject]@{surfaces=@()} }
+function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
+ $script:calls += ($Arguments -join ' ')
+ if($Arguments[0] -eq 'launch-agent'){$script:launched=$true;'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker}
+ return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout="cys 9.9.9`n"}
+}
+Run-S07
+$li=[array]::FindIndex([string[]]$script:calls,[Predicate[string]]{param($c) $c -like 'launch-agent --role master*'})
+$si=[array]::FindIndex([string[]]$script:calls,[Predicate[string]]{param($c) $c -like 'send --queued --to master "너는 마스터다 — *'})
+if($li -lt 0 -or $si -le $li -or $script:calls[$si].Contains("`n")){throw 'declaration not queued after launch-agent'}
+$script:calls=@(); $script:launched=$false; $script:sendExit=3
+$blocked=$false; try {Run-S07} catch {$blocked=((Get-JCode $_.Exception.Message) -eq 'J-PATH-02')}
+if(-not $blocked){throw 'declaration send failure not mapped to J-PATH-02'}
+Write-Host 'PASS master launch-agent then queued one-line declaration; send failure J-PATH-02'

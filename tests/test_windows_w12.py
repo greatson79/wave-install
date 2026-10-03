@@ -19,6 +19,7 @@ class WindowsW12Tests(unittest.TestCase):
             self.assertIn("PASS stale marker rejected; custom directive preserved; mismatch/new blocked", result.stdout)
             self.assertIn("PASS onboarding marker wait", result.stdout)
             self.assertIn("PASS master awake evidence", result.stdout)
+            self.assertIn("PASS master launch-agent then queued one-line declaration", result.stdout)
             self.assertEqual(result.stderr, "", result.stderr)
 
 if __name__ == "__main__":

@@ -384,6 +384,16 @@ $HelpRulesJson = @'
     "sample": "claude 명령 없음"
   },
   {
+    "code": "J-PATH-02",
+    "symptom": "master 좌석에 선언 문구를 전달하지 못함",
+    "pattern": "W-DECLARE",
+    "action1": "Wave Terminal 창에 master 좌석이 열려 있는지 확인하세요.",
+    "action2": "같은 설치 명령을 다시 실행하세요.",
+    "case": "우리 S07 선언 큐 전달 실패 회귀; 실기 미관측",
+    "os": "win",
+    "sample": "W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다"
+  },
+  {
     "code": "J-LOGIN-01",
     "symptom": "Claude 인증 상태 확인 실패",
     "pattern": "Claude 로그인 상태 확인 실패",
@@ -946,6 +956,11 @@ function Run-S07 {
       # 앱 계약: launch-agent 가 agent 정보를 기록하고 MASTER 지침을 주입한다. 준비 표지·주입까지 기다리므로 상한 120초.
       $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
+      # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
+      # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
+      $declaration = '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 각각 한 좌석씩 소환해 마스터를 포함한 세 좌석의 각성을 확인해 주세요. 리뷰어는 기다리지 마세요.'
+      $sent = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('send', '--queued', '--to', 'master', ('"' + $declaration + '"')) 'master-declare' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 15000)
+      if ($sent.timed_out -or $sent.exit_code -ne 0) { throw 'W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다' }
     }
   }
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {

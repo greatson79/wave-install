@@ -12,8 +12,8 @@ STEPS = ROOT / "steps.json"
 BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
 MAC = "wave-terminal-0.2.0-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
 WIN = "wave-terminal-0.2.0-windows-x64-setup.exe"
-MAC_SHA = "97e3c9344b5ae1b20dd502aed6ee015ff5c33bfd89e686c334acc369974a966b"
-CDHASH = "17730251fcebff0a7ee60f72b8322255a1627f3a"
+MAC_SHA = "9219ad876eb02af89ba7edbbe2cc79751fdcf3c46febaa0c220c574bc2cd8cb5"
+CDHASH = "5f6c11301d6582d10447811360b167a21da0041d"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:

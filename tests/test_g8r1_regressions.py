@@ -484,9 +484,45 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
 
+    def test_resumed_attempt_uses_the_recorded_start_as_the_s07_since(self):
+        # 2231 결재 조건: 재개 시 기록된 시도 시작 시각을 S07 기준으로 재사용 — 기록 시작 뒤 복원된 cso·worker 를 수용하고 started-at 에도 그 값이 남는다
+        first = int(time.time()) - 100
+        (self.wave / 'attempt-started').write_text(str(first) + '\n')
+        self.fleet.write_text(json.dumps({'surfaces': [self.seat('surface:9', 'master', first + 10), self.seat('surface:20', 'cso', first + 12),
+                                                        self.seat('surface:21', 'worker-1', first + 14)]}))
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+        r = self.bash('RESUME=1; attempt_start; step_s07; echo "RC=$?"')
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(first))
+
     def test_main_records_the_attempt_start_right_after_init_state(self):
         main = (ROOT / 'bootstrap.sh').read_text().split('\nmain() {', 1)[1]
         self.assertRegex(main, r'\n  init_state\n  attempt_start\n')
+
+    def test_seats_restored_before_s07_entry_count_when_after_the_attempt_start(self):
+        # G6 420초: 복원이 S07 진입(초 버림 date +%s) 직전에 만든 cso·worker 가 created_at < since 로 배제되어 대기했다.
+        # since 는 이번 시도 시작(RUN_STARTED) — 그 뒤·S07 진입 초 앞에 생긴 좌석은 수용, 시작 이전 좌석은 여전히 배제.
+        start = int(time.time()) - 5
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:5', 'orchestra_check': 'exit 0'}))
+        def fleet(cso_created):
+            self.fleet.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', start + 4), self.seat('surface:20', 'cso', cso_created),
+                                                           self.seat('surface:21', 'worker-1', start + 2)]}))
+        cases = ((start, True), (start + 1, True), (start - 1, False))   # 시작과 같음·직후 = 수용 / 1초 전 = 배제
+        for cso_created, want in cases:
+            with self.subTest(cso_created - start):
+                fleet(cso_created)
+                (self.wave / 'fleet/status.json').write_text(self.fleet.read_text())
+                r = self.bash('RUN_STARTED=%d; verify_live_fleet surface:5 "$RUN_STARTED"; echo "VERIFY=$?"' % start)
+                self.assertEqual('VERIFY=0' in r.stdout, want, r.stdout + r.stderr)
+        # step 전체 흐름: 신규 master 경로에서도 started 가 RUN_STARTED 이므로 시작 뒤·진입 초 앞의 복원 좌석으로 완료된다
+        after = self.home / 'fleet-after.json'
+        after.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', start + 4), self.seat('surface:20', 'cso', start + 1),
+                                                  self.seat('surface:21', 'worker-1', start + 2)]}))
+        self.env['FLEET_AFTER'] = str(after)
+        self.fleet.write_text(json.dumps({'surfaces': []}))
+        r = self.bash('RUN_STARTED=%d; step_s07; echo "RC=$?"; echo "$STEP_OBSERVED"' % start)
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(start))
 
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),

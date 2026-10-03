@@ -122,6 +122,11 @@ class T(unittest.TestCase):
         self.assertEqual(run(b / "G5", ["C62.pack-heal-ledger"])[0], gate.PASS)
         v = run(b, ["C60.gate-wiring"]); self.assertEqual(v[0], gate.FAIL); self.assertIn("릴리스 차단", v[1])
 
+    def test_g5_requires_zero_new_files_after_upgrade(self):
+        b = self.d / "mac"; f = b / "G5" / "G3_inject.json"; doc = json.loads(f.read_text()); doc["new_file_count"] = 2
+        f.write_text(json.dumps(doc)); v = gate.g5(b, self.d / "common")
+        self.assertEqual(v[0], gate.FAIL)
+
     def test_g1_ci_scope(self):
         f = self.d / "mac" / "G1_state.json"; d = json.loads(f.read_text())
         for k in ("S02", "S07"): d["steps"][k] = {"status": "failed"}

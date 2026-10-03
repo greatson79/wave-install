@@ -159,7 +159,13 @@ def g5(b, c=None):
     def extra(s):
         d, bad = need(s, "G5_meta.json")
         if bad: return bad
-        return (PASS, "from %s" % d["from_version"]) if d.get("from_version") == "0.2.3" else (FAIL, "from_version=%s (0.2.3 기대)" % d.get("from_version"))
+        if d.get("from_version") != "0.2.3": return FAIL, "from_version=%s (0.2.3 기대)" % d.get("from_version")
+        # 테오 1057: G5 조건 = v0.2.3 → 새 판 업그레이드 후 맥·윈 모두 .new 0 (실측 개수 — 판정은 G3 의 .new 와 같은 증거 파일에서 별도로 한 번 더 명시)
+        g3d, bad3 = need(s, "G3_inject.json")
+        if bad3: return bad3
+        nf = g3d.get("new_file_count")
+        if type(nf) is not int or nf != 0: return FAIL, "업그레이드 후 .new %s개 (0 기대)" % nf
+        return PASS, "from %s · 업그레이드 .new 0" % d["from_version"]
     return sub(b, "G5", extra)
 
 

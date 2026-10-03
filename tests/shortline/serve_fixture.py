@@ -1,6 +1,11 @@
 """Loopback-only, inert installer fixture. Never imports/runs the real installer."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import socket
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from render_win_start import render
 
 PAYLOAD = b'wave-shortline-fixture-v1\n'
 # Locked literal: never derive expected digest from the bytes served by a test.
@@ -8,24 +13,9 @@ EXPECTED_SHA = 'ebd458ac6147aeb7f085795283c6b088467c2a7c9b22cbffce253f0fe750b300
 BOM = b'\xef\xbb\xbf'
 
 
-def stub(base):
-    return (r'''& {
-  $ErrorActionPreference = 'Stop'
-  $ProgressPreference = 'SilentlyContinue'
-  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-  $d = Join-Path ([IO.Path]::GetTempPath()) ('wave-start-' + [guid]::NewGuid().ToString('N'))
-  $null = New-Item -ItemType Directory -Path $d
-  $f = Join-Path $d 'bootstrap.ps1'
-  try {
-    Invoke-WebRequest -UseBasicParsing -Uri '__BASE__/bootstrap.ps1' -OutFile $f
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f
-    if ($LASTEXITCODE -ne 0) { throw "Wave installer failed (exit $LASTEXITCODE)." }
-  } finally {
-    if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force }
-    if (Test-Path -LiteralPath $d) { Remove-Item -LiteralPath $d }
-  }
-}
-'''.replace('__BASE__', base)).encode('ascii')
+def stub(base, child_exit=False):
+    # Pin the complete canonical fixture before transport corruption is applied.
+    return render(bootstrap(base, child_exit), base + '/bootstrap.ps1', fixture=True)
 
 
 def bootstrap(base, child_exit=False):
@@ -99,7 +89,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
         elif self.path == '/win-start.ps1':
-            self.reply(stub(self.server.base), content_type='text/plain; charset=us-ascii')
+            self.reply(stub(self.server.base, self.server.mode == 'child7'), content_type='text/plain; charset=us-ascii')
         elif self.path == '/bootstrap.ps1':
             if self.server.mode == 'bootstrap404':
                 self.reply(b'not found', 404)

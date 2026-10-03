@@ -78,5 +78,26 @@ class FixtureTests(unittest.TestCase):
         self.assertNotIn(b'FIXTURE_DONE', body)
 
 
+class StubPinTests(unittest.TestCase):
+    def test_download_hash_checked_before_child_execution(self):
+        body = stub('http://127.0.0.1:12345')
+        expected = hashlib.sha256(bootstrap('http://127.0.0.1:12345')).hexdigest().encode()
+        self.assertIn(expected, body)
+        self.assertLess(body.index(b'BOOTSTRAP_SHA_MISMATCH'), body.index(b'& powershell.exe'))
+        self.assertNotEqual(hashlib.sha256(bootstrap('http://127.0.0.1:12345')[:8]).hexdigest().encode(), expected)
+
+    def test_product_renderer_requires_https_and_bom(self):
+        from render_win_start import render
+        content = BOM + b"Write-Output 'fixture'"
+        for url in ('http://example.com/bootstrap.ps1', "https://example.com/a'b", 'https://example.com/a\n'):
+            with self.assertRaises(ValueError):
+                render(content, url)
+        with self.assertRaises(ValueError):
+            render(b'no-bom', 'https://example.com/bootstrap.ps1')
+        result = render(content, 'https://example.com/releases/v1/bootstrap.ps1')
+        self.assertTrue(result.isascii())
+        self.assertIn(hashlib.sha256(content).hexdigest().encode(), result)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

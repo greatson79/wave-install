@@ -484,6 +484,17 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
 
+    def test_resumed_attempt_uses_the_recorded_start_as_the_s07_since(self):
+        # 2231 결재 조건: 재개 시 기록된 시도 시작 시각을 S07 기준으로 재사용 — 기록 시작 뒤 복원된 cso·worker 를 수용하고 started-at 에도 그 값이 남는다
+        first = int(time.time()) - 100
+        (self.wave / 'attempt-started').write_text(str(first) + '\n')
+        self.fleet.write_text(json.dumps({'surfaces': [self.seat('surface:9', 'master', first + 10), self.seat('surface:20', 'cso', first + 12),
+                                                        self.seat('surface:21', 'worker-1', first + 14)]}))
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+        r = self.bash('RESUME=1; attempt_start; step_s07; echo "RC=$?"')
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(first))
+
     def test_main_records_the_attempt_start_right_after_init_state(self):
         main = (ROOT / 'bootstrap.sh').read_text().split('\nmain() {', 1)[1]
         self.assertRegex(main, r'\n  init_state\n  attempt_start\n')

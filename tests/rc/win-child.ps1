@@ -12,10 +12,19 @@ if ($admin) { throw 'administrator token is prohibited' }
 $one = (Get-Content $RcJson -Raw -Encoding UTF8 | ConvertFrom-Json).one_line
 function OneLine([string]$line, [string]$log, [int]$sec = 1500) {
   # 로그인 대기로 멈추지 않게: stdin 은 빈 파일, 25분 상한, 시간 초과 시 프로세스 트리 종료(exit 124)
-  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($line)); $empty = Join-Path $env:TEMP 'rc-empty.txt'; '' | Set-Content $empty
+  # 자식 PS 5.1의 기본 콘솔 코드페이지는 한글을 ?로 바꿀 수 있다. 출력 생산 단계에서 UTF-8(무 BOM)로 고정한다.
+  $script = '$utf8 = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; $env:PYTHONIOENCODING = "utf-8"; $global:LASTEXITCODE = 0; ' + $line + '; exit $LASTEXITCODE'
+  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)); $empty = Join-Path $env:TEMP 'rc-empty.txt'; '' | Set-Content $empty
   $p = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -RedirectStandardInput $empty -PassThru -WindowStyle Hidden
   if (-not $p.WaitForExit($sec * 1000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Get-Process claude -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; return 124 }
   return $p.ExitCode
+}
+function Assert-Utf8Raw([string]$path) {
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "UTF-8 증거 없음: $path" }
+  $bytes = [IO.File]::ReadAllBytes($path)
+  if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { throw "UTF-8 BOM 금지: $path" }
+  $strict = [Text.UTF8Encoding]::new($false, $true)
+  try { $null = $strict.GetString($bytes) } catch { throw "UTF-8 디코드 실패: $path" }
 }
 function Copy-FleetStatusEvidence([string]$out) {
   $src = Join-Path $h '.wave\verify'; $dest = Join-Path $out 'fleet-status'
@@ -115,6 +124,11 @@ try {
     return
   }
   New-Item -ItemType Directory -Force (Join-Path $e 'phaseA'), (Join-Path $e 'G6') | Out-Null
+  # 동일 OneLine 경로의 PS 5.1 출력을 바이트로 검산한다(무 BOM·한글 UTF-8 완전 일치).
+  $marker = '한글 바이트 왕복'; $probe = Join-Path $e 'G6\utf8-probe.log'
+  $probeExit = OneLine "[Console]::Write('$marker')" $probe 20
+  $want = ([Text.UTF8Encoding]::new($false)).GetBytes($marker)
+  if ($probeExit -ne 0 -or [BitConverter]::ToString([IO.File]::ReadAllBytes($probe)) -cne [BitConverter]::ToString($want)) { throw 'PS 5.1 UTF-8 바이트 왕복 실패' }
   $env:BROWSER = 'false'; OneLine $one (Join-Path $e 'phaseA\run.log') 300 | Out-Null; Copy-FleetStatusEvidence (Join-Path $e 'phaseA'); Remove-Item Env:BROWSER
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'phaseA\state.json') -ErrorAction SilentlyContinue
   # 설치기가 시작 직후 죽는 경우(10차: Get-JCode 미인식)를 가리기 위한 진단 — 설치팩 bootstrap.ps1 의 파싱 결과·인코딩·함수 목록·설치 로그
@@ -148,9 +162,19 @@ try {
       Where-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -eq $expectedBootstrapSha } |
       Sort-Object FullName | Select-Object -First 1
     if (-not $installedBootstrap) { throw 'G6: installed bootstrap.ps1 missing' }
-    if ((OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($installedBootstrap.FullName)`" -Reinstall" (Join-Path $e 'G6\run.log')) -ne 0) { throw 'G6: reinstall failed' }
+    $g6 = Join-Path $e 'G6'; $reinstallExit = 125
+    try { $reinstallExit = OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($installedBootstrap.FullName)`" -Reinstall" (Join-Path $g6 'run.log') }
+    finally { [IO.File]::WriteAllText((Join-Path $g6 'exit'), ([string]$reinstallExit + "`n"), ([Text.UTF8Encoding]::new($false))) }
+    if ($reinstallExit -ne 0) { throw "G6: reinstall failed (exit $reinstallExit)" }
   } finally {
-    try { Collect (Join-Path $e 'G6') }
-    finally { & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after }
+    $g6 = Join-Path $e 'G6'
+    # 재설치 시도 직후의 원천 상태. gate.py가 status=complete·required_steps_passed=true를 판정한다.
+    Copy-Item -LiteralPath (Join-Path $h '.wave\install-state.json') -Destination (Join-Path $g6 'install-state.json') -ErrorAction SilentlyContinue
+    try { Collect $g6 }
+    finally { & $Py (Join-Path $rc 'collect.py') claude-hash --out $g6 --phase after }
+    if ($null -ne $reinstallExit -and $reinstallExit -eq 0) {
+      foreach ($name in @('run.log', 'run.log.err', 'bootstrap.out', 'bootstrap.err')) { Assert-Utf8Raw (Join-Path $g6 $name) }
+      if (-not (Select-String -LiteralPath (Join-Path $g6 'run.log') -Encoding UTF8 -Pattern 'Wave Terminal 설치 상태' -Quiet)) { throw 'G6: run.log 한글 완료 문구 없음' }
+    }
   }
 } finally { Stop-Transcript | Out-Null }

@@ -202,8 +202,12 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json','G6\exit','G6\install-state.json','G6\run.log','G6\bootstrap.out','G6\bootstrap.err','G6\utf8-probe.log'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
           if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
+          $rawExit = [IO.File]::ReadAllText((Join-Path $e 'G6\exit'), ([Text.UTF8Encoding]::new($false, $true)))
+          if ($rawExit -cne "0`n") { Write-Host "G6 재설치 종료값 불합격: $rawExit"; exit 1 }
+          $state = Get-Content (Join-Path $e 'G6\install-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($state.status -cne 'complete' -or $state.required_steps_passed -ne $true) { Write-Host "G6 재설치 완료 상태 불합격: $($state.status) / $($state.required_steps_passed)"; exit 1 }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -235,8 +239,12 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json','G6\exit','G6\install-state.json','G6\run.log','G6\bootstrap.out','G6\bootstrap.err','G6\utf8-probe.log'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
           if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
+          $rawExit = [IO.File]::ReadAllText((Join-Path $e 'G6\exit'), ([Text.UTF8Encoding]::new($false, $true)))
+          if ($rawExit -cne "0`n") { Write-Host "G6 재설치 종료값 불합격: $rawExit"; exit 1 }
+          $state = Get-Content (Join-Path $e 'G6\install-state.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($state.status -cne 'complete' -or $state.required_steps_passed -ne $true) { Write-Host "G6 재설치 완료 상태 불합격: $($state.status) / $($state.required_steps_passed)"; exit 1 }
       - name: Keep this run apart from the ASCII-user evidence
         if: always()
         shell: powershell

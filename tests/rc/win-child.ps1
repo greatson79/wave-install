@@ -3,6 +3,7 @@
 [CmdletBinding()] param([string]$Mode, [string]$RcJson, [string]$Evidence, [string]$Repo, [string]$Py)
 $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'
 $env:WAVE_NO_PROGRESS = '1'   # 실서버(waveainetworks.com) 진행 신호 전송 0 — 새 계정 환경은 러너 env 를 물려받지 않는다
+$env:PYTHONUTF8 = '1'   # 한글 프로필 경로가 콘솔 코드페이지(cp1252)에서 파이썬을 깨지 않게
 Start-Transcript -Path (Join-Path $Evidence 'child.log') -Force | Out-Null
 $rc = Join-Path $Repo 'tests\rc'; $h = $env:USERPROFILE
 $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $admin = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

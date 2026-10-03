@@ -1,6 +1,6 @@
 ﻿# 윈도우 러너(관리자): 시험 인증서 신뢰 → https 서버 → 비관리자 새 계정으로 win-child.ps1 실행 → 증거 회수.
 #  win-driver.ps1 -Mode main|upgrade -RcDir <조립 폴더> -Evidence <루트> -Repo <체크아웃> -Py <python.exe>
-[CmdletBinding()] param([string]$Mode, [string]$RcDir, [string]$Evidence, [string]$Repo, [string]$Py)
+[CmdletBinding()] param([string]$Mode, [string]$RcDir, [string]$Evidence, [string]$Repo, [string]$Py, [string]$UserName = '')
 $ErrorActionPreference = 'Stop'
 $tls = Join-Path $env:RUNNER_TEMP 'tls'; New-Item -ItemType Directory -Force $tls | Out-Null
 $ossl = 'C:\Program Files\Git\usr\bin\openssl.exe'
@@ -13,6 +13,8 @@ $srv = Start-Process $Py -ArgumentList @((Join-Path $Repo 'tests\rc\serve_https.
 Start-Sleep 3
 (Invoke-WebRequest -UseBasicParsing 'https://127.0.0.1:8443/rc-release.json').StatusCode | Out-Host
 $name = 'waverc' + (Get-Random -Minimum 10000 -Maximum 99999)
+# 공백·한글 사용자명 1회 측정(테오 1011): 워크플로 인자는 ASCII 로만 넘기고(스크립트 인코딩 위험 회피) 'U+CD5C' 형식 코드포인트를 여기서 문자로 복원한다. 예: 'Kyle U+CD5C' → 'Kyle 최'
+if ($UserName) { $name = [regex]::Replace($UserName, 'U\+([0-9A-Fa-f]{4})', { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) }) }
 $pw = ConvertTo-SecureString ('Rc!' + [guid]::NewGuid().ToString('N') + 'a9') -AsPlainText -Force
 $u = New-LocalUser -Name $name -Password $pw
 Add-LocalGroupMember -Group (Get-LocalGroup -SID 'S-1-5-32-545') -Member $u

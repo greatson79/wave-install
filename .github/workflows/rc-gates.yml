@@ -204,6 +204,44 @@ jobs:
           name: rc-evidence-win-gates-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
+  win-gates-kr:
+    name: Windows one-off with a space+Hangul standard user (Kyle U+CD5C)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode main -UserName "Kyle U+CD5C" -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Fail the job when required evidence is missing
+        if: always()
+        shell: powershell
+        run: |
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
+      - name: Keep this run apart from the ASCII-user evidence
+        if: always()
+        shell: powershell
+        run: |
+          $ev = "$env:RUNNER_TEMP\ev"; if (Test-Path "$ev\win") { Move-Item "$ev\win" "$ev\winkr" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-kr-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
   win-upgrade:
     name: Windows G5 (public v0.2.3 then test release)
     needs: [cfg, assemble-win]
@@ -239,7 +277,7 @@ jobs:
           if-no-files-found: error
   judge:
     name: gate.py table
-    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-upgrade]
+    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-gates-kr, win-upgrade]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -254,10 +292,17 @@ jobs:
           mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
           python3 gateref/tools/gate/gate.py evidence | tee "$GITHUB_STEP_SUMMARY"
           python3 gateref/tools/gate/gate.py evidence --json > gate-result.json || true
+          if [ -d evidence/winkr ]; then
+            mkdir -p evidence-kr/common; cp -R evidence/winkr evidence-kr/win; cp -R evidence/common/. evidence-kr/common/
+            { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), one-off"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
+            python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: rc-gate-table-${{ github.run_id }}
           path: |
             gate-result.json
+            gate-result-kr.json
             evidence
+            evidence-kr

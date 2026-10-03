@@ -6,12 +6,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 int main(int argc, char **argv) {
   if (argc > 1 && !strcmp(argv[1], "--version")) { puts("2.1.300 (Claude Code)"); return 0; }
   if (argc > 1 && (!strcmp(argv[1], "auth") || !strcmp(argv[1], "update"))) return 0;
-  char cmd[4096]; snprintf(cmd, sizeof cmd, "python3 \"%s\" --logic-only", LOGIC);
-  (void)system(cmd);                 /* 훅 실행·마스터 부트·진단 — 끝나면 돌아온다 */
+  /* 19차 확정(맥 G6): ❯ 를 로직(훅+마스터 부트, 수십~백 초)이 끝난 뒤에 찍으면 launch-agent 의 준비 확인(최대 60초)을 넘겨 좌석이 닫힌다.
+   * 진짜 claude 처럼 ❯ 를 바로 찍고, 로직은 자식 프로세스로 따로 돌린다(부모 = 이름 claude 유지). */
+  signal(SIGCHLD, SIG_IGN);
   fputs("\n\xe2\x9d\xaf \n", stdout); fflush(stdout);   /* agents.json ready_marker ❯ */
+  if (fork() == 0) { execlp("python3", "python3", LOGIC, "--logic-only", (char *)NULL); _exit(127); }
   char b[4096];
   for (;;) { if (read(0, b, sizeof b) <= 0) sleep(1); }  /* 주입되는 지침을 비워 준다 */
 }

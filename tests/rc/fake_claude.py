@@ -8,6 +8,10 @@ if a[:1] == ["--version"]: print("2.1.300 (Claude Code)"); sys.exit(0)
 if a[:1] in (["auth"], ["update"]): sys.exit(0)
 home = os.path.expanduser("~"); rc = os.path.join(home, ".wave", "rc"); vf = os.path.join(home, ".wave", "verify"); os.makedirs(rc, exist_ok=True); os.makedirs(vf, exist_ok=True)
 role = os.environ.get("CYS_ROLE", "none")
+def _tl(msg):  # 20차 대기: 윈 ④ boot 가 느려 S07 420초 안에 못 끝나는지 가리려는 시각 기록(로직 단계별)
+    try: open(os.path.join(rc, "timeline_%s.txt" % role), "a", encoding="utf-8").write("%.2f %s\n" % (time.time(), msg))
+    except Exception: pass
+_tl("logic start pid=%d" % os.getpid())
 cmd = ""
 cands = [os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "settings.json")]
 cands += glob.glob(os.path.join(home, ".claude*", "settings.json")) + glob.glob(os.path.join(home, ".cys", "**", "settings.json"), recursive=True)
@@ -19,10 +23,12 @@ for p in cands:
             if "session-start.sh" in h.get("command", "") and not cmd: cmd = h["command"]
 open(os.path.join(rc, "hook_command_%s.txt" % role), "w", encoding="utf-8").write(cmd + "\n")
 if cmd and role != "none":
+    _tl("hook start")
     r = subprocess.run(cmd, shell=True, input=('{"source":"startup","cwd":%s}\n' % json.dumps(os.getcwd())).encode(), capture_output=True)
     open(os.path.join(rc, "hook_%s.out" % role), "wb").write(r.stdout); open(os.path.join(vf, "hook_%s.out" % role), "wb").write(r.stdout)
     open(os.path.join(rc, "hook_%s.err" % role), "wb").write(r.stderr)
     open(os.path.join(rc, "hook_%s.rc" % role), "w").write(str(r.returncode))
+    _tl("hook done rc=%s" % r.returncode)
 if role == "master":
     import shutil
     if os.name != "nt":
@@ -40,7 +46,9 @@ if role == "master":
         diag += subprocess.run("ps -axo pid,command | grep '[c]ysd' | head -5", shell=True, capture_output=True, text=True).stdout
     open(os.path.join(rc, "preflight_path.txt"), "w", encoding="utf-8").write(diag)
     pack = os.environ.get("CYS_PACK_DIR") or os.path.join(home, ".cys", "pack")
+    _tl("bootstrap start")
     r = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
+    _tl("bootstrap done rc=%s" % r.returncode)
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)
     open(os.path.join(rc, "bootstrap.rc"), "w").write(str(r.returncode))
     if os.name != "nt":  # 10차: 첫 설치 직후 G2 에서 C10(TODO 파일 4개 부재)이 FAIL — 부트 직후 시점의 실제 목록을 남긴다

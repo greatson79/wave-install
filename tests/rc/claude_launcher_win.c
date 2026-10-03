@@ -32,16 +32,15 @@ int wmain(int argc, wchar_t **argv) {
   GetModuleFileNameW(NULL, exe, MAX_PATH * 2);
   wchar_t *slash = wcsrchr(exe, L'\\'); if (slash) *(slash + 1) = 0;
   _snwprintf(cfg, MAX_PATH * 2 - 1, L"%lsclaude.cfg", exe); cfg[MAX_PATH * 2 - 1] = 0;
+  /* 맥 런처와 같은 이유: ❯ 를 먼저 찍어 launch-agent 의 준비 확인(최대 60초)을 통과시키고, 로직은 기다리지 않고 따로 돌린다 */
+  HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE); DWORD w;
+  const char ready[] = "\r\n\xE2\x9D\xAF \r\n"; WriteFile(out, ready, (DWORD)(sizeof ready - 1), &w, NULL);
   if (read_cfg(cfg, py, logic, MAX_PATH * 2)) {
     static wchar_t cmd[MAX_PATH * 6];
     _snwprintf(cmd, MAX_PATH * 6 - 1, L"\"%ls\" \"%ls\" --logic-only", py, logic); cmd[MAX_PATH * 6 - 1] = 0;
     STARTUPINFOW si; PROCESS_INFORMATION pi; ZeroMemory(&si, sizeof si); si.cb = sizeof si; ZeroMemory(&pi, sizeof pi);
-    if (CreateProcessW(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-      WaitForSingleObject(pi.hProcess, INFINITE); CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    }
+    if (CreateProcessW(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) { CloseHandle(pi.hProcess); CloseHandle(pi.hThread); }
   }
-  HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE); DWORD w;
-  const char ready[] = "\r\n\xE2\x9D\xAF \r\n"; WriteFile(out, ready, (DWORD)(sizeof ready - 1), &w, NULL);
   HANDLE in = GetStdHandle(STD_INPUT_HANDLE); char b[4096]; DWORD r;
   for (;;) { if (!ReadFile(in, b, sizeof b, &r, NULL) || r == 0) Sleep(1000); }
 }

@@ -139,7 +139,16 @@ def g4(b, c=None):
         t = (b / n).read_text(encoding="utf-8", errors="replace")
         hits += ["%s:%s" % (n, q) for q in QUESTION_PATTERNS if q in t]
     if hits: return FAIL, "사용자에게 설치·승인을 묻는 문구 검출: %s" % ", ".join(hits)
-    return PASS, "①~⑤ exit 0 · 패인 master·cso·worker · 리뷰어 0 · 설치·승인 질문 문구 0(%d파일)" % len(tg)
+    # 첫기동 관문 사전 기록(설치기 S07 · 맥 미니 G9 CSO 좌석 사망 회귀): 좌석 설정 폴더 .claude.json 의
+    #   hasCompletedOnboarding=true + 살아 있는 좌석 cwd 마다 projects.<cwd>.hasTrustDialogAccepted=true(윈 두 꼴)
+    t = d.get("trust")
+    if not isinstance(t, dict): return NA, "첫기동 관문 사전 기록(좌석 설정 폴더 키) 증거 없음"
+    cw = t.get("cwds") if isinstance(t.get("cwds"), dict) else {}
+    miss = [] if t.get("hasCompletedOnboarding") is True else ["hasCompletedOnboarding"]
+    miss += ["%s 신뢰" % k for c in sorted(cw) for k, v in (cw[c] if isinstance(cw[c], dict) else {c: False}).items() if v is not True]
+    if not cw: miss.append("좌석 cwd 0곳")
+    if miss: return FAIL, "첫기동 관문 키 누락(%s): %s" % (t.get("config"), ", ".join(miss))
+    return PASS, "①~⑤ exit 0 · 패인 master·cso·worker · 리뷰어 0 · 설치·승인 질문 문구 0(%d파일) · 온보딩·폴더 신뢰 키(cwd %d곳)" % (len(tg), len(cw))
 
 
 def sub(b, name, extra):
@@ -261,7 +270,7 @@ def h6(b, c=None):
 
 # (id, 제목, 적용 칸: os=맥·윈 각각 / common=한 번만, 판정 함수)
 GATES = [("G1", "G1-CI 한 줄 설치 결정론 6단계", "os", g1), ("G2", "프리플라이트 FAIL 0 · 새 WARN 0", "os", g2),
-         ("G3", "주입 바이트=팩 원본 · .new 0", "os", g3), ("G4", "G4-CI 선언 ①~⑤ exit 0 · 패인 3 · 리뷰어 0(LLM 없음)", "os", g4),
+         ("G3", "주입 바이트=팩 원본 · .new 0", "os", g3), ("G4", "G4-CI 선언 ①~⑤ exit 0 · 패인 3 · 리뷰어 0 · 온보딩·폴더 신뢰 키(LLM 없음)", "os", g4),
          ("G5", "업그레이드 v0.2.3→ 후 G2~G4", "os", g5), ("G6", "재설치 왕복 · ~/.claude 무접촉", "os", g6),
          ("G7", "문구 3곳 일치 · 라이선스 동봉", "common", g7), ("G7b", "배포본 schedule.json 동결(직전 공개 앱 소스 blob == 새 앱 blob)", "os", g7b), ("G8", "적대검수 젠·노아 blocking 0", "common", g8),
          ("G9", "실기 2대(새 윈 1+새 맥 1) — S02·S07·S08 포함", "common", g9),

@@ -27,7 +27,8 @@ def os_set(b):
     put(b, "G1_state.json", {"status": "complete", "required_steps_passed": True, "steps": {"S%02d" % i: {"status": "passed"} for i in range(10)}}, raw=False)
     put(b, "G2_preflight.json", {"checks": [{"id": "C20", "status": "WARN"}, {"id": "C01", "status": "PASS"}]}, raw=False)
     put(b, "G3_inject.json", {"new_file_count": 0, "roles": {r: {"injected_sha256": "a" * 64, "pack_sha256": "a" * 64, "injected_bytes": 30000, "pack_bytes": 30000} for r in ("master", "cso", "worker")}})
-    put(b, "G4_boot.json", {"steps": [{"n": n, "exit": 0} for n in range(1, 6)], "seats": [{"role": r, "alive": True} for r in ("master", "cso", "worker")]})
+    put(b, "G4_boot.json", {"steps": [{"n": n, "exit": 0} for n in range(1, 6)], "seats": [{"role": r, "alive": True} for r in ("master", "cso", "worker")],
+                            "trust": {"config": "~/.cys/claude/.claude.json", "hasCompletedOnboarding": True, "cwds": {"/Users/u": {"/Users/u": True}}}})
     g4_scan_targets(b)
     for g, extra in (("G5", ("G5_meta.json", {"from_version": "0.2.3"})), ("G6", ("G6_claude_untouched.json", {"before_sha256": "x", "after_sha256": "x"}))):
         s = b / g
@@ -105,6 +106,19 @@ class T(unittest.TestCase):
         (b / "G4_boot.json").write_text(json.dumps(doc))
         v = gate.g4(b)
         self.assertEqual(v[0], gate.FAIL); self.assertIn("설치할까요", v[1])
+
+    def test_g4_first_run_gate_keys(self):
+        b = self.d / "mac"; doc = json.loads((b / "G4_boot.json").read_text())
+        def run(trust):
+            d2 = dict(doc); d2.pop("trust")
+            if trust is not None: d2["trust"] = trust
+            (b / "G4_boot.json").write_text(json.dumps(d2)); return gate.g4(b)
+        self.assertEqual(run(None)[0], gate.NA)
+        self.assertEqual(run({"hasCompletedOnboarding": False, "cwds": {"/Users/u": {"/Users/u": True}}})[0], gate.FAIL)
+        v = run({"hasCompletedOnboarding": True, "cwds": {"C:\\Users\\u": {"C:\\Users\\u": True, "C:/Users/u": False}}})
+        self.assertEqual(v[0], gate.FAIL); self.assertIn("C:/Users/u 신뢰", v[1])
+        self.assertEqual(run({"hasCompletedOnboarding": True, "cwds": {}})[0], gate.FAIL)
+        self.assertEqual(run({"hasCompletedOnboarding": True, "cwds": {"/Users/u": {"/Users/u": True}}})[0], gate.PASS)
 
     def test_g4_unmeasured_without_scan_targets(self):
         b = self.d / "mac"; doc = json.loads((b / "G4_boot.json").read_text())

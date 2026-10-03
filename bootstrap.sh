@@ -216,7 +216,9 @@ entry["completed_at"] = None if status == "running" else now
 entry["version"] = steps.get("release", {}).get("version")
 state["current_step"] = step_id if status == "running" else state.get("current_step")
 state["updated_at"] = now
-state["status"] = "running" if status == "running" else state.get("status", "running")
+state["status"] = ("running" if status == "running" else
+                   "waiting_for_user" if status == "failed" and observed.get("reinstall") == "waiting_for_app_exit" else
+                   state.get("status", "running"))
 with open(state_path, "w", encoding="utf-8") as handle:
     json.dump(state, handle, ensure_ascii=False, indent=2)
     handle.write("\n")
@@ -446,20 +448,60 @@ PY
 )"
 }
 
+wave_bundle_in_use() {
+  local app_dest="$1" found rc errors processes process daemon_status
+  if [[ -e "$app_dest" || -L "$app_dest" ]]; then
+    [[ -d "$app_dest" && ! -L "$app_dest" ]] || return 2
+    command -v lsof >/dev/null 2>&1 || return 2
+    errors="$(mktemp "$WAVE_HOME/.lsof-errors.XXXXXX")" || return 2
+    found="$(lsof -nP -t +D "$app_dest" 2>"$errors")"; rc=$?
+    if [[ -s "$errors" || "$rc" -gt 1 ]]; then
+      rm -f -- "$errors"
+      return 2
+    fi
+    rm -f -- "$errors"
+    [[ -n "$found" ]] && return 0
+  fi
+  processes="$(ps -axo comm=)" || return 2
+  while IFS= read -r process; do
+    case "$process" in "$app_dest"/Contents/*) return 0 ;; esac
+  done <<< "$processes"
+  if [[ -e "$WAVE_HOME/bin/cys" || -L "$WAVE_HOME/bin/cys" ]]; then
+    [[ -x "$WAVE_HOME/bin/cys" ]] || return 2
+    daemon_status="$(env -u CYS_SOCKET -u JAVIS_SOCKET -u AITERM_SOCKET "$WAVE_HOME/bin/cys" daemon status 2>&1)" || return 2
+    case "$daemon_status" in
+      *registered=true*|*loaded=true*|*socket_alive=true*) return 0 ;;
+      *registered=false*loaded=false*socket_alive=false*) ;;
+      *) return 2 ;;
+    esac
+  fi
+  return 1
+}
+
 step_s04() {
   require_command hdiutil || return 1
   require_command ditto || return 1
   require_command cmp || return 1
   set_release_context || return 1
   [[ -f "$ARTIFACT_PATH" ]] || fail_message "검증된 artifact 없음" || return 1
-  local mountpoint app_dest app cys_target cysd_target hook
+  local mountpoint app_dest app cys_target cysd_target hook in_use_rc
   mountpoint="$WAVE_HOME/mount"
   mkdir -p "$mountpoint" "$WAVE_HOME/apps" "$WAVE_HOME/bin" "$WAVE_HOME/shell"
+  app_dest="$WAVE_HOME/apps/Wave Terminal.app"
+  if wave_bundle_in_use "$app_dest"; then in_use_rc=0; else in_use_rc=$?; fi
+  if [[ "$in_use_rc" -ne 1 ]]; then
+    STEP_OBSERVED='{"reinstall":"waiting_for_app_exit"}'
+    if [[ -x "$WAVE_HOME/bin/cys" ]]; then
+      fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+    else
+      fail_message "Wave Terminal의 실행 상태를 확인할 수 없습니다. 앱을 종료하고 설치된 제어 명령을 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+    fi
+    return 1
+  fi
   hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$ARTIFACT_PATH" >/dev/null || return 1
   app="$(find "$mountpoint" -maxdepth 2 -type d -name '*.app' -print -quit)"
   [[ -n "$app" ]] || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; fail_message "DMG 안에 앱이 없음"; return 1; }
-  app_dest="$WAVE_HOME/apps/Wave Terminal.app"
-  rm -rf -- "$app_dest"
+  rm -rf -- "$app_dest" || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; fail_message "기존 앱을 지울 수 없습니다"; return 1; }
   ditto "$app" "$app_dest" || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; return 1; }
   # 검증된 DMG의 원본과 복사본을 대조한다. cysd는 S04에서 실행하지 않는다.
   cmp -s "$app/Contents/MacOS/cysd" "$app_dest/Contents/MacOS/cysd" || {

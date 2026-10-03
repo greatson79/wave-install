@@ -135,6 +135,91 @@ printf '%s\n' "$STEP_OBSERVED"
         observed = json.loads(result.stdout.strip())
         self.assertEqual(observed["cysd_check"], "file+executable+symlink+copy-match")
 
+    def test_s04_running_or_unmeasured_app_is_preserved(self):
+        app = self.home / "wave/apps/Wave Terminal.app"
+        app.mkdir(parents=True)
+        marker = app / "original"
+        marker.write_text("keep")
+        (self.home / "artifact.dmg").write_text("mock only")
+        for mode, lsof in (("running", '#!/bin/sh\necho 123\n'),
+                           ("unknown", '#!/bin/sh\necho permission-denied >&2\nexit 1\n')):
+            with self.subTest(mode=mode):
+                fakebin = self.home / "fakebin"
+                fakebin.mkdir(exist_ok=True)
+                probe = fakebin / "lsof"
+                probe.write_text(lsof)
+                probe.chmod(0o755)
+                self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
+                result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                                   'hdiutil() { printf "mounted" > "$HOME/mounted"; }; '
+                                   'step_s04; printf "%s\\n" "$STEP_OBSERVED"')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(marker.read_text(), "keep")
+                self.assertFalse((self.home / "mounted").exists())
+
+    def test_s04_hold_has_distinct_install_state(self):
+        wave = self.home / "wave"
+        app = wave / "apps/Wave Terminal.app"
+        app.mkdir(parents=True)
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        (self.home / "artifact.dmg").write_text("mock only")
+        fakebin = self.home / "fakebin"
+        fakebin.mkdir()
+        lsof = fakebin / "lsof"
+        lsof.write_text('#!/bin/sh\necho 123\n')
+        lsof.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
+        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                           'hdiutil() { printf "mounted" > "$HOME/mounted"; }; '
+                           'run_step S04_INSTALL_LINK')
+        self.assertNotEqual(result.returncode, 0)
+        state = json.loads((wave / "install-state.json").read_text())
+        self.assertEqual(state["status"], "waiting_for_user")
+        step = state["steps"]["S04_INSTALL_LINK"]
+        self.assertEqual(step["status"], "failed")
+        self.assertEqual(step["observed"]["reinstall"], "waiting_for_app_exit")
+        self.assertFalse((self.home / "mounted").exists())
+
+    def test_s04_guard_distinguishes_daemon_and_missing_bundle(self):
+        wave = self.home / "wave"
+        (wave / "bin").mkdir(parents=True)
+        fake_cys = wave / "bin/cys"
+        fake_cys.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_DAEMON_STATUS"\n')
+        fake_cys.chmod(0o755)
+        for status, expected in (("registered=true loaded=true socket_alive=false", 0),
+                                 ("registered=false loaded=false socket_alive=true", 0),
+                                 ("registered=false loaded=false socket_alive=false", 1)):
+            with self.subTest(status=status):
+                self.env["FAKE_DAEMON_STATUS"] = status
+                result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                                   'then echo 0; else echo $?; fi')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(int(result.stdout.strip()), expected)
+        fake_cys.unlink()
+        fake_cys.symlink_to(wave / "apps/Wave Terminal.app/Contents/MacOS/cys")
+        result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                           'then echo 0; else echo $?; fi')
+        self.assertEqual(result.stdout.strip(), "2")
+
+    def test_s04_guard_detects_gui_without_daemon(self):
+        wave = self.home / "wave"
+        app = wave / "apps/Wave Terminal.app"
+        app.mkdir(parents=True)
+        fakebin = self.home / "fakebin"
+        fakebin.mkdir()
+        for name, body in {
+            "lsof": '#!/bin/sh\nexit 1\n',
+            "ps": '#!/bin/sh\nprintf "%s\\n" "$HOME/wave/apps/Wave Terminal.app/Contents/MacOS/Wave Terminal"\n',
+        }.items():
+            tool = fakebin / name
+            tool.write_text(body)
+            tool.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
+        result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                           'then echo 0; else echo $?; fi')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "0")
+
     def test_s04_nonexecutable_daemon_is_rejected_without_start(self):
         result = self.s04("nonexec")
         self.assertNotEqual(result.returncode, 0)

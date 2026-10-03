@@ -44,9 +44,9 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(json.loads(self.cfg.read_text()), {
             'hasCompletedOnboarding': True, 'fullscreenUpsellSeenCount': 99,
             'projects': {str(self.work): {'hasTrustDialogAccepted': True}, self.home: {'hasTrustDialogAccepted': True}}})
-        self.assertEqual(json.loads(self.sf.read_text()), {'remoteControlAtStartup': True, 'theme': 'dark', 'autoUpdatesChannel': 'stable'})
+        self.assertEqual(json.loads(self.sf.read_text()), {'remoteControlAtStartup': True, 'skipDangerousModePermissionPrompt': True, 'theme': 'dark', 'autoUpdatesChannel': 'stable'})
         self.assertEqual(self.cfg.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(self.journal.read_text(), '%s\t%s\n%s\tremoteControlAtStartup\tabsent\n' % (self.cfg, self.home, self.sf))
+        self.assertEqual(self.journal.read_text(), '%s\t%s\n%s\tremoteControlAtStartup\tabsent\n%s\tskipDangerousModePermissionPrompt\tabsent\n' % (self.cfg, self.home, self.sf, self.sf))
         self.assertFalse((self.dir / '.claude.json.wave-bak').exists())  # 맥 원작에는 백업 사본이 없다
         before = (sha(self.cfg), sha(self.sf), sha(self.journal))
         rc, msgs = self.seed()
@@ -76,8 +76,8 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(data['projects']['/other'], original['projects']['/other'])
         self.assertEqual((data['oauthAccount'], data['numStartups']), (original['oauthAccount'], 9007199254740993))
         self.assertEqual(self.cfg.stat().st_mode & 0o777, 0o644)
-        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'dark', 'remoteControlAtStartup': True, 'autoUpdatesChannel': 'stable'})
-        self.assertEqual(self.journal.read_text(), '%s\tremoteControlAtStartup\tfalse\n' % self.sf)  # 홈 키는 넣지 않았으니 기록 없음
+        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'dark', 'remoteControlAtStartup': True, 'skipDangerousModePermissionPrompt': True, 'autoUpdatesChannel': 'stable'})
+        self.assertEqual(self.journal.read_text(), '%s\tremoteControlAtStartup\tfalse\n%s\tskipDangerousModePermissionPrompt\tabsent\n' % (self.sf, self.sf))  # 홈 키는 넣지 않았으니 기록 없음
         trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
         data = json.loads(self.cfg.read_text())
         self.assertNotIn(str(self.work), data['projects'])
@@ -92,6 +92,29 @@ class HelperTests(unittest.TestCase):
                                                             'projects': {self.home: {'allowedTools': ['x']}}})
         self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'dark', 'autoUpdatesChannel': 'stable'})
         self.assertFalse(self.journal.exists())
+
+    def test_skip_prompt_prior_value_is_recorded_and_restored(self):
+        # 주인님 결정 2026-10-03 23:05: skipDangerousModePermissionPrompt — 지인과 같은 키·값 · 바꾸기 전 값을 기록 · rollback 이 되돌림
+        for prior, row in ((False, 'false'), ('absent', 'absent')):
+            with self.subTest(prior=prior):
+                self.journal.unlink(missing_ok=True)
+                self.sf.write_text('{}' if prior == 'absent' else json.dumps({'skipDangerousModePermissionPrompt': prior}))
+                self.assertEqual(self.seed()[0], 0)
+                self.assertIs(json.loads(self.sf.read_text())['skipDangerousModePermissionPrompt'], True)
+                self.assertIn('%s\tskipDangerousModePermissionPrompt\t%s\n' % (self.sf, row), self.journal.read_text())
+                trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
+                back = json.loads(self.sf.read_text())
+                if prior == 'absent':
+                    self.assertNotIn('skipDangerousModePermissionPrompt', back)
+                else:
+                    self.assertIs(back['skipDangerousModePermissionPrompt'], False)
+
+    def test_skip_prompt_already_true_is_not_recorded_nor_removed(self):
+        self.sf.write_text(json.dumps({'skipDangerousModePermissionPrompt': True}))
+        self.seed()
+        self.assertNotIn('skipDangerousModePermissionPrompt', self.journal.read_text())
+        trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
+        self.assertIs(json.loads(self.sf.read_text())['skipDangerousModePermissionPrompt'], True)
 
     def test_rollback_leaves_values_changed_after_the_seed(self):
         self.seed()

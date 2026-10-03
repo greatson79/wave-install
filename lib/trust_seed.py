@@ -17,6 +17,9 @@ LICENSES/jarvis-install-MIT.txt — 같은 규칙):
   - settings.json theme=dark, autoUpdatesChannel=stable(원작 :2730-2737; 기존 값 덮어씀).
   Wave 고유(원작과 다른 유일한 의도적 차이 · 주인님 지시): <설정폴더>/settings.json 의 remoteControlAtStartup = true
     (원작 :2734-2735 는 false). 바꿨으면 「settings.json<탭>remoteControlAtStartup<탭>바꾸기 전 값(JSON 또는 absent)」을 같은 기록에 남긴다.
+  주인님 결정(2026-10-03 23:05): <설정폴더>/settings.json 의 skipDangerousModePermissionPrompt = true 도 지인과 같은 키·값으로 넣는다
+    (원작 :2732-2733 — 첫 실행의 「권한 확인 없이 실행(Bypass Permissions)」 경고 창을 미리 넘긴다). 바꾸기 전 값은 remoteControlAtStartup 와 같은
+    줄 꼴로 기록하고 rollback 이 되돌린다. 원작은 개인 ~/.claude/settings.json 에도 쓰지만 여기서는 Wave 좌석 설정 폴더에만 쓴다(개인 설정 무접촉).
 rollback (원작 reset-clean.sh:1684-1757 strip_trust_seed · :2095 작업폴더 칸 삭제와 같은 범위):
   - 기록된 홈 키는 값이 아직 true 일 때만 지우고, 칸이 비면 칸째 지운다. 작업폴더 칸은 통째로 지운다.
   - settings.json 줄은 값이 아직 true 일 때만 바꾸기 전 값으로 돌린다(absent 면 지운다).
@@ -28,6 +31,8 @@ import sys
 import tempfile
 
 KEY = "hasTrustDialogAccepted"
+# settings.json 에서 우리가 바꾸는 true 값 키 — 바꾸기 전 값을 기록에 남기고 rollback 이 되돌린다.
+SETTINGS_KEYS = ("remoteControlAtStartup", "skipDangerousModePermissionPrompt")
 
 
 def load(path):
@@ -88,10 +93,11 @@ def seed(config_dir, journal, work, home):
     if not add_home:
         msgs.append("(이 컴퓨터에는 홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다 — 우리가 바꾸지 않습니다.)")
     o["fullscreenUpsellSeenCount"] = 99
-    prior = s.get("remoteControlAtStartup", "absent")
+    prior = {k: s.get(k, "absent") for k in SETTINGS_KEYS}
     rows = ["%s\t%s\n" % (cfg, home)] if add_home else []
-    if prior is not True:
-        rows.append("%s\tremoteControlAtStartup\t%s\n" % (sf, prior if prior == "absent" else json.dumps(prior)))
+    for k in SETTINGS_KEYS:
+        if prior[k] is not True:
+            rows.append("%s\t%s\t%s\n" % (sf, k, prior[k] if prior[k] == "absent" else json.dumps(prior[k])))
     rc = 0
     if rows:
         try:  # 기록이 먼저 선다 — 기록 없이 넣지 않는다(원작 :2918-2926)
@@ -106,8 +112,8 @@ def seed(config_dir, journal, work, home):
             p.setdefault(home, {})[KEY] = True
         s["theme"] = "dark"
         s["autoUpdatesChannel"] = "stable"
-        if prior is not True:
-            s["remoteControlAtStartup"] = True
+        for k in SETTINGS_KEYS:
+            s[k] = True
         msgs.append("첫 실행 질문(테마·폴더 신뢰·큰 화면 권유)을 미리 넘겨 두었습니다.")
     if json.dumps(o) != o0:
         write(cfg, o)
@@ -141,7 +147,7 @@ def rollback(config_dir, journal, work):
     for row in rows:
         valid = ((len(row) == 2 and os.path.abspath(row[0]) == os.path.abspath(cfg)) or
                  (len(row) == 3 and os.path.abspath(row[0]) == os.path.abspath(sf) and
-                  row[1] == "remoteControlAtStartup"))
+                  row[1] in SETTINGS_KEYS))
         if not valid:
             raise ValueError("trust-seed 기록이 Wave 좌석 설정 범위를 벗어남")
         row[0] = cfg if len(row) == 2 else sf
@@ -152,7 +158,7 @@ def rollback(config_dir, journal, work):
         if r[1] is None:  # 작업폴더 칸 — 원작 reset-clean.sh:2095 처럼 통째로
             if isinstance(data.get("projects"), dict):
                 data["projects"].pop(work, None)
-        elif len(r) >= 3:  # settings.json remoteControlAtStartup
+        elif len(r) >= 3:  # settings.json 의 true 값 키(remoteControlAtStartup · skipDangerousModePermissionPrompt)
             if data.get(r[1]) is True:
                 if r[2] == "absent":
                     del data[r[1]]

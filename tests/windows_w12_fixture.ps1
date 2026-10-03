@@ -100,6 +100,7 @@ Run-S07
 $li=[array]::FindIndex([string[]]$script:calls,[Predicate[string]]{param($c) $c -like 'launch-agent --role master*'})
 $si=[array]::FindIndex([string[]]$script:calls,[Predicate[string]]{param($c) $c -like 'send --queued --to master "너는 마스터다 — *'})
 if($li -lt 0 -or $si -le $li -or $script:calls[$si].Contains("`n")){throw 'declaration not queued after launch-agent'}
+if(-not $script:calls[$si].Contains('javis_bootstrap.py') -or -not $script:calls[$si].Contains('마지막 JSON')){throw 'declaration does not name the boot script'}
 $script:calls=@(); $script:launched=$false; $script:sendExit=3
 $blocked=$false; try {Run-S07} catch {$blocked=((Get-JCode $_.Exception.Message) -eq 'J-PATH-02')}
 if(-not $blocked){throw 'declaration send failure not mapped to J-PATH-02'}
@@ -119,8 +120,15 @@ $script:calls=@(); $script:sendExit=0
 Run-S07
 $sends=@($script:calls | Where-Object { $_ -like 'send --queued --to master*' })
 if($sends.Count -ne 1 -or @($script:calls | Where-Object { $_ -like 'launch-agent*' }).Count -ne 0 -or -not (Test-Path $declared)){throw 'rerun after W-DECLARE did not re-send exactly once'}
-$script:calls=@(); $script:fleetCalls=0
-function Get-LiveFleet([int]$TimeoutMs=5000) { $script:fleetCalls++; if($script:fleetCalls -gt 1){return $live}; return $masterOnly }
-$blocked=$false; try {Run-S07} catch {$blocked=$true}
-if(@($script:calls | Where-Object { $_ -like 'send*' -or $_ -like 'launch-agent*' }).Count -ne 0){throw 'declared master got a second declaration or a new seat'}
+# rc.4: 선언 기록(declared)이 있어도 각성 표지가 없으면 한 번 다시 보낸다 / 이미 각성이 확인된 master 에는 아무것도 보내지 않는다
+if(-not (Test-Path $declared)){throw 'declared record missing before the rc.4 resend check'}
+Remove-Item $marker -Force
+$script:calls=@(); $script:declSent=$false; $script:sendExit=0
+function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:declSent){return $live}; return $masterOnly }
+Run-S07
+if(@($script:calls | Where-Object { $_ -like 'send --queued --to master*' }).Count -ne 1 -or @($script:calls | Where-Object { $_ -like 'launch-agent*' }).Count -ne 0){throw 'declared master without marker did not get exactly one re-send'}
+$script:calls=@()
+function Get-LiveFleet([int]$TimeoutMs=5000) { return $live }
+Run-S07
+if(@($script:calls | Where-Object { $_ -like 'send*' -or $_ -like 'launch-agent*' }).Count -ne 0){throw 'awakened master got a second declaration or a new seat'}
 Write-Host 'PASS W-DECLARE rerun re-sends once; declared reuse sends nothing'

@@ -20,8 +20,9 @@ $o=Read-Cfg
 if(-not $o.hasCompletedOnboarding -or $o.fullscreenUpsellSeenCount -ne 99){throw 'fresh top keys'}
 foreach($k in @($homeWin,$homeFwd,$work,'C:/Users/first.last/.wave')){ if(-not $o.projects.$k.hasTrustDialogAccepted){throw "fresh trust $k"} }
 if((Get-Content $sf -Raw | ConvertFrom-Json).remoteControlAtStartup -ne $true){throw 'fresh remoteControl'}
+if((Get-Content $sf -Raw | ConvertFrom-Json).skipDangerousModePermissionPrompt -ne $true){throw 'fresh skipDangerousModePermissionPrompt'}
 $bytes=[IO.File]::ReadAllBytes($cfg); if($bytes[0] -eq 0xEF){throw 'BOM written'}
-if(@((Get-Content $journal -Raw) -split "`r?`n" | Where-Object { $_ }).Count -ne 3){throw 'fresh journal rows'}
+if(@((Get-Content $journal -Raw) -split "`r?`n" | Where-Object { $_ }).Count -ne 4){throw 'fresh journal rows'}
 if((Get-Content $sf -Raw | ConvertFrom-Json).theme -ne 'dark' -or (Get-Content $sf -Raw | ConvertFrom-Json).autoUpdatesChannel -ne 'stable'){throw 'fresh settings defaults'}
 Write-Host 'PASS fresh'
 # rerun: 바이트 불변
@@ -35,12 +36,13 @@ Undo-WaveClaudeTrust $dir $journal $work | Out-Null
 $o=Read-Cfg
 if(@($o.projects.PSObject.Properties).Count -ne 0 -or -not $o.hasCompletedOnboarding){throw 'rollback cfg'}
 if($null -ne (Get-Content $sf -Raw | ConvertFrom-Json).PSObject.Properties['remoteControlAtStartup']){throw 'rollback settings'}
+if($null -ne (Get-Content $sf -Raw | ConvertFrom-Json).PSObject.Properties['skipDangerousModePermissionPrompt']){throw 'rollback skipDangerous absent'}
 if(Test-Path $journal){throw 'journal left'}
 Write-Host 'PASS rollback'
 # preserve: 다른 키 보존 · 홈 false 는 그대로 · 백업 사본 · 되돌리면 settings false 복원
 Remove-Item $cfg,$sf -Force
 $orig='{"oauthAccount":{"emailAddress":"x"},"hasCompletedOnboarding":false,"projects":{"D:/other":{"hasTrustDialogAccepted":false,"allowedTools":[]},"C:/Users/first.last":{"hasTrustDialogAccepted":false,"history":["a"]}}}'
-[IO.File]::WriteAllText($cfg,$orig); [IO.File]::WriteAllText($sf,'{"remoteControlAtStartup":false,"theme":"light","autoUpdatesChannel":"latest"}')
+[IO.File]::WriteAllText($cfg,$orig); [IO.File]::WriteAllText($sf,'{"remoteControlAtStartup":false,"skipDangerousModePermissionPrompt":false,"theme":"light","autoUpdatesChannel":"latest"}')
 Remove-Item ($cfg+'.bak-wave'),($sf+'.bak-wave') -Force -ErrorAction SilentlyContinue
 if((Set-WaveClaudeTrust $dir $journal $work $homeWin) -ne 'ok'){throw 'preserve result'}
 $prefs=Get-Content $sf -Raw | ConvertFrom-Json
@@ -53,6 +55,7 @@ Undo-WaveClaudeTrust $dir $journal $work | Out-Null
 $o=Read-Cfg
 if($o.projects.$homeFwd.hasTrustDialogAccepted -ne $false -or $null -ne $o.projects.PSObject.Properties[$homeWin]){throw 'rollback home'}
 if((Get-Content $sf -Raw | ConvertFrom-Json).remoteControlAtStartup -ne $false){throw 'rollback settings prior'}
+if((Get-Content $sf -Raw | ConvertFrom-Json).skipDangerousModePermissionPrompt -ne $false){throw 'rollback skipDangerous prior'}
 Write-Host 'PASS preserve'
 # 기록 실패: 홈 키를 넣지 않고 J-PERM-01 로 멈춘다
 Remove-Item $cfg,$sf -Force; New-Item -ItemType Directory -Force -Path $journal | Out-Null

@@ -45,3 +45,33 @@ Windows run URL·결과는 펄스 push 이후 별도 기록한다. 운영 HTTPS�
 
 CI 원시 관찰과 판정은 `shortline-ps51-results.json` artifact에 남긴다.
 실패 시에도 이미 수집한 case별 종료값·명령·출력·서버 요청 이력을 보존한다.
+
+## Windows 첫 실행에서 발견한 결함과 수정
+
+`9736f8f` run `37105649016`은 정상·변조·404를 통과했지만 전송 중단에서 실패했다.
+Windows PowerShell `5.1.26100.33438`의 `Invoke-WebRequest -OutFile`은 선언된 Content-Length보다 짧은
+8바이트를 저장하고도 오류를 전파하지 않았고, 부분 스크립트가 exit 0을 반환했다.
+원시 증거: https://github.com/greatson79/wave-install/actions/runs/37105649016
+따라서 exit code만으로 다운로드 완결성을 가정하지 않는다.
+
+`scripts/render_win_start.py`는 최종 BOM bootstrap의 SHA256을 ASCII stub에 고정한다.
+stub은 다운로드한 파일의 SHA가 일치한 경우에만 `powershell.exe -File`로 넘긴다.
+fixture도 이 renderer를 사용하며, 완전한 원본 SHA를 고정한 다음 HTTP 응답만 자른다.
+`BOOTSTRAP_SHA_MISMATCH`를 발생시키고 부분 파일 실행을 막아야 CI가 통과한다.
+이 SHA는 bootstrap 전달 무결성을 검사한다. 최초 stub 전달의 신뢰를 대신하지 않는다.
+
+## 실제 릴리스 반영 책임과 순서
+
+- 담당: 릴리스 조립 담당자가 bootstrap을 최종 생성한 직후 renderer를 실행하고,
+  펄스가 두 자산의 URL·SHA 결속을 검수한 뒤 함께 발행한다.
+- 생성 위치: 기존 `scripts/make-release.sh`가 만든 출력 폴더의 **최종 `bootstrap.ps1` 바이트**.
+  소스 bootstrap이나 SHA 자리표시자가 남은 파일로 stub을 생성하지 않는다.
+- 명령: `python3 scripts/render_win_start.py --bootstrap <출력폴더>/bootstrap.ps1 --url https://github.com/greatson79/wave-install/releases/download/<승인태그>/bootstrap.ps1 --output <출력폴더>/win-start.ps1`
+- 변경 규칙: bootstrap 내용·BOM·줄바꿈 중 하나라도 바뀌면 stub을 다시 생성한다.
+  stub의 URL은 승인된 같은 릴리스 태그로 고정한다. latest URL로 bootstrap을 받지 않는다.
+- 조립 뒤 두 파일을 SHA256SUMS에 포함하고 동일 릴리스 자산으로 제출한다.
+  이 CI 가지는 기존 make-release.sh·발행 워크플로를 바꾸거나 실제 자산을 발행하지 않는다.
+  따라서 **발행 조립에 renderer 호출 연결은 릴리스 담당자의 남은 통합 작업**이다.
+
+초기 사용자 명령은 그대로 `irm https://waveainetworks.com/win | iex`다.
+CI는 해당 URL만 loopback fixture로 치환한다. 운영 HTTPS·실제 설치·인증 시험은 별도다.

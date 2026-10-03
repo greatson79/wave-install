@@ -17,6 +17,7 @@ WAVE_TARBALL_SHA256="${WAVE_INSTALL_TARBALL_SHA256:-__WAVE_TARBALL_SHA256__}"
 CLAUDE_INSTALL_URL="${WAVE_CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CLAUDE_DIRECT_BASE_URL="${WAVE_CLAUDE_DIRECT_BASE_URL:-https://downloads.claude.ai/claude-code-releases}"
 REINSTALL=0
+RUN_STARTED="$(date +%s)"  # 이번 실행의 시작 — 재설치 때 데몬 시작 직후 자동복원이 만든 master 가 이번 실행 것인지 가르는 기준
 RESUME=0
 DRY_RUN=0
 STEP_OBSERVED='{}'
@@ -659,7 +660,7 @@ step_s07() {
   # 선언 전달 기록(declared)이 없고 각성도 확인되지 않으면 선언을 한 번 다시 보낸다(W-DECLARE 복구).
   # 기록과 다른 master·둘 이상·기록 이전 생성 master 는 중복 생성 없이 중단한다.
   # (Windows Run-S07 은 살아 있는 master 하나를 재사용하고 started-at 기록이 있을 때만 선언을 다시 보낸다.)
-  existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" <<'PY_EXISTING'
+  existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" "$RUN_STARTED" <<'PY_EXISTING'
 import json, re, sys
 live = [s for s in json.load(open(sys.argv[1]))['surfaces'] if s.get('role') == 'master' and s.get('exited') is False]
 if not live:
@@ -675,16 +676,24 @@ except OSError:
 seat = live[0]
 created = seat.get('created_at')
 ref = str(seat.get('surface_ref'))
-if (len(live) == 1 and re.fullmatch(r'surface:[0-9]+', ref) and saved_started is not None and saved_ref in ('', ref)
-        and isinstance(created, (int, float)) and created >= saved_started):
+valid = len(live) == 1 and re.fullmatch(r'surface:[0-9]+', ref) and isinstance(created, (int, float))
+if valid and saved_started is not None and saved_ref in ('', ref) and created >= saved_started:
     print(ref, saved_started)
+    sys.exit(0)
+# 재설치: 이전 설치가 남긴 master-ref·started-at 은 이번 실행의 증거가 아니다. 이번 실행이 시작된 뒤 생긴 단일
+# master(데몬 시작 직후 자동복원이 만든 것)는 이 설치가 이어받는다. 실행 시작 전부터 있던 master·둘 이상은 그대로 중단.
+if valid and created >= int(sys.argv[4]):
+    print(ref, sys.argv[4], 'restored')
     sys.exit(0)
 raise SystemExit('기존 master가 살아 있습니다(이 설치가 만든 좌석이 아니거나 둘 이상). 중복 생성 없이 설치를 중단합니다.')
 PY_EXISTING
 )" || return 1
   if [[ -n "$existing" ]]; then
-    ref="${existing% *}"
-    started="${existing#* }"
+    read -r ref started restored <<< "$existing"
+    if [[ "$restored" == restored ]]; then
+      rm -f "$WAVE_HOME/fleet/declared"   # 낡은 선언 표식 — 이 master 에는 선언을 확인·재전송한다
+      printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+    fi
     reused=true
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."

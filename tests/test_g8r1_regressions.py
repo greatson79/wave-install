@@ -329,6 +329,49 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertIn('J-PATH-02', r.stderr)
 
+    def test_master_restored_during_this_run_is_accepted_over_stale_markers(self):
+        # 재설치: 데몬이 올라오자 자동복원이 master 를 먼저 만든다. 이전 설치가 남긴 master-ref·started-at 은
+        # 이번 실행의 증거가 아니므로, 이번 실행 시작 뒤에 생긴 단일 master 는 이 설치가 이어받는다.
+        future = int(time.time()) + 100
+        rows = [self.seat('surface:9', 'master', future), self.seat('surface:20', 'cso', future),
+                self.seat('surface:21', 'worker-1', future)]
+        self.fleet.write_text(json.dumps({'surfaces': rows}))
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+        (self.wave / 'fleet/master-ref').write_text('surface:5\n')      # 이전 설치의 낡은 표식
+        (self.wave / 'fleet/started-at').write_text(str(self.since) + '\n')
+        (self.wave / 'fleet/declared').write_text('')
+        r = self.bash('step_s07; echo "RC=$?"; echo "$STEP_OBSERVED"')
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertFalse(self.new_surface_called())
+        self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:9')
+        self.assertGreater(int((self.wave / 'fleet/started-at').read_text().strip()), self.since)
+        self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+        # 낡은 선언 표식은 이번 master 에 대한 증거가 아니므로 지워 선언 재전송 경로를 되살린다
+        self.assertFalse((self.wave / 'fleet/declared').exists())
+
+    def test_restored_master_boundary_and_duplicates(self):
+        # 시작 시각 경계 양쪽 1건씩 · 시작 전부터 있던 master 거부 · master 둘 이상 거부(둘 다 시작 뒤 생성이어도).
+        start = int(time.time()) - 5  # 시험이 RUN_STARTED 를 이 값으로 고정한다(각성 표식 파일의 mtime 이 그 뒤여야 함)
+        stale = {'fleet/master-ref': 'surface:5\n', 'fleet/started-at': str(self.since) + '\n'}
+        cases = {'at-start-accepted': ([start], 0), 'one-second-before-refused': ([start - 1], 1),
+                 'long-before-refused': ([self.since + 5], 1),
+                 'two-masters-after-start-refused': ([start, start + 3], 1)}
+        for name, (created_list, want_rc) in cases.items():
+            with self.subTest(name):
+                self.log.unlink(missing_ok=True)
+                for rel, text in stale.items():
+                    (self.wave / rel).write_text(text)
+                (self.wave / 'fleet/declared').unlink(missing_ok=True)
+                rows = [self.seat('surface:%d' % (9 + i), 'master', c) for i, c in enumerate(created_list)]
+                rows += [self.seat('surface:20', 'cso', start + 5), self.seat('surface:21', 'worker-1', start + 6)]
+                self.fleet.write_text(json.dumps({'surfaces': rows}))
+                (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:9', 'orchestra_check': 'exit 0'}))
+                r = self.bash('RUN_STARTED=%d; step_s07; echo "RC=$?"' % start)
+                self.assertEqual('RC=0' in r.stdout, want_rc == 0, r.stdout + r.stderr)
+                self.assertFalse(self.new_surface_called(), name)
+                if want_rc:
+                    self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5', name)  # 거부는 표식을 건드리지 않는다
+
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),
                  'duplicate': (['surface:5', 'surface:6'], 'surface:5', None),

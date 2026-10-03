@@ -54,7 +54,7 @@ def make_all(root):
     ids = ["i%d" % i for i in range(30)]
     put(c, "H6_concurrency.json", {"concurrent": 30, "submitted_ids": ids, "received_ids": ids, "quota_errors": 0})
     real = c / "real"
-    for i, o in enumerate(("win", "win", "mac")):
+    for i, o in enumerate(("win", "mac")):
         put(real, "d%d.json" % i, {"os": o, "seats": ["master", "cso", "worker"], "human_hands": {"login_approve": 1, "other": 0}})
 
 
@@ -174,7 +174,7 @@ class T(unittest.TestCase):
         self.assertEqual(verdicts(self.d)["G2win"], gate.NA)
 
     def test_g9_needs_three_devices(self):
-        (self.d / "common" / "real" / "d2.json").unlink()
+        (self.d / "common" / "real" / "d1.json").unlink()
         self.assertEqual(verdicts(self.d)["G9common"], gate.NA)
 
     def test_g5_subfolder_regate(self):

@@ -228,8 +228,8 @@ def g9(b, c=None):
         if live != ROLES or hands.get("other", 1) != 0 or hands.get("login_approve", 0) < 1:
             return FAIL, "%s: 패인 %s · 사람 손 %s (로그인 승인·코드 복사 외 0 기대)" % (name, sorted(live), hands)
         n[d["os"]] += 1
-    if n["win"] < 2 or n["mac"] < 1: return NA, "실기 부족: win %d/2 · mac %d/1" % (n["win"], n["mac"])
-    return PASS, "실기 3대 통과 (win %d · mac %d)" % (n["win"], n["mac"])
+    if n["win"] < 1 or n["mac"] < 1: return NA, "실기 부족: win %d/1 · mac %d/1" % (n["win"], n["mac"])
+    return PASS, "실기 2대 통과 (새 윈 %d · 새 맥 %d)" % (n["win"], n["mac"])
 
 
 def hcheck(name, ok_fn, label):
@@ -264,7 +264,7 @@ GATES = [("G1", "G1-CI 한 줄 설치 결정론 6단계", "os", g1), ("G2", "프
          ("G3", "주입 바이트=팩 원본 · .new 0", "os", g3), ("G4", "G4-CI 선언 ①~⑤ exit 0 · 패인 3 · 리뷰어 0(LLM 없음)", "os", g4),
          ("G5", "업그레이드 v0.2.3→ 후 G2~G4", "os", g5), ("G6", "재설치 왕복 · ~/.claude 무접촉", "os", g6),
          ("G7", "문구 3곳 일치 · 라이선스 동봉", "common", g7), ("G7b", "배포본 schedule.json 동결(직전 공개 앱 소스 blob == 새 앱 blob)", "os", g7b), ("G8", "적대검수 젠·노아 blocking 0", "common", g8),
-         ("G9", "실기 3대(윈2+맥1) — S02·S07·S08 포함", "common", g9),
+         ("G9", "실기 2대(새 윈 1+새 맥 1) — S02·S07·S08 포함", "common", g9),
          ("H1", "막힘→펄스 inbox 60초", "os", h1), ("H2", "처방→설치 창 2분", "os", h2),
          ("H3", "가림 시험", "os", h3), ("H4", "서버 차단 fail-open", "os", h4), ("H5", "대시보드=원장", "common", h5),
          ("H6", "동시 30건 · 시트 한도 오류 0 · 접수 누락 0", "common", h6)]

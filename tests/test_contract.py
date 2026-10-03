@@ -106,9 +106,9 @@ def assert_contract(require_resolved_release: bool) -> None:
     placeholders = PLACEHOLDER_RE.findall(serialized)
     assert not placeholders, f"S2 자리표시자 잔존: {placeholders}"
     if require_resolved_release:
-        assert release["repository"] == "greatson79/wave-terminal"
-        assert release["version"] == "0.1.0"
-        assert release["asset_name"]["windows_x64"] == "wave-terminal-0.1.0-windows-x64-setup.exe"
+        assert release["repository"] == "greatson79/wave-install"
+        assert release["version"] == "0.2.0"
+        assert release["asset_name"]["windows_x64"] == "wave-terminal-0.2.0-windows-x64-setup.exe"
         for platform in ("macos_arm64", "macos_x64", "windows_x64"):
             assert re.fullmatch(r"[0-9a-f]{64}", release["sha256"][platform])
             assert release["asset_url"][platform].endswith(release["asset_name"][platform])

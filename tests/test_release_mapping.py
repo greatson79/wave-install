@@ -9,38 +9,37 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = ROOT / "steps.json"
-BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.1.0"
-MAC_BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.1.1"  # 재서명 DMG
+BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
+MAC = "wave-terminal-0.2.0-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
+WIN = "wave-terminal-0.2.0-windows-x64-setup.exe"
+MAC_SHA = "97e3c9344b5ae1b20dd502aed6ee015ff5c33bfd89e686c334acc369974a966b"
+CDHASH = "17730251fcebff0a7ee60f72b8322255a1627f3a"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:
     release = json.loads(STEPS.read_text(encoding="utf-8"))["release"]
 
-    assert release["asset_name"] == {
-        "macos_arm64": "wave-terminal-0.1.1-macos-arm64.dmg",
-        "macos_x64": "wave-terminal-0.1.1-macos-x64.dmg",
-        "windows_x64": "wave-terminal-0.1.0-windows-x64-setup.exe",
-    }
+    # macos_x64 는 별도 빌드가 없어 arm64 자산을 그대로 가리킨다(RC 러너 rc_release.py 와 같은 매핑).
+    assert release["repository"] == "greatson79/wave-install"
+    assert release["version"] == "0.2.0"
+    assert release["macos_version"] == "0.2.0"
+    assert release["asset_name"] == {"macos_arm64": MAC, "macos_x64": MAC, "windows_x64": WIN}
     assert release["asset_url"] == {
-        "macos_arm64": f"{MAC_BASE}/wave-terminal-0.1.1-macos-arm64.dmg",
-        "macos_x64": f"{MAC_BASE}/wave-terminal-0.1.1-macos-x64.dmg",
-        "windows_x64": f"{BASE}/wave-terminal-0.1.0-windows-x64-setup.exe",
+        "macos_arm64": f"{BASE}/{MAC}",
+        "macos_x64": f"{BASE}/{MAC}",
+        "windows_x64": f"{BASE}/{WIN}",
     }
     assert release["sha256"] == {
-        "macos_arm64": "c46aac889c1dfb84827a580f83cb2098eceba30c85b98c961dd74cff6fc0cadc",
-        "macos_x64": "aaee7fb8745e16e02e64f95bb698e7695742e7db906fdf1a53c99d88134cbf48",
-        "windows_x64": "733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3",
+        "macos_arm64": MAC_SHA,
+        "macos_x64": MAC_SHA,
+        "windows_x64": "0f107d409a69cb71318639762daee8e093ae92e334f8014f3e504fcc1d66c2ff",
     }
-    assert release["minisig_url"] == {
-        "macos_arm64": f"{BASE}/wave-terminal-0.1.0-macos-arm64.dmg.minisig",
-        "macos_x64": f"{BASE}/wave-terminal-0.1.0-macos-x64.dmg.minisig",
-        "windows_x64": f"{BASE}/wave-terminal-0.1.0-windows-x64-setup.exe.minisig",
-    }
-    assert release["cdhash"] == {
-        "macos_arm64": "86bdbce54748b3fabeecd4cfa22a73648867e23d",
-        "macos_x64": "2bdc189e25310de485de8639412b96e9aa68280b",
-    }
+    assert release["bytes"] == {"windows_x64": 128718773}
+    # minisign 은 설치기가 더 이상 쓰지 않는다(SHA256 + codesign/CDHash · Authenticode).
+    assert release["minisig_url"] == {"macos_arm64": None, "macos_x64": None, "windows_x64": None}
+    assert release["cdhash"] == {"macos_arm64": CDHASH, "macos_x64": CDHASH}
     assert release["sha256sums_url"] == f"{BASE}/SHA256SUMS"
+    assert release["windows_sha256sums_url"] == f"{BASE}/SHA256SUMS"
     assert release["minisign_public_key"] == "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI"
 
 

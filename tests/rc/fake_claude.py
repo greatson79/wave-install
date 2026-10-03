@@ -49,24 +49,15 @@ if role == "master":
         _pf = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_preflight.py"), "--json"], capture_output=True)
         open(os.path.join(rc, "preflight_after_bootstrap.json"), "wb").write(_pf.stdout)
         open(os.path.join(rc, "seat_env_cys.txt"), "w", encoding="utf-8").write("\n".join("%s=%s" % (k, v) for k, v in sorted(os.environ.items()) if k.startswith(("CYS_", "WAVE_", "AITERM"))) + "\n")
-sys.stdout.write("\n❯ \n"); sys.stdout.flush()  # agents.json ready_marker — launch-agent 가 이 표지를 볼 때까지 대기한다
 if os.name != "nt":
-    # 9차 확정(ps_claude_*.txt + sysinfo 0.33.1 소스): cysd 워치독은 refresh_processes() 를 쓰는데 이 호출은 명령줄(cmd)을 갱신하지 않는다
-    # → 프로세스 이름(comm)으로만 에이전트를 찾는다. python 스크립트는 comm 이 "Python" 이라 ps 에는 …/claude 가 보여도 agent_alive=False.
-    # 해법: 마지막에 파일 이름이 claude 인 네이티브 실행파일(sleep 복사본)로 exec — comm 이 "claude" 가 된다.
-    # 해법: 파일 이름이 claude 인 **네이티브** 실행파일로 exec — comm 이 "claude" 가 된다. (복사한 /bin/sleep 은 arm64e 플랫폼 바이너리라 SIGKILL(137),
-    # 심링크는 커널이 실제 파일 이름(python3.12)을 comm 으로 써서 안 된다 → 러너에 있는 clang 으로 아주 작은 대기 프로그램을 claude 라는 이름으로 컴파일)
-    # 역할마다 따로 컴파일한다: 같은 경로를 덮어쓰면 먼저 뜬 좌석(cso)의 실행파일이 교체되어 cysd 가 그 프로세스의 이름을 못 읽는다(10차: cso 만 agent_alive=False)
-    _d = os.path.join(rc, "bin_" + role); os.makedirs(_d, exist_ok=True)
-    _bin = os.path.join(_d, "claude"); _src = os.path.join(_d, "claude_idle.c")
-    open(_src, "w").write("#include <unistd.h>\nint main(void){char b[4096];for(;;){if(read(0,b,sizeof b)<=0)sleep(1);}}\n")  # 입력을 읽어 비운다(진짜 claude 처럼) — 안 읽으면 launch-agent 가 넣는 4~6만 바이트 지침이 pty 입력 큐에 쌓인다
-    if subprocess.run(["cc", "-O0", "-o", _bin, _src], capture_output=True).returncode == 0:
-        _ts = os.path.join(rc, "alive_series_%s.txt" % role)
-        _py = "import json,sys;[print(s.get('surface_ref'),s.get('role'),'agent=',s.get('agent'),'alive=',s.get('agent_alive')) for s in json.load(sys.stdin)['surfaces'] if s.get('role') in('cso','worker')]"
-        subprocess.Popen("sleep 8; ps -axo pid,ppid,ucomm,command > %s; ps -axo pid,ppid,ucomm,command | grep -i '[c]laude' | head -20 > %s; for t in 0 12 25 45 90; do sleep $t; echo \"t+$t $(date +%%T)\" >> %s; cys status --json 2>&1 | %s -c \"%s\" >> %s 2>&1; done" % (os.path.join(rc, "ps_full_%s.txt" % role), os.path.join(rc, "ps_claude_%s.txt" % role), _ts, sys.executable, _py.replace('"', '\\"'), _ts), shell=True, start_new_session=True)
-        # 12차: 첫 설치(main) 데몬에서만 두 좌석 모두 agent_alive=False 가 90초 이상 지속(재설치 G6 에서는 True) — 워치독 틱이 앞 검사에서 패닉하면 check_agent_death 에 도달하지 못한다(governance.rs:85 → watchdog.tick_panic 이벤트). 이벤트 흐름 원문을 남긴다.
-        _ev = os.path.join(rc, "events_%s.txt" % role)
-        _code = "import subprocess,sys;\ntry:\n r=subprocess.run(['cys','events','--after-seq','0'],capture_output=True,text=True,timeout=8);o=r.stdout\nexcept subprocess.TimeoutExpired as e:\n o=(e.stdout or b'').decode('utf-8','replace') if isinstance(e.stdout,bytes) else (e.stdout or '')\nL=[l for l in o.splitlines() if any(k in l for k in ('tick_panic','agent.','watchdog.','zombie'))]\nopen(sys.argv[1],'w').write('lines_total=%d\\n'%len(o.splitlines())+'\\n'.join(L[-60:])+'\\n')"
-        subprocess.Popen("sleep 100; %s -c \"%s\" %s" % (sys.executable, _code.replace('"', '\\"'), _ev), shell=True, start_new_session=True)
-        sys.stdout.flush(); os.execv(_bin, [_bin])
+    # 진단(맥): 시작 8초 뒤 전체 프로세스 트리·claude 프로세스, cysd 가 보는 agent_alive 시계열, 100초 뒤 데몬 이벤트 원문 — 모두 좌석과 분리된 백그라운드로
+    _ts = os.path.join(rc, "alive_series_%s.txt" % role)
+    _py = "import json,sys;[print(s.get('surface_ref'),s.get('role'),'agent=',s.get('agent'),'alive=',s.get('agent_alive')) for s in json.load(sys.stdin)['surfaces'] if s.get('role') in('cso','worker')]"
+    subprocess.Popen("sleep 8; ps -axo pid,ppid,ucomm,command > %s; ps -axo pid,ppid,ucomm,command | grep -i '[c]laude' | head -20 > %s; for t in 0 12 25 45 90; do sleep $t; echo \"t+$t $(date +%%T)\" >> %s; cys status --json 2>&1 | %s -c \"%s\" >> %s 2>&1; done" % (os.path.join(rc, "ps_full_%s.txt" % role), os.path.join(rc, "ps_claude_%s.txt" % role), _ts, sys.executable, _py.replace('"', '\\"'), _ts), shell=True, start_new_session=True)
+    _ev = os.path.join(rc, "events_%s.txt" % role)
+    _code = "import subprocess,sys;\ntry:\n r=subprocess.run(['cys','events','--after-seq','0'],capture_output=True,text=True,timeout=8);o=r.stdout\nexcept subprocess.TimeoutExpired as e:\n o=(e.stdout or b'').decode('utf-8','replace') if isinstance(e.stdout,bytes) else (e.stdout or '')\nL=[l for l in o.splitlines() if any(k in l for k in ('tick_panic','agent.','watchdog.','zombie'))]\nopen(sys.argv[1],'w').write('lines_total=%d\\n'%len(o.splitlines())+'\\n'.join(L[-60:])+'\\n')"
+    subprocess.Popen("sleep 100; %s -c \"%s\" %s" % (sys.executable, _code.replace('"', '\\"'), _ev), shell=True, start_new_session=True)
+# 맥: ❯ 출력과 대기는 네이티브 런처(claude_launcher.c)가 맡는다 — 처음부터 프로세스 이름이 claude 여야 cysd 가 잡는다(sysinfo 는 이름을 처음 본 순간 한 번만 기록).
+if "--logic-only" in a: sys.exit(0)
+sys.stdout.write("\n❯ \n"); sys.stdout.flush()  # agents.json ready_marker — launch-agent 가 이 표지를 볼 때까지 대기한다 (윈도우 판)
 while True: time.sleep(3600)

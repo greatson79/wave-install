@@ -14,6 +14,7 @@ LICENSES/jarvis-install-MIT.txt — 같은 규칙):
   - 우리가 넣은 홈 키만 기록파일에 「설정파일<탭>홈」 한 줄로 덧붙인다(:2921·:2950). 기록을 먼저 쓰고
     실패하면 홈 키는 넣지 않고 종료값 3(:2918-2926 마침표 홈 갈래와 같은 순서 → 단계 실패 J-PERM-01 :3011-3019).
   - 맥 원작에는 .claude.json 백업 사본이 없다(백업 사본은 윈도우 원작 ps1:3105-3108 만).
+  - settings.json theme=dark, autoUpdatesChannel=stable(원작 :2730-2737; 기존 값 덮어씀).
   Wave 고유(원작과 다른 유일한 의도적 차이 · 주인님 지시): <설정폴더>/settings.json 의 remoteControlAtStartup = true
     (원작 :2734-2735 는 false). 바꿨으면 「settings.json<탭>remoteControlAtStartup<탭>바꾸기 전 값(JSON 또는 absent)」을 같은 기록에 남긴다.
 rollback (원작 reset-clean.sh:1684-1757 strip_trust_seed · :2095 작업폴더 칸 삭제와 같은 범위):
@@ -103,6 +104,8 @@ def seed(config_dir, journal, work, home):
     if rc == 0:
         if add_home:
             p.setdefault(home, {})[KEY] = True
+        s["theme"] = "dark"
+        s["autoUpdatesChannel"] = "stable"
         if prior is not True:
             s["remoteControlAtStartup"] = True
         msgs.append("첫 실행 질문(테마·폴더 신뢰·큰 화면 권유)을 미리 넘겨 두었습니다.")
@@ -114,12 +117,34 @@ def seed(config_dir, journal, work, home):
 
 
 def rollback(config_dir, journal, work):
+    config_dir = os.path.abspath(config_dir)
     rows = []
     if os.path.exists(journal):
         with open(journal, encoding="utf-8") as f:
             rows = [ln.rstrip("\n").split("\t") for ln in f if ln.strip()]
     files = {}
+    # Preflight every destination before any write. System root aliases (/var,
+    # /tmp on macOS) are trusted; user-controlled links are not.
+    current = os.path.abspath(config_dir)
+    while current != os.path.dirname(current):
+        if os.path.islink(current):
+            st = os.lstat(current)
+            if not (os.path.dirname(current) == os.path.sep and st.st_uid == 0):
+                raise ValueError("Wave 좌석 설정 경로가 심볼릭 링크라 원복하지 않음")
+        current = os.path.dirname(current)
+    for name in (".claude.json", "settings.json"):
+        if os.path.islink(os.path.join(config_dir, name)):
+            raise ValueError("Wave 좌석 설정 파일이 심볼릭 링크라 원복하지 않음")
     cfg = os.path.join(config_dir, ".claude.json")
+    sf = os.path.join(config_dir, "settings.json")
+    # Automatic reset must never follow journal records into personal settings.
+    for row in rows:
+        valid = ((len(row) == 2 and os.path.abspath(row[0]) == os.path.abspath(cfg)) or
+                 (len(row) == 3 and os.path.abspath(row[0]) == os.path.abspath(sf) and
+                  row[1] == "remoteControlAtStartup"))
+        if not valid:
+            raise ValueError("trust-seed 기록이 Wave 좌석 설정 범위를 벗어남")
+        row[0] = cfg if len(row) == 2 else sf
     for r in [[cfg, None]] + rows:
         if len(r) < 2 or not os.path.exists(r[0]):
             continue

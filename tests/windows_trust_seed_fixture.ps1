@@ -22,6 +22,7 @@ foreach($k in @($homeWin,$homeFwd,$work,'C:/Users/first.last/.wave')){ if(-not $
 if((Get-Content $sf -Raw | ConvertFrom-Json).remoteControlAtStartup -ne $true){throw 'fresh remoteControl'}
 $bytes=[IO.File]::ReadAllBytes($cfg); if($bytes[0] -eq 0xEF){throw 'BOM written'}
 if(@((Get-Content $journal -Raw) -split "`r?`n" | Where-Object { $_ }).Count -ne 3){throw 'fresh journal rows'}
+if((Get-Content $sf -Raw | ConvertFrom-Json).theme -ne 'dark' -or (Get-Content $sf -Raw | ConvertFrom-Json).autoUpdatesChannel -ne 'stable'){throw 'fresh settings defaults'}
 Write-Host 'PASS fresh'
 # rerun: 바이트 불변
 $h1=(Get-FileHash $cfg).Hash; $j1=(Get-FileHash $journal).Hash; $s1=(Get-FileHash $sf).Hash
@@ -39,9 +40,11 @@ Write-Host 'PASS rollback'
 # preserve: 다른 키 보존 · 홈 false 는 그대로 · 백업 사본 · 되돌리면 settings false 복원
 Remove-Item $cfg,$sf -Force
 $orig='{"oauthAccount":{"emailAddress":"x"},"hasCompletedOnboarding":false,"projects":{"D:/other":{"hasTrustDialogAccepted":false,"allowedTools":[]},"C:/Users/first.last":{"hasTrustDialogAccepted":false,"history":["a"]}}}'
-[IO.File]::WriteAllText($cfg,$orig); [IO.File]::WriteAllText($sf,'{"remoteControlAtStartup":false}')
+[IO.File]::WriteAllText($cfg,$orig); [IO.File]::WriteAllText($sf,'{"remoteControlAtStartup":false,"theme":"light","autoUpdatesChannel":"latest"}')
 Remove-Item ($cfg+'.bak-wave'),($sf+'.bak-wave') -Force -ErrorAction SilentlyContinue
 if((Set-WaveClaudeTrust $dir $journal $work $homeWin) -ne 'ok'){throw 'preserve result'}
+$prefs=Get-Content $sf -Raw | ConvertFrom-Json
+if($prefs.theme -ne 'light' -or $prefs.autoUpdatesChannel -ne 'stable'){throw 'preserve Windows theme / force channel'}
 $o=Read-Cfg
 if($o.oauthAccount.emailAddress -ne 'x' -or $o.projects.'D:/other'.hasTrustDialogAccepted -ne $false -or @($o.projects.$homeFwd.history)[0] -ne 'a'){throw 'preserve other keys'}
 if($o.projects.$homeFwd.hasTrustDialogAccepted -ne $false -or -not $o.projects.$homeWin.hasTrustDialogAccepted -or -not $o.hasCompletedOnboarding){throw 'preserve home rule'}

@@ -21,6 +21,16 @@ if (-not $Apply) {
   exit 0
 }
 
+# Undo reads the same .wave that reset removes, regardless of inherited WAVE_HOME.
+if ($Target -eq 'wave' -or $Target -eq 'all') {
+  $previousWaveHome = $env:WAVE_HOME
+  try {
+    $env:WAVE_HOME = Join-Path $env:USERPROFILE '.wave'
+    & (Join-Path $PSScriptRoot 'bootstrap.ps1') -UndoTrust
+    if ($LASTEXITCODE -ne 0) { throw "seed rollback failed (exit $LASTEXITCODE); reset stopped" }
+  } finally { $env:WAVE_HOME = $previousWaveHome }
+}
+
 Write-Host "reset 적용 대상:"
 foreach ($targetPath in $targets) {
   Write-Host " - $targetPath"

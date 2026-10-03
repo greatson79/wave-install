@@ -44,7 +44,7 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(json.loads(self.cfg.read_text()), {
             'hasCompletedOnboarding': True, 'fullscreenUpsellSeenCount': 99,
             'projects': {str(self.work): {'hasTrustDialogAccepted': True}, self.home: {'hasTrustDialogAccepted': True}}})
-        self.assertEqual(json.loads(self.sf.read_text()), {'remoteControlAtStartup': True})
+        self.assertEqual(json.loads(self.sf.read_text()), {'remoteControlAtStartup': True, 'theme': 'dark', 'autoUpdatesChannel': 'stable'})
         self.assertEqual(self.cfg.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.journal.read_text(), '%s\t%s\n%s\tremoteControlAtStartup\tabsent\n' % (self.cfg, self.home, self.sf))
         self.assertFalse((self.dir / '.claude.json.wave-bak').exists())  # 맥 원작에는 백업 사본이 없다
@@ -76,13 +76,13 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(data['projects']['/other'], original['projects']['/other'])
         self.assertEqual((data['oauthAccount'], data['numStartups']), (original['oauthAccount'], 9007199254740993))
         self.assertEqual(self.cfg.stat().st_mode & 0o777, 0o644)
-        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'light', 'remoteControlAtStartup': True})
+        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'dark', 'remoteControlAtStartup': True, 'autoUpdatesChannel': 'stable'})
         self.assertEqual(self.journal.read_text(), '%s\tremoteControlAtStartup\tfalse\n' % self.sf)  # 홈 키는 넣지 않았으니 기록 없음
         trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
         data = json.loads(self.cfg.read_text())
         self.assertNotIn(str(self.work), data['projects'])
         self.assertEqual(data['projects'][self.home], original['projects'][self.home])
-        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'light', 'remoteControlAtStartup': False})
+        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'dark', 'remoteControlAtStartup': False, 'autoUpdatesChannel': 'stable'})
 
     def test_rollback_removes_only_our_true_keys(self):
         self.cfg.write_text(json.dumps({'projects': {self.home: {'allowedTools': ['x']}}}))
@@ -90,7 +90,7 @@ class HelperTests(unittest.TestCase):
         trust_seed.rollback(str(self.dir), str(self.journal), str(self.work))
         self.assertEqual(json.loads(self.cfg.read_text()), {'hasCompletedOnboarding': True, 'fullscreenUpsellSeenCount': 99,
                                                             'projects': {self.home: {'allowedTools': ['x']}}})
-        self.assertEqual(json.loads(self.sf.read_text()), {})
+        self.assertEqual(json.loads(self.sf.read_text()), {'theme': 'dark', 'autoUpdatesChannel': 'stable'})
         self.assertFalse(self.journal.exists())
 
     def test_rollback_leaves_values_changed_after_the_seed(self):

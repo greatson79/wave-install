@@ -972,6 +972,7 @@ function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$Declared
 #   · hasCompletedOnboarding=true · fullscreenUpsellSeenCount=99 · projects.<작업폴더 2꼴>.hasTrustDialogAccepted=true(덮어씀)
 #   · projects.<홈 2꼴>.hasTrustDialogAccepted=true 는 키가 없을 때만 · 되읽기 실패면 사본 복원.
 #   우리가 넣은 홈 키만 $WaveHome\trust-seed.tsv 에 「설정파일<탭>키」로 기록 — 기록 실패면 넣지 않고 J-PERM-01 로 멈춘다.
+#   settings.json: autoUpdatesChannel=stable 강제 · theme 키가 없을 때만 dark(원작 ps1:3211-3215).
 #   Wave 고유(유일한 의도적 차이 · 주인님 지시): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
 # 되돌리기: bootstrap.ps1 -UndoTrust (원작 reset-clean.ps1:2077 Remove-TrustSeed 와 같은 범위 + 작업폴더 칸 삭제 = reset-clean.sh:2095).
 function Read-JsonObject([string]$Path) {
@@ -1025,7 +1026,13 @@ function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Work
     if ($null -eq $ex -or $null -eq $ex.Value) { $o.projects | Add-Member -NotePropertyName $k -NotePropertyValue ([pscustomobject]@{ hasTrustDialogAccepted = $true }) -Force }
     else { $ex.Value | Add-Member -NotePropertyName hasTrustDialogAccepted -NotePropertyValue $true -Force }
   }
-  if ($setRc) { $s | Add-Member -NotePropertyName remoteControlAtStartup -NotePropertyValue $true -Force; Write-JsonNoBom $sf $s }
+  if ($result -eq 'ok') {
+    $channel = $s.PSObject.Properties['autoUpdatesChannel']
+    if ($null -eq $channel -or $channel.Value -cne 'stable') { $s | Add-Member -NotePropertyName autoUpdatesChannel -NotePropertyValue 'stable' -Force }
+    if (-not $s.PSObject.Properties['theme']) { $s | Add-Member -NotePropertyName theme -NotePropertyValue 'dark' }
+    if ($setRc) { $s | Add-Member -NotePropertyName remoteControlAtStartup -NotePropertyValue $true -Force }
+    Write-JsonNoBom $sf $s
+  }
   Write-JsonNoBom $cfg $o
   try {   # 쓴 뒤 되읽어 확인 — 못 읽으면 사본으로 되돌린다
     $back = Get-Content -LiteralPath $cfg -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -1039,12 +1046,47 @@ function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Work
 }
 
 function Undo-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$WorkDir) {
+  $ConfigDir = [IO.Path]::GetFullPath($ConfigDir)
   $rows = @()
   if (Test-Path -LiteralPath $Journal -PathType Leaf) {
     foreach ($ln in ((Get-Content -LiteralPath $Journal -Raw -Encoding UTF8) -split "`r?`n")) { if ($ln) { $rows += ,@($ln -split "`t") } }
   }
   $datas = [ordered]@{}
+  # Validate links before writing any destination. On non-Windows pwsh, resolve
+  # only the platform-owned /var or /tmp root alias used by temporary fixtures.
+  $checkDir = [IO.Path]::GetFullPath($ConfigDir)
+  if ([IO.Path]::DirectorySeparatorChar -eq '/') {
+    foreach ($alias in @('/var', '/tmp')) {
+      if ($checkDir.StartsWith($alias + '/', [StringComparison]::Ordinal)) {
+        $rootItem = Get-Item -LiteralPath $alias -Force
+        if ($rootItem.LinkTarget -and $rootItem.LinkTarget -in @(('/private' + $alias), ('private' + $alias))) {
+          $checkDir = '/private' + $checkDir
+        }
+      }
+    }
+  }
+  $current = $checkDir
+  while ($current) {
+    if (Test-Path -LiteralPath $current) {
+      if ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Wave seat settings directory is a link; rollback stopped' }
+    }
+    $parent = [IO.Path]::GetDirectoryName($current)
+    if ($parent -eq $current) { break }
+    $current = $parent
+  }
+  foreach ($name in @('.claude.json', 'settings.json')) {
+    $path = Join-Path $ConfigDir $name
+    $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    if ($null -ne $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Wave seat settings file is a link; rollback stopped' }
+  }
   $cfg = Join-Path $ConfigDir '.claude.json'
+  $sf = Join-Path $ConfigDir 'settings.json'
+  foreach ($r in $rows) {
+    $valid = (($r.Count -eq 2 -and [IO.Path]::GetFullPath($r[0]) -eq [IO.Path]::GetFullPath($cfg)) -or
+              ($r.Count -eq 3 -and [IO.Path]::GetFullPath($r[0]) -eq [IO.Path]::GetFullPath($sf) -and $r[1] -ceq 'remoteControlAtStartup'))
+    if (-not $valid) { throw 'trust-seed record is outside the Wave seat settings scope' }
+    $r[0] = if ($r.Count -eq 2) { $cfg } else { $sf }
+  }
   foreach ($r in (@(,@($cfg)) + $rows)) {
     if (-not (Test-Path -LiteralPath $r[0] -PathType Leaf)) { continue }
     if (-not $datas.Contains($r[0])) { $datas[$r[0]] = Read-JsonObject $r[0] }

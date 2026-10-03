@@ -37,6 +37,12 @@ if [[ "$APPLY" != 1 ]]; then
   exit 0
 fi
 
+# Roll back before deleting .wave, which owns the journal. Pack-only is unrelated.
+if [[ "$TARGET" == wave || "$TARGET" == all ]]; then
+  SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  python3 "$SCRIPT_DIR/lib/trust_seed.py" rollback "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" "$HOME/.wave/trust-seed.tsv" "$HOME/.wave"
+fi
+
 printf 'reset 적용 대상:\n'
 printf ' - %s\n' "${TARGETS[@]}"
 for target in "${TARGETS[@]}"; do

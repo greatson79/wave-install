@@ -33,6 +33,15 @@ class WindowsRc4S07Tests(unittest.TestCase):
             self.assertIn("jcode|J-VER-04", lines)   # J-UNK-00 이 아니라 전용 진단 코드
             self.assertEqual(lines[-1], "S07_INITIAL_FLEET|failed|2|WT-S07-FLEET")
 
+    def test_gate_needles_match_the_app_list(self):
+        src = (ROOT / "bootstrap.ps1").read_text(encoding="utf-8-sig")
+        for needle in ("Doyoutrustthisfolder", "InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval", "Trythenewfullscreenrenderer?"):
+            self.assertIn(needle, src)
+        sh = (ROOT / "bootstrap.sh").read_text(encoding="utf-8")
+        for needle in ("Doyoutrustthisfolder", "InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval", "Trythenewfullscreenrenderer?"):
+            self.assertIn(needle, sh)
+
+
 
 if __name__ == "__main__":
     unittest.main()

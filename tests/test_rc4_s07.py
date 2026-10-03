@@ -176,6 +176,17 @@ class WaitLoop(S07Base):
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '5', 'WAVE_WAIT_REPORT_SECONDS': '1'})
         self.assertIn('기다리는 것: 각성 표지 없음 · 좌석 2/3 · 지침 주입 2/3', r.stderr)
 
+    def test_every_app_gate_wording_pauses_the_budget(self):
+        # 앱 first_run_gate.rs 의 질문 문면 전부(폴더 신뢰 4 · 권한 경고 2 · 큰 화면 권유)가 예산을 멈춘다.
+        for text in ("Do you trust this folder?", "In Bypass Permissions mode, Claude Code will not ask for your approval",
+                     "Try the new fullscreen renderer?", "Quick safety check: Is this a project you created or one you trust?"):
+            with self.subTest(text=text[:30]):
+                self.status(['master', 'cso', 'worker'])
+                (self.wave / 'gate.on').write_text('')
+                (self.wave / 'gate.txt').write_text(text + "\n 1. No\n 2. Yes\n")
+                r = self.bash('wait_gui_onboarded(){ :; }; notice_first_run_gate; echo VISIBLE=$GATE_VISIBLE')
+                self.assertIn('VISIBLE=1', r.stdout, r.stderr)
+
     def test_gate_pause_is_capped(self):
         self.status(['master', 'cso', 'worker'])
         (self.wave / 'gate.on').write_text('')

@@ -836,7 +836,7 @@ seed_claude_trust() {
   esac
 }
 
-# S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고)이 보이면 안내를 한 번 띄우고 계속 기다린다.
+# S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고 · 큰 화면 권유 — 앱 first_run_gate.rs 의 질문 문면과 같은 목록)이 보이면 안내를 한 번 띄우고 계속 기다린다.
 # 설치기는 어떤 키도 보내지 않는다 — 사람이 Wave 창에서 고른다. 판별은 질문문으로만 한다: 선택지 「Yes, I trust this folder」·확인 에코는
 # 근거가 아니다(첫 실행 관문 판별 기준 · 2026-07-29 사고 원인).
 GATE_NOTICED=0
@@ -858,7 +858,7 @@ PY_GATE_SEATS
 ); do
     screen="$(WAVE_COMMAND_TIMEOUT=3 bounded_cys read-screen --surface "$ref" 2>/dev/null | tr -d '[:space:]')" || continue
     case "$screen" in
-      *Quicksafetycheck*|*Isthisaprojectyoucreatedoroneyoutrust*|*Doyoutrustthefilesinthisfolder*|*WARNING:ClaudeCoderunninginBypassPermissionsmode*)
+      *Quicksafetycheck*|*Isthisaprojectyoucreatedoroneyoutrust*|*Doyoutrustthefilesinthisfolder*|*Doyoutrustthisfolder*|*WARNING:ClaudeCoderunninginBypassPermissionsmode*|*InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval*|*Trythenewfullscreenrenderer?*)
         GATE_VISIBLE=1
         if [[ "$GATE_NOTICED" != 1 ]]; then
           log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($ref)이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."

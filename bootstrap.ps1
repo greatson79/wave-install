@@ -1152,7 +1152,7 @@ function Seed-WaveClaudeTrust {
 function Show-FirstRunGateNotice([object]$Status) {
   $script:GateVisible = $false
   if ($null -eq $Status) { return }
-  $needles = @('Quicksafetycheck', 'Isthisaprojectyoucreatedoroneyoutrust', 'Doyoutrustthefilesinthisfolder', 'WARNING:ClaudeCoderunninginBypassPermissionsmode')
+  $needles = @('Quicksafetycheck', 'Isthisaprojectyoucreatedoroneyoutrust', 'Doyoutrustthefilesinthisfolder', 'Doyoutrustthisfolder', 'WARNING:ClaudeCoderunninginBypassPermissionsmode', 'InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval', 'Trythenewfullscreenrenderer?')
   foreach ($seat in @($Status.surfaces | Where-Object { $_.exited -eq $false -and ([string]$_.role) -match '^(master|cso|worker)' -and $_.surface_ref })) {
     try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { continue }
     if ($screen.timed_out -or $screen.exit_code -ne 0) { continue }

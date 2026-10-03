@@ -281,9 +281,26 @@ jobs:
           name: rc-evidence-win-upgrade-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
+  freeze:
+    name: G7b schedule.json freeze (previous public app source vs this app, raw bytes)
+    needs: cfg
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the git blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tests/rc/freeze.py --repo "${{ needs.cfg.outputs.app_repo }}" --mac-run "${{ needs.cfg.outputs.mac_run_id }}" --win-run "${{ needs.cfg.outputs.win_run_id }}" --out "$RUNNER_TEMP/ev"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-freeze-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
   judge:
     name: gate.py table
-    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-gates-kr, win-upgrade]
+    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-gates-kr, win-upgrade, freeze]
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -7,9 +7,9 @@
   collect.py g4 --out DIR                                  → G4_boot.json (boot-last.json 의 ①~⑤ exit + cys status 좌석 생존) """
 import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys
 
-ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["g1", "g2", "g3", "g4", "claude-hash", "freeze"]); ap.add_argument("--out", required=True)
+ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["g1", "g2", "g3", "g4", "claude-hash"]); ap.add_argument("--out", required=True)
 ap.add_argument("--wave-home", default=os.path.expanduser("~/.wave")); ap.add_argument("--python", default=sys.executable)
-ap.add_argument("--baseline"); ap.add_argument("--installed"); ap.add_argument("--preflight"); ap.add_argument("--pack", default=os.path.expanduser("~/.cys/pack")); ap.add_argument("--manifest")
+ap.add_argument("--preflight"); ap.add_argument("--pack", default=os.path.expanduser("~/.cys/pack")); ap.add_argument("--manifest")
 ap.add_argument("--hook-dir", default=os.path.expanduser("~/.wave/verify")); ap.add_argument("--cys", default="cys"); ap.add_argument("--phase", choices=["before", "after"])
 a = ap.parse_args(); out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
@@ -54,18 +54,6 @@ elif a.cmd == "g2":
     json.loads(r.stdout)  # 깨진 JSON 이면 여기서 실패 — 증거를 만들지 않는다
     (out / "G2_preflight.json").write_text(r.stdout, encoding="utf-8")
     (out / "G2_preflight.exit").write_text(str(r.returncode))
-elif a.cmd == "freeze":
-    # 배포본 schedule.json 동결(테오 1107): 새 앱 팩의 schedule.json sha256 == 직전 릴리스(공개 v0.2.3 설치기가 핀한 앱 판)의 팩 schedule.json.
-    # baseline = v0.2.3 설치 직후 ~/.cys/pack/schedule.json 원본 복사 · current = 새 앱의 pack-manifest(임베드 정본) files["schedule.json"] · installed = 업그레이드 후 설치된 파일(참고)
-    base = pathlib.Path(a.baseline).read_bytes(); man = json.loads(pathlib.Path(a.manifest).read_text(encoding="utf-8"))["files"]
-    inst = pathlib.Path(a.installed).read_bytes() if a.installed and pathlib.Path(a.installed).is_file() else None
-    norm = lambda b: sha(b.replace(b"\r\n", b"\n"))
-    raws = [raw_entry(out, a.baseline, "baseline_schedule.json"), raw_entry(out, a.manifest, "freeze_manifest.json")]
-    if inst is not None: raws.append(raw_entry(out, a.installed, "current_schedule.json"))
-    (out / "G7b_schedule_freeze.json").write_text(json.dumps({
-        "baseline_sha256": sha(base), "baseline_sha256_lf": norm(base), "baseline_crlf": base.count(b"\r\n"),
-        "current_sha256": man.get("schedule.json"), "installed_current_sha256": sha(inst) if inst is not None else None,
-        "installed_current_sha256_lf": norm(inst) if inst is not None else None, "raw": raws}, ensure_ascii=False), encoding="utf-8")
 elif a.cmd == "g3":
     pack, hd = pathlib.Path(a.pack), pathlib.Path(a.hook_dir)
     files = json.loads(pathlib.Path(a.manifest).read_text(encoding="utf-8"))["files"]

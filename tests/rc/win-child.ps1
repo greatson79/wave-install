@@ -55,14 +55,14 @@ try {
     $old = ((Get-Content (Join-Path $Repo 'README.md') -Encoding UTF8) | Where-Object { $_ -like 'powershell *install-wave.ps1*' } | Select-Object -First 1) -replace 'download/v[0-9.]+/', 'download/v0.2.3/'
     OneLine $old (Join-Path $g5 'from_v023.log') | Out-Null
     Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $g5 'from_v023_state.json') -ErrorAction SilentlyContinue
-    Copy-Item (Join-Path $h '.cys\pack\schedule.json') (Join-Path $g5 'baseline_schedule.json') -ErrorAction SilentlyContinue   # 직전 릴리스(v0.2.3) 팩의 schedule.json — 동결 관문 기준값
+    Copy-Item (Join-Path $h '.cys\pack\schedule.json') (Join-Path $g5 'installed_schedule_v023.json') -ErrorAction SilentlyContinue   # 증거만(G7b 기준 아님)
     # 윈 설치 로그에는 설치팩 주소가 안 찍힌다(13차) → 한 줄이 받아 실행한 ~\install-wave.ps1(릴리스가 주입한 zip 주소 보유)에서 판독
     $m = [regex]::Match((Get-Content (Join-Path $h 'install-wave.ps1') -Raw -Encoding UTF8), 'wave-install-(\d+\.\d+\.\d+)\.zip'); $from = if ($m.Success) { $m.Groups[1].Value } else { 'unknown' }
     if ($from -ne '0.2.3') { Write-Host "v0.2.3 이 아님($from) — G5 측정 불가"; return }
     $sha = (Get-FileHash (Join-Path $g5 'from_v023_state.json') -Algorithm SHA256).Hash.ToLower()
     "{`"from_version`":`"$from`",`"raw`":[{`"path`":`"from_v023_state.json`",`"sha256`":`"$sha`"}]}" | Set-Content (Join-Path $g5 'G5_meta.json') -Encoding ASCII
     Reset-Fleet; OneLine $one (Join-Path $g5 'run.log') | Out-Null; Collect $g5
-    & $Py (Join-Path $rc 'collect.py') freeze --out $g5 --baseline (Join-Path $g5 'baseline_schedule.json') --manifest (Join-Path $g5 'pack-manifest.src.json') --installed (Join-Path $h '.cys\pack\schedule.json') *>> (Join-Path $g5 'collect.log')
+    Copy-Item (Join-Path $h '.cys\pack\schedule.json') (Join-Path $g5 'installed_schedule_rc.json') -ErrorAction SilentlyContinue   # 증거만
     return
   }
   New-Item -ItemType Directory -Force (Join-Path $e 'phaseA'), (Join-Path $e 'G6') | Out-Null

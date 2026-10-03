@@ -390,6 +390,17 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))
         got, written = self.attempt('RESUME=1; REINSTALL=1', str(old) + '\n')  # --reinstall 은 --resume 과 같이 와도 새로 기록
         self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))
+        # 값 범위: 미래·24시간 초과는 --resume 이어도 읽지 않고 새로 기록 · 24시간 이내(경계 포함)는 읽는다
+        base = 1700000000
+        for label, recorded, keep in (('future', base + 1, False), ('over-24h', base - 86401, False),
+                                      ('exactly-24h', base - 86400, True), ('same-instant', base, True),
+                                      ('huge', '9' * 20, False)):
+            with self.subTest(label):
+                r = self.bash('RUN_STARTED=%d; RESUME=1; echo "%s" > "$WAVE_HOME/attempt-started"; attempt_start; echo "RUN=$RUN_STARTED"' % (base, recorded))
+                self.assertEqual(r.returncode, 0, r.stderr)
+                got = int(r.stdout.split('RUN=')[1].split()[0])
+                self.assertEqual(got, int(recorded) if keep else base)
+                self.assertEqual((self.wave / 'attempt-started').read_text().strip(), str(got))
         for recorded in (None, 'garbage\n', '\n'):                            # 기록 없음·깨짐 = 새로 기록
             got, written = self.attempt('RESUME=1', recorded)
             self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))

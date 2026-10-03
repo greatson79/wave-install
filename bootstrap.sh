@@ -233,7 +233,9 @@ attempt_start() {
   local f="$WAVE_HOME/attempt-started" saved=
   if [[ "$RESUME" == 1 && "$REINSTALL" != 1 && -f "$f" ]]; then
     saved="$(head -n1 "$f" 2>/dev/null)"
-    if [[ "$saved" =~ ^[0-9]+$ ]]; then RUN_STARTED="$saved"; return 0; fi
+    # 미래 값·24시간보다 오래된 값은 읽지 않는다 — 완료된 설치 뒤 --resume 만 붙여도 며칠 전 시각이 기준이 되면
+    # 「시작 전부터 있던 master 거부」 보호가 약해지고, 미래 값은 판정이 영영 거짓이 된다.
+    if [[ "$saved" =~ ^[0-9]{1,12}$ ]] && (( 10#$saved <= RUN_STARTED && RUN_STARTED - 10#$saved <= 86400 )); then RUN_STARTED=$((10#$saved)); return 0; fi
   fi
   mkdir -p "$WAVE_HOME" && printf '%s\n' "$RUN_STARTED" > "$f"
 }

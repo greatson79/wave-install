@@ -5,12 +5,12 @@ import os
 from pathlib import Path
 import platform
 import socket
-import subprocess
 import tempfile
 import threading
 import urllib.request
 
-from serve_fixture import BOM, EXPECTED_SHA, PAYLOAD, FixtureServer, bootstrap, stub
+from serve_fixture import EXPECTED_SHA, PAYLOAD, FixtureServer
+from windows_job import run_in_job, verify_timeout_tree
 
 
 def require(condition, message):
@@ -22,13 +22,15 @@ def run():
     require(platform.system() == 'Windows', 'Windows required; pwsh is not a PS5.1 substitute')
     executable = Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
     require(executable.is_file(), 'Windows powershell.exe missing')
-    version = subprocess.run([str(executable), '-NoProfile', '-Command',
+    tree_check = verify_timeout_tree()
+    print('JOB_TIMEOUT_TREE=' + json.dumps(tree_check), flush=True)
+    version = run_in_job([str(executable), '-NoProfile', '-Command',
         "if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 51 }; $PSVersionTable.PSVersion.ToString()"],
-        capture_output=True, timeout=30)
+        timeout=30)
     require(version.returncode == 0, 'PS5.1 assertion failed: ' + repr(version.stdout))
     print('PARENT_PS51=' + version.stdout.decode('ascii').strip(), flush=True)
     require(hashlib.sha256(PAYLOAD).hexdigest() == EXPECTED_SHA, 'fixture pin drift')
-    report = {'version': version.stdout.decode('ascii').strip(), 'cases': []}
+    report = {'version': version.stdout.decode('ascii').strip(), 'job_timeout_tree': tree_check, 'cases': []}
     server = FixtureServer()
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -51,8 +53,8 @@ def run():
                 if mode == 'corrupt':
                     with urllib.request.urlopen(urllib.request.Request(server.base + '/corrupt', data=b'', method='POST')) as response:
                         require(response.status == 200, 'corrupt switch failed')
-                result = subprocess.run([str(executable), '-NoProfile', '-Command', command],
-                    cwd=root, env=env, capture_output=True, timeout=60)
+                result = run_in_job([str(executable), '-NoProfile', '-Command', command],
+                    cwd=root, env=env, timeout=60)
                 # Markers are ASCII; console codepage never supplies the Unicode oracle.
                 output = (result.stdout + result.stderr).decode('ascii', errors='backslashreplace')
                 record = {'mode': mode, 'command': command, 'exit': result.returncode,
@@ -73,9 +75,12 @@ def run():
                     elif mode == 'child7':
                         require('CHILD_EXIT_7' in output and 'exit 7' in output, 'child exit 7 not propagated')
                     else:
+                        if mode == 'interrupted':
+                            require('BOOTSTRAP_SHA_MISMATCH' in output, 'partial bootstrap integrity rejection missing')
                         require('/payload' not in server.requests and 'CHILD_PS51=5.1' not in output,
                                 mode + ': failed download executed bootstrap')
-                require(not list((root / 'TEMP').iterdir()), mode + ': stub temporary files leaked')
+                for temp_key in ('TEMP', 'TMP'):
+                    require(not list((root / temp_key).iterdir()), mode + ': ' + temp_key + ' temporary files leaked')
                 record['assertions'] = 'PASS'
     finally:
         server.shutdown()

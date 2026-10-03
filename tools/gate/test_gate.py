@@ -73,6 +73,28 @@ class T(unittest.TestCase):
         self.assertEqual(set(verdicts(self.d).values()), {gate.PASS})
         self.assertEqual(gate.main([str(self.d), "--json"]), 0)
 
+    def test_g6_equal_hash_pass(self):
+        self.assertEqual(gate.g6(self.d / "mac")[0], gate.PASS)
+
+    def test_g6_different_hash_fail(self):
+        p = self.d / "mac" / "G6" / "G6_claude_untouched.json"
+        d = json.loads(p.read_text()); d["after_sha256"] = "y"
+        p.write_text(json.dumps(d))
+        self.assertEqual(gate.g6(self.d / "mac")[0], gate.FAIL)
+
+    def test_g6_missing_after_unmeasured(self):
+        p = self.d / "mac" / "G6" / "G6_claude_untouched.json"
+        original = json.loads(p.read_text())
+        for field, value in (("after_sha256", None), ("after_sha256", ""), ("before_sha256", None), ("before_sha256", "")):
+            with self.subTest(field=field, value=value):
+                d = dict(original)
+                if value is None: d.pop(field)
+                else: d[field] = value
+                p.write_text(json.dumps(d))
+                verdict, reason = gate.g6(self.d / "mac")
+                self.assertEqual(verdict, gate.NA)
+                self.assertIn(field.split("_")[0] + " 증거 없음", reason)
+
     def test_d1_tag_on_c20_warn_and_g3_ignores_20kb(self):
         r = {x["id"]: x for x in gate.judge(self.d)}
         self.assertIn("D1 잠정", r["G2"]["mac"][1])

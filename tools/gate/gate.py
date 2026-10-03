@@ -184,6 +184,8 @@ def g6(b, c=None):
     def extra(s):
         d, bad = need(s, "G6_claude_untouched.json")
         if bad: return bad
+        if not d.get("before_sha256"): return NA, "before 증거 없음"
+        if not d.get("after_sha256"): return NA, "after 증거 없음"
         same = d.get("before_sha256") == d.get("after_sha256")
         return (PASS, "~/.claude 무접촉") if same else (FAIL, "~/.claude 해시가 바뀜")
     return sub(b, "G6", extra)

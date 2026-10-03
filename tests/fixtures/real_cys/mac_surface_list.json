@@ -1,0 +1,80 @@
+{
+ "provenance": {
+  "recorded_at": "2026-10-04T01:08:27+09:00",
+  "binary": "mac app build_id b2c9ec450d7e (= commit b2c9ec4, 3af28f2 의 부모 · worktree wave-terminal-mac-seat target/debug/cys+cysd 2026-10-03 20:18 빌드 — 3af28f2 는 launch-agent 재사용 대기만 바꾼 다음 커밋이라 status/list 응답 모양은 같음. 확정은 RC 증거 mac_status_three_seats.json(3af28f20d657))",
+  "isolation": "HOME·CYS_SOCKET·CYS_PACK_DIR 임시 폴더 · PATH 최소 · 운영 데몬 접촉 없음",
+  "setup": "cysd 기동 → cys init-pack → agents.json 에 가짜 에이전트 recorder(cmd=sh -c 'echo ❯; cat >/dev/null' · ready_marker ❯) 추가 → cys launch-agent --role master|worker --agent recorder (launch_complete 가 실제로 true 가 되는 정상 경로) + cys new-surface --role cso --cmd 'sleep 300' (launch-agent 를 안 거친 좌석)",
+  "command": "raw RPC over the daemon unix socket: {\"id\":1,\"method\":\"surface.list\",\"params\":{}} (the call `cys list` makes internally; no CLI prints this JSON)",
+  "note": "가짜 에이전트 recorder 좌석은 agent_alive=false 로 기록됨(에이전트 프로세스 존재 판정이 claude 류 실행파일에만 맞음) — 이 파일은 응답의 **키 모양**(launch_complete 가 status 에는 없고 surface.list 에만 있음) 증거용이다"
+ },
+ "response": {
+  "_flen": 1228,
+  "_pv": 1,
+  "id": 1,
+  "ok": true,
+  "result": {
+   "surfaces": [
+    {
+     "agent": null,
+     "agent_alive": null,
+     "claude_config_dir": "/tmp/REC/.cys/claude",
+     "cmd": "sleep 300",
+     "created_at": 1791043661.574339,
+     "cwd": "/tmp/REC",
+     "env_injected": false,
+     "exited": false,
+     "launch_complete": false,
+     "live_cwd": "/tmp/REC",
+     "model": null,
+     "model_fallback": null,
+     "pid": 75948,
+     "role": "cso",
+     "surface_id": 1,
+     "surface_ref": "surface:1",
+     "title": "surface 1",
+     "usage": null
+    },
+    {
+     "agent": "recorder",
+     "agent_alive": false,
+     "claude_config_dir": "/tmp/REC/.cys/claude",
+     "cmd": "/bin/zsh",
+     "created_at": 1791043670.787597,
+     "cwd": "/tmp/REC",
+     "env_injected": false,
+     "exited": false,
+     "launch_complete": true,
+     "live_cwd": "/tmp/REC",
+     "model": null,
+     "model_fallback": null,
+     "pid": 76531,
+     "role": "master",
+     "surface_id": 2,
+     "surface_ref": "surface:2",
+     "title": "master-recorder · rec-Q1Cr",
+     "usage": null
+    },
+    {
+     "agent": "recorder",
+     "agent_alive": false,
+     "claude_config_dir": "/tmp/REC/.cys/claude",
+     "cmd": "/bin/zsh",
+     "created_at": 1791043679.485758,
+     "cwd": "/tmp/REC",
+     "env_injected": false,
+     "exited": false,
+     "launch_complete": true,
+     "live_cwd": "/tmp/REC",
+     "model": null,
+     "model_fallback": null,
+     "pid": 77548,
+     "role": "worker",
+     "surface_id": 3,
+     "surface_ref": "surface:3",
+     "title": "worker-recorder · rec-Q1Cr",
+     "usage": null
+    }
+   ]
+  }
+ }
+}

@@ -10,6 +10,7 @@ case "$1" in
   launch-agent) echo surface:1 ;;
   status) cat "$D/status.json" ;;
   read-screen) if [ -f "$D/gate.on" ]; then cat "$D/gate.txt"; else echo "welcome"; fi ;;
+  send) echo "$*" >> "$D/sent.log" ;;
   *) : ;;
 esac
 '''
@@ -33,9 +34,10 @@ class S07Base(unittest.TestCase):
     def tearDown(self):
         self.td.cleanup()
 
-    def status(self, roles, alive=True, created=None):
+    def status(self, roles, alive=True, created=None, injected=True):
         created = created if created is not None else int(time.time()) + 5
-        rows = [dict(surface_ref='surface:%d' % (i + 1), role=r, exited=False, agent_alive=alive, created_at=created)
+        rows = [dict(surface_ref='surface:%d' % (i + 1), role=r, exited=False, agent_alive=alive, created_at=created,
+                     launch_complete=injected)
                 for i, r in enumerate(roles)]
         for d in (self.wave, self.wave / 'fleet'):   # 가짜 cys 는 앞쪽을, 직접 호출 시험은 fleet/ 쪽을 읽는다
             (d / 'status.json').write_text(json.dumps({'surfaces': rows}))
@@ -48,7 +50,8 @@ class S07Base(unittest.TestCase):
     def run_s07(self, extra_env):
         # 앱 기동·온보딩·신뢰 seed·선언 전달은 가짜로 막고, 대기 루프와 종료 판정만 진짜 코드로 돌린다.
         stubs = ('wait_gui_onboarded(){ return 0; }; seed_claude_trust(){ return 0; }; '
-                 'awakening_command(){ shift; if [[ "$*" == *"status --json"* ]]; then echo \'{"surfaces":[]}\'; fi; return 0; }; ')
+                 'awakening_command(){ shift; if [[ "$*" == *"status --json"* ]]; then echo \'{"surfaces":[]}\'; '
+                 'elif [[ "$*" == *" send "* ]]; then echo "$*" >> "$WAVE_HOME/sent.log"; fi; return 0; }; ')
         return self.bash(stubs + 'step_s07; echo RC=$?; echo "OBS=$STEP_OBSERVED"', extra_env)
 
 
@@ -59,14 +62,16 @@ class LiveRoleSeats(S07Base):
 
     def test_counts_only_live_agent_roles(self):
         self.status(['master', 'cso', 'worker'])
-        self.assertEqual(self.count(), '3 cso,master,worker')
+        self.assertEqual(self.count(), '3 cso,master,worker 3')
         self.status(['master', 'worker-2', 'reviewer-codex'])
-        self.assertEqual(self.count(), '2 master,worker')
+        self.assertEqual(self.count(), '2 master,worker 2')
+        self.status(['master', 'cso', 'worker'], injected=False)
+        self.assertEqual(self.count(), '3 cso,master,worker 0')   # 지침 주입 신호(launch_complete)가 없으면 0
         self.status(['master', 'cso', 'worker'], alive=False)
-        self.assertEqual(self.count(), '0')
+        self.assertEqual(self.count(), '0 - 0')
 
     def test_missing_status_is_zero(self):
-        self.assertEqual(self.count(), '0')
+        self.assertEqual(self.count(), '0 - 0')
 
 
 class UnfinishedOutcome(S07Base):
@@ -78,8 +83,22 @@ class UnfinishedOutcome(S07Base):
         self.assertIs(obs['fleet_started'], False)
         self.assertEqual(obs['fleet_state'], 'alive_unconfirmed')
         self.assertEqual(obs['seats_alive'], 3)
+        self.assertEqual(obs['j_code'], 'J-VER-04')   # J-UNK-00 대신 전용 진단 코드
         self.assertNotIn('실패:', r.stderr)
+        self.assertIn('세 칸 생존 · master 첫 답을 확인하세요', r.stderr)
         self.assertIn('같은 설치 명령을 다시 실행', r.stderr)
+
+    def test_three_alive_but_not_injected_is_a_failure(self):
+        self.status(['master', 'cso', 'worker'], injected=False)
+        r = self.bash('s07_unfinished; echo RC=$?')
+        self.assertIn('RC=1', r.stdout)
+        self.assertIn('지침 주입 확인 0/3', r.stderr)
+
+    def test_fewer_than_three_alive_is_a_failure(self):
+        self.status(['master', 'worker'])
+        r = self.bash('s07_unfinished; echo RC=$?')
+        self.assertIn('RC=1', r.stdout)
+        self.assertIn('살아 있는 칸 2/3', r.stderr)
 
     def test_no_live_seat_is_a_failure(self):
         self.status(['master', 'cso', 'worker'], alive=False)
@@ -126,6 +145,36 @@ class WaitLoop(S07Base):
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '6'})
         t.join()
         self.assertIn('RC=0', r.stdout, r.stderr)
+
+    def test_declaration_names_the_boot_script(self):
+        self.status(['master', 'cso', 'worker'])
+        self.run_s07({'WAVE_AWAKENING_SECONDS': '3'})
+        sent = (self.wave / 'sent.log').read_text()
+        self.assertIn('send --queued --to master 너는 마스터다 — ', sent)
+        self.assertIn('javis_bootstrap.py', sent)
+        self.assertIn('마지막 JSON', sent)
+
+    def test_rerun_with_declared_but_no_marker_resends_once(self):
+        # 같은 master 가 살아 있고(이 설치가 만든 것) 선언 기록이 있어도, 각성 표지가 없으면 선언을 한 번 다시 보낸다.
+        now = int(time.time())
+        self.status(['master', 'cso', 'worker'], created=now + 5)
+        (self.wave / 'fleet/started-at').write_text('%d\n' % (now - 10))
+        (self.wave / 'fleet/master-ref').write_text('surface:1\n')
+        (self.wave / 'fleet/declared').write_text('')
+        before = (self.wave / 'status.json').read_text()
+        stubs = ('wait_gui_onboarded(){ return 0; }; seed_claude_trust(){ return 0; }; '
+                 'awakening_command(){ shift; if [[ "$*" == *"status --json"* ]]; then cat "$WAVE_HOME/status.json"; '
+                 'elif [[ "$*" == *" send "* ]]; then echo "$*" >> "$WAVE_HOME/sent.log"; fi; return 0; }; ')
+        r = self.bash(stubs + 'RUN_STARTED=%d; step_s07; echo RC=$?' % (now - 10), {'WAVE_AWAKENING_SECONDS': '3'})
+        self.assertIn('RC=2', r.stdout, r.stderr)
+        sent = (self.wave / 'sent.log').read_text()
+        self.assertEqual(sent.count('너는 마스터다'), 1, sent)
+        self.assertIn('각성 표지가 아직 없어', r.stderr)
+
+    def test_waiting_line_reports_marker_and_seats(self):
+        self.status(['master', 'cso'])
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '5', 'WAVE_WAIT_REPORT_SECONDS': '1'})
+        self.assertIn('기다리는 것: 각성 표지 없음 · 좌석 2/3 · 지침 주입 2/3', r.stderr)
 
     def test_gate_pause_is_capped(self):
         self.status(['master', 'cso', 'worker'])

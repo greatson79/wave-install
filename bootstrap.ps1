@@ -489,6 +489,16 @@ $HelpRulesJson = @'
     "sample": "J-VER-03 — W-ARCH: 이 판은 Apple Silicon(M1 이후) 맥 전용입니다 — Intel 맥은 아직 지원하지 않습니다"
   },
   {
+    "code": "J-VER-04",
+    "symptom": "세 칸은 살아 있지만 설치기가 각성 확인을 끝내지 못함",
+    "pattern": "W-FLEET-ALIVE-UNCONFIRMED",
+    "action1": "설치 실패가 아닙니다. Wave 창에서 master 첫 답을 확인하세요.",
+    "action2": "확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행하세요.",
+    "case": "우리 S07 세 칸 생존·각성 표지 미기록 회귀(부트 점검을 건너뛰는 가짜 좌석); 주인님 윈 rc.3 실기 관측(원인 표지 미기록은 추론)",
+    "os": "win",
+    "sample": "W-FLEET-ALIVE-UNCONFIRMED"
+  },
+  {
     "code": "J-DL-03",
     "symptom": "파일 지문 측정 실패",
     "pattern": "W-HASH-READ",
@@ -963,7 +973,7 @@ function Wait-GuiOnboarded([Diagnostics.Stopwatch]$Clock, [int]$CapMs = 180000) 
 # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
 # 전달에 성공한 뒤에만 declared 를 기록한다 — 실패 후 재실행이 선언을 다시 보내게.
 function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$DeclaredPath) {
-  $declaration = '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 각각 한 좌석씩 소환해 마스터를 포함한 세 좌석의 각성을 확인해 주세요. 리뷰어는 기다리지 마세요.'
+  $declaration = "너는 마스터다 — 설치된 팩의 마스터 부트를 수행해 주세요. 이 좌석에서 python3(없으면 python) $PackHome\bin\javis_bootstrap.py 를 실행하고 마지막 JSON 을 인용해 주세요(CSO·작업 워커 소환과 각성 확인이 그 안에 들어 있습니다). 리뷰어는 기다리지 마세요."
   $sent = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('send', '--queued', '--to', 'master', ('"' + $declaration + '"')) 'master-declare' (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds 15000)
   if ($sent.timed_out -or $sent.exit_code -ne 0) { throw 'W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다' }
   [IO.File]::WriteAllText($DeclaredPath, '')
@@ -977,7 +987,9 @@ function Send-MasterDeclaration([Diagnostics.Stopwatch]$Clock, [string]$Declared
 #   · projects.<홈 2꼴>.hasTrustDialogAccepted=true 는 키가 없을 때만 · 되읽기 실패면 사본 복원.
 #   우리가 넣은 홈 키만 $WaveHome\trust-seed.tsv 에 「설정파일<탭>키」로 기록 — 기록 실패면 넣지 않고 J-PERM-01 로 멈춘다.
 #   settings.json: autoUpdatesChannel=stable 강제 · theme 키가 없을 때만 dark(원작 ps1:3211-3215).
-#   Wave 고유(유일한 의도적 차이 · 주인님 지시): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
+#   settings.json skipDangerousModePermissionPrompt=true(원작 :2732-2733 · 주인님 결정 2026-10-03 23:05 — 권한 확인 경고 창을 미리 넘김 · 바꾸기 전 값을 같은 기록에 ·
+#   원작은 개인 ~/.claude/settings.json 에도 쓰지만 여기서는 Wave 좌석 설정 폴더에만 쓴다).
+#   Wave 고유(의도적 차이 · 주인님 지시): settings.json remoteControlAtStartup=true(원작 ps1:3209 은 false) — 바꾸기 전 값을 같은 기록에.
 # 되돌리기: bootstrap.ps1 -UndoTrust (원작 reset-clean.ps1:2077 Remove-TrustSeed 와 같은 범위 + 작업폴더 칸 삭제 = reset-clean.sh:2095).
 function Read-JsonObject([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -1015,15 +1027,21 @@ function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Work
     if ($null -eq $ex -or $null -eq $ex.Value -or $null -eq $ex.Value.PSObject.Properties['hasTrustDialogAccepted']) { $homeKeys += $k; $rows += ($cfg + "`t" + $k) }
     else { Say '     (이 컴퓨터에는 홈 폴더 신뢰 설정이 이미 있어 그대로 두었습니다 — 우리가 바꾸지 않습니다.)' }
   }
-  $rc = $s.PSObject.Properties['remoteControlAtStartup']
-  $setRc = -not ($null -ne $rc -and $rc.Value -is [bool] -and $rc.Value)
-  if ($setRc) { $rows += ($sf + "`tremoteControlAtStartup`t" + $(if ($null -eq $rc) { 'absent' } else { ConvertTo-Json -InputObject $rc.Value -Compress })) }
+  # settings.json 의 true 값 키 — 바꾸기 전 값을 기록에 남기고 Undo 가 되돌린다(주인님 결정 2026-10-03 23:05: skipDangerousModePermissionPrompt 포함).
+  $setKeys = @()
+  foreach ($key in @('remoteControlAtStartup', 'skipDangerousModePermissionPrompt')) {
+    $cur = $s.PSObject.Properties[$key]
+    if (-not ($null -ne $cur -and $cur.Value -is [bool] -and $cur.Value)) {
+      $setKeys += $key
+      $rows += ($sf + "`t$key`t" + $(if ($null -eq $cur) { 'absent' } else { ConvertTo-Json -InputObject $cur.Value -Compress }))
+    }
+  }
   $result = 'ok'
   if ($rows.Count -gt 0) {
     try {   # 기록이 먼저 선다 — 기록 없이 넣지 않는다
       New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Journal) | Out-Null
       [IO.File]::AppendAllText($Journal, (($rows -join "`r`n") + "`r`n"), [Text.UTF8Encoding]::new($false))
-    } catch { $result = 'journal-failed'; $homeKeys = @(); $setRc = $false }
+    } catch { $result = 'journal-failed'; $homeKeys = @(); $setKeys = @() }
   }
   foreach ($k in $homeKeys) {
     $ex = $o.projects.PSObject.Properties[$k]
@@ -1034,7 +1052,7 @@ function Set-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Work
     $channel = $s.PSObject.Properties['autoUpdatesChannel']
     if ($null -eq $channel -or $channel.Value -cne 'stable') { $s | Add-Member -NotePropertyName autoUpdatesChannel -NotePropertyValue 'stable' -Force }
     if (-not $s.PSObject.Properties['theme']) { $s | Add-Member -NotePropertyName theme -NotePropertyValue 'dark' }
-    if ($setRc) { $s | Add-Member -NotePropertyName remoteControlAtStartup -NotePropertyValue $true -Force }
+    foreach ($key in $setKeys) { $s | Add-Member -NotePropertyName $key -NotePropertyValue $true -Force }
     Write-JsonNoBom $sf $s
   }
   Write-JsonNoBom $cfg $o
@@ -1087,7 +1105,7 @@ function Undo-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Wor
   $sf = Join-Path $ConfigDir 'settings.json'
   foreach ($r in $rows) {
     $valid = (($r.Count -eq 2 -and [IO.Path]::GetFullPath($r[0]) -eq [IO.Path]::GetFullPath($cfg)) -or
-              ($r.Count -eq 3 -and [IO.Path]::GetFullPath($r[0]) -eq [IO.Path]::GetFullPath($sf) -and $r[1] -ceq 'remoteControlAtStartup'))
+              ($r.Count -eq 3 -and [IO.Path]::GetFullPath($r[0]) -eq [IO.Path]::GetFullPath($sf) -and $r[1] -cin @('remoteControlAtStartup', 'skipDangerousModePermissionPrompt')))
     if (-not $valid) { throw 'trust-seed record is outside the Wave seat settings scope' }
     $r[0] = if ($r.Count -eq 2) { $cfg } else { $sf }
   }
@@ -1098,7 +1116,7 @@ function Undo-WaveClaudeTrust([string]$ConfigDir, [string]$Journal, [string]$Wor
     $prj = $o.PSObject.Properties['projects']
     if ($r.Count -eq 1) {   # 작업폴더 칸 2꼴 — 통째로
       if ($null -ne $prj -and $null -ne $prj.Value) { foreach ($k in @($WorkDir, ($WorkDir -replace '\\', '/'))) { $prj.Value.PSObject.Properties.Remove($k) } }
-    } elseif ($r.Count -ge 3) {   # settings.json remoteControlAtStartup
+    } elseif ($r.Count -ge 3) {   # settings.json 의 true 값 키
       $p = $o.PSObject.Properties[$r[1]]
       if ($null -ne $p -and $p.Value -is [bool] -and $p.Value) {
         if ($r[2] -eq 'absent') { $o.PSObject.Properties.Remove($r[1]) } else { $p.Value = ($r[2] | ConvertFrom-Json) }
@@ -1174,18 +1192,21 @@ function Run-S07 {
       if (-not $created.timed_out -and $created.exit_code -eq 2) { throw '좌석은 열려 있습니다 — Wave 창에서 입력을 멈추고 같은 설치 명령을 다시 실행해 주세요' }
       if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
       Send-MasterDeclaration $clock $declaredPath
-    } elseif ($masters.Count -eq 1 -and -not (Test-Path -LiteralPath $declaredPath) -and (Test-Path -LiteralPath $startedPath -PathType Leaf)) {
-      # 재실행 복구(W-DECLARE·launch-agent 상한): 이 설치가 시작한 뒤 생긴 master 인데 선언 전달 기록이 없으면 한 번 다시 보낸다.
+    } elseif ($masters.Count -eq 1 -and (Test-Path -LiteralPath $startedPath -PathType Leaf)) {
+      # 재실행 복구(W-DECLARE·launch-agent 상한·부트 스크립트를 건너뛴 master): 이 설치가 시작한 뒤 생긴 master 인데
+      # 각성 표지가 아직 없으면(선언 전달 기록이 있어도) 한 번 다시 보낸다.
       $since = [long]([IO.File]::ReadAllText($startedPath).Trim())
       if ($masters[0].created_at -ge $since) {
         $script:AwakeningStartedAt = [DateTimeOffset]::FromUnixTimeSeconds($since).UtcDateTime
-        Write-Log '선언 전달 기록이 없어 master 에 선언을 한 번 다시 보냅니다.'
+        Write-Log '각성 표지가 아직 없어 master 에 선언을 한 번 다시 보냅니다.'
         Send-MasterDeclaration $clock $declaredPath
       }
     }
   }
+  $lastReportMs = $clock.ElapsedMilliseconds
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {
     $tickStart = $clock.ElapsedMilliseconds
+    if ($tickStart - $lastReportMs -ge 30000) { $lastReportMs = $tickStart; Write-WaitingFor $status }
     $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
     if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { break }
     if (Test-AwakenedFleet $status) {
@@ -1201,26 +1222,41 @@ function Run-S07 {
   Complete-S07Unfinished
 }
 
-# 상한에 닿았을 때: 좌석이 하나도 살아 있지 않으면 진척 없음 = 실패(종료값 1). 하나라도 살아 있으면 설치 실패가 아니라
-# 「좌석은 살아 있으나 확인 미완」(종료값 2) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 상한에 닿았을 때: master·cso·worker 세 칸이 살아 있고 지침 주입(launch-agent 완료 신호 launch_complete)까지 끝났으면
+# 설치 실패가 아니라 「세 칸 생존 · 확인 미완」(종료값 2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 그 밖(좌석 부족·주입 미확인)은 진척이 부족한 것이므로 실패(1).
 function Get-LiveRoleSeats([object]$Status) {
   if ($null -eq $Status) { return @() }
   return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique)
 }
 
+function Get-InjectedRoleCount([object]$Status) {
+  if ($null -eq $Status) { return 0 }
+  return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and $_.launch_complete -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
+    ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique).Count
+}
+
+# S07 대기 중 30초마다 기다리는 것을 한 줄로 남긴다(표지 · 좌석 n/3 · 확인 창).
+function Write-WaitingFor([object]$Status) {
+  $mark = if (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.cys\.master-bootstrapped') -PathType Leaf) { '있음' } else { '없음' }
+  $gate = if ($script:GateVisible) { ' · 확인 창 대기 중(예산 정지)' } else { '' }
+  Write-Log "기다리는 것: 각성 표지 $mark · 좌석 $(@(Get-LiveRoleSeats $Status).Count)/3 · 지침 주입 $(Get-InjectedRoleCount $Status)/3$gate"
+}
+
 function Complete-S07Unfinished {
   $last = $null
   try { $last = Get-LiveFleet 5000 } catch { }
   $roles = @(Get-LiveRoleSeats $last)
-  if ($roles.Count -ge 1) {
+  $injected = Get-InjectedRoleCount $last
+  if ($roles.Count -eq 3 -and $injected -eq 3) {
     $script:AliveUnconfirmed = $true
-    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = $roles.Count; roles_alive = ($roles -join ','); source = 'cys status --json' }
-    Say "좌석 $($roles.Count)개($($roles -join ','))는 살아 있지만 각성 확인을 끝내지 못했습니다 — 설치 실패가 아닙니다. Wave 창에서 확인 창이 남아 있으면 고르신 뒤, 같은 설치 명령을 다시 실행해 주세요."
+    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = 3; roles_alive = ($roles -join ','); launch_complete = 3; j_code = 'J-VER-04'; source = 'cys status --json' }
+    Say "세 칸 생존 · master 첫 답을 확인하세요. 설치 실패가 아닙니다: 세 칸($($roles -join ','))이 살아 있고 지침도 들어갔지만 설치기가 각성 표지를 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     throw 'W-FLEET-ALIVE-UNCONFIRMED'
   }
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
-  throw '마스터·CSO·워커 각성 확인 420초 안에 살아 있는 좌석을 확인하지 못했습니다'
+  throw "마스터·CSO·워커 각성 확인 420초 안에 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 $($roles.Count)/3 · 지침 주입 확인 $injected/3)"
 }
 
 function Get-StateField([object]$Object, [string]$Name) {
@@ -1473,7 +1509,8 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     Send-Progress $CurrentStep 'end'
   } catch {
     if ($script:AliveUnconfirmed) {
-      # 실패가 아니다: 도움 요청·진단 코드 없이 상태만 남기고 종료값 2 로 끝낸다(최상위 trap 은 1 이다).
+      # 실패가 아니다: 전용 진단 코드(J-VER-04)만 알리고 도움 요청 없이 종료값 2 로 끝낸다(최상위 trap 은 1 이다).
+      Write-JCode 'J-VER-04'
       Update-Step $Id "failed" 2 ([string]($Config.steps | Where-Object { $_.id -eq $Id }).on_fail.error_id) $StepObserved
       exit 2
     }

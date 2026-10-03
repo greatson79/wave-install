@@ -693,7 +693,7 @@ step_s07() {
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   # 재실행·resume: 이 설치가 앞서 만든 master(started-at 이후 생성, master-ref 기록이 있으면 그것과 일치) 하나만
   # 살아 있으면 새로 만들지 않고 재사용한다. master-ref 가 없으면 launch-agent 가 상한에 걸려 ref 를 못 받은 경우다.
-  # 선언 전달 기록(declared)이 없고 각성도 확인되지 않으면 선언을 한 번 다시 보낸다(W-DECLARE 복구).
+  # 각성 표지가 확인되지 않으면(선언 전달 기록이 있어도) 선언을 한 번 다시 보낸다(W-DECLARE 복구 · 부트 스크립트를 건너뛴 master 도).
   # 기록과 다른 master·둘 이상·기록 이전 생성 master 는 중복 생성 없이 중단한다.
   # (Windows Run-S07 은 살아 있는 master 하나를 재사용하고 started-at 기록이 있을 때만 선언을 다시 보낸다.)
   existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" "$RUN_STARTED" <<'PY_EXISTING'
@@ -736,8 +736,8 @@ PY_EXISTING
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."
     cp "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/status.json"
-    if [[ ! -f "$WAVE_HOME/fleet/declared" ]] && ! verify_live_fleet "$ref" "$started"; then
-      log "선언 전달 기록이 없어 master($ref)에 선언을 한 번 다시 보냅니다."
+    if ! verify_live_fleet "$ref" "$started"; then
+      log "각성 표지가 아직 없어 master($ref)에 선언을 한 번 다시 보냅니다."
       send_master_declaration "$deadline" || return 1
     fi
   else
@@ -751,7 +751,7 @@ PY_EXISTING
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
     send_master_declaration "$deadline" || return 1
   fi
-  local tick paused=0
+  local tick paused=0 reported=$SECONDS
   while (( SECONDS < deadline )); do
     tick=$SECONDS
     remaining=$((deadline - SECONDS))
@@ -764,6 +764,7 @@ PY_EXISTING
       return 0
     fi
     notice_first_run_gate
+    if (( SECONDS - reported >= ${WAVE_WAIT_REPORT_SECONDS:-30} )); then reported=$SECONDS; log_waiting_for; fi
     remaining=$((deadline - SECONDS))
     (( remaining <= 0 )) && break
     (( remaining > 2 )) && remaining=2
@@ -776,22 +777,23 @@ PY_EXISTING
   s07_unfinished
 }
 
-# 상한에 닿았을 때: 좌석이 하나도 살아 있지 않으면 진척 없음 = 실패(1). 하나라도 살아 있으면 설치 실패가 아니라
-# 「좌석은 살아 있으나 확인 미완」(2) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 상한에 닿았을 때: master·cso·worker 세 칸이 살아 있고 지침 주입(launch-agent 완료 신호)까지 끝났으면 설치 실패가 아니라
+# 「세 칸 생존 · 확인 미완」(2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+# 그 밖(좌석 부족·주입 미확인)은 진척이 부족한 것이므로 실패(1).
 s07_unfinished() {
-  local live n roles
+  local n roles injected
   WAVE_COMMAND_TIMEOUT=5 bounded_cys status --json > "$WAVE_HOME/fleet/status.json" 2>/dev/null || true
-  live="$(live_role_seats)"
-  read -r n roles <<< "$live"
-  if [[ "${n:-0}" -ge 1 ]]; then
-    STEP_OBSERVED="{\"fleet_started\":false,\"fleet_state\":\"alive_unconfirmed\",\"seats_alive\":$n,\"roles_alive\":\"$roles\"}"
-    log "좌석 ${n}개(${roles})는 살아 있지만 각성 확인을 끝내지 못했습니다 — 설치 실패가 아닙니다. Wave 창에서 확인 창이 남아 있으면 고르신 뒤, 같은 설치 명령을 다시 실행해 주세요."
+  read -r n roles injected <<< "$(live_role_seats)"
+  if [[ "${n:-0}" -eq 3 && "${injected:-0}" -eq 3 ]]; then
+    STEP_OBSERVED="{\"fleet_started\":false,\"fleet_state\":\"alive_unconfirmed\",\"seats_alive\":3,\"roles_alive\":\"$roles\",\"launch_complete\":3,\"j_code\":\"J-VER-04\"}"
+    log "J-VER-04 — 세 칸 생존 · master 첫 답을 확인하세요. 설치 실패가 아닙니다: 세 칸($roles)이 살아 있고 지침도 들어갔지만 설치기가 각성 표지를 확인하지 못했습니다. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
     return 2
   fi
-  fail_message "420초 안에 살아 있는 마스터·CSO·worker 좌석을 확인하지 못했습니다"
+  fail_message "420초 안에 마스터·CSO·worker 세 칸의 생존과 지침 주입을 확인하지 못했습니다(살아 있는 칸 ${n:-0}/3 · 지침 주입 확인 ${injected:-0}/3)"
 }
 
-# 살아 있는 master·cso·worker 좌석: 「<개수> <역할,역할>」 (status.json 기준 · 없으면 「0 」).
+# 살아 있는 master·cso·worker 좌석: 「<역할 수> <역할,역할> <주입 끝난 역할 수>」 (status.json 기준 · 없으면 「0 - 0」).
+# 주입 끝남 = 데몬의 launch_complete(launch-agent 가 준비 표지·지침 주입까지 마쳤다는 신호).
 live_role_seats() {
   python3 - "$WAVE_HOME/fleet/status.json" <<'PY_LIVE_ROLES'
 import json, sys
@@ -799,10 +801,21 @@ try:
     rows = json.load(open(sys.argv[1]))['surfaces']
 except Exception:
     rows = []
-roles = sorted({str(s['role']).split('-')[0] for s in rows
-                if s.get('exited') is False and s.get('agent_alive') is True and str(s.get('role') or '').startswith(('master', 'cso', 'worker'))})
-print(len(roles), ','.join(roles))
+live = [s for s in rows if s.get('exited') is False and s.get('agent_alive') is True and str(s.get('role') or '').startswith(('master', 'cso', 'worker'))]
+base = lambda s: str(s['role']).split('-')[0]
+roles = sorted({base(s) for s in live})
+done = {base(s) for s in live if s.get('launch_complete') is True}
+print(len(roles), ','.join(roles) or '-', len(done))
 PY_LIVE_ROLES
+}
+
+# S07 대기 중 30초마다 기다리는 것을 한 줄로 남긴다(표지 · 좌석 n/3 · 확인 창).
+log_waiting_for() {
+  local n roles injected mark=없음 gate=
+  read -r n roles injected <<< "$(live_role_seats)"
+  [[ -f "$HOME/.cys/.master-bootstrapped" ]] && mark=있음
+  [[ "$GATE_VISIBLE" == 1 ]] && gate=" · 확인 창 대기 중(예산 정지)"
+  log "기다리는 것: 각성 표지 ${mark} · 좌석 ${n:-0}/3 · 지침 주입 ${injected:-0}/3${gate}"
 }
 
 # 좌석 첫 실행 질문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit) 사전 설정.
@@ -862,7 +875,7 @@ PY_GATE_SEATS
 # 전달에 성공한 뒤에만 declared 를 기록한다 — 실패 후 재실행이 선언을 다시 보내게.
 send_master_declaration() {
   awakening_command "$1" "$WAVE_HOME/bin/cys" send --queued --to master \
-    '너는 마스터다 — 설치된 팩의 마스터 부트 절차를 수행해 주세요. CSO와 작업 워커를 한 좌석씩 소환하고 각성을 확인해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다.' >/dev/null ||
+    "너는 마스터다 — 설치된 팩의 마스터 부트를 수행해 주세요. 이 좌석에서 python3 $PACK_HOME/bin/javis_bootstrap.py 를 실행하고 마지막 JSON 을 인용해 주세요(CSO·작업 워커 소환과 각성 확인이 그 안에 들어 있습니다). 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다." >/dev/null ||
     fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
   : > "$WAVE_HOME/fleet/declared"
 }
@@ -1082,7 +1095,7 @@ run_step() {
   cat "$stderr_file" >> "$LOG_FILE"
   set -e
   if [[ "$rc" -ne 0 ]]; then
-    [[ "$rc" -eq 2 ]] || help_progress fail J-UNK-00   # 2 = 좌석은 살아 있으나 확인 미완(S07) — 실패 신호·도움 요청을 보내지 않는다
+    if [[ "$rc" -eq 2 ]]; then help_progress fail J-VER-04; else help_progress fail J-UNK-00; fi   # 2 = 세 칸 생존·확인 미완(S07) — 전용 코드만 알리고 도움 요청은 보내지 않는다
     # 상태 파일에는 가린 뒤 자른 stderr 끝부분(최대 4KB)만 남긴다. 원문 전체는 install.log 에만 있다.
     STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" "$SCRIPT_DIR/lib" <<'PY_REASON'
 import json, os, re, sys

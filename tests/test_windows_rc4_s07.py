@@ -18,16 +18,20 @@ class WindowsRc4S07Tests(unittest.TestCase):
                               cwd=ROOT, env=dict(os.environ, **(env or {})), text=True, capture_output=True, timeout=60)
 
     def test_budget_pause_and_unfinished_outcome(self):
-        r = self.run_fixture("unit")
+        with tempfile.TemporaryDirectory() as td:
+            r = self.run_fixture("unit", {"RC4_FIXTURE_DIR": td})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS waiting line: marker / seats n/3 / injection n/3", r.stdout)
         self.assertIn("PASS budget = 420s + paused gate time", r.stdout)
         self.assertIn("PASS unfinished: alive seats -> alive_unconfirmed, none alive -> failure", r.stdout)
 
-    def test_alive_unconfirmed_exits_2_without_help_code(self):
+    def test_alive_unconfirmed_exits_2_with_dedicated_code(self):
         with tempfile.TemporaryDirectory() as td:
             r = self.run_fixture("exit2", {"RC4_FIXTURE_DIR": td})
             self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
-            self.assertEqual((Path(td) / "rec.txt").read_text().strip().splitlines()[-1], "S07_INITIAL_FLEET|failed|2|WT-S07-FLEET")
+            lines = (Path(td) / "rec.txt").read_text().strip().splitlines()
+            self.assertIn("jcode|J-VER-04", lines)   # J-UNK-00 이 아니라 전용 진단 코드
+            self.assertEqual(lines[-1], "S07_INITIAL_FLEET|failed|2|WT-S07-FLEET")
 
 
 if __name__ == "__main__":

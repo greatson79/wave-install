@@ -1581,6 +1581,8 @@ if ($env:WAVE_NO_PROGRESS -ne '1' -and (Get-Command Show-HelpNotice -ErrorAction
   $HelpInteractive = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected -and -not ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
   Show-HelpNotice
 }
+# 설치 시작 안내 한 줄(테오 확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 맥 bootstrap.sh 와 같은 글자.
+Say '이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요.'
 Init-State
 if (Test-Path -LiteralPath $InstallDoneFile) { Remove-Item -LiteralPath $InstallDoneFile -Force }
 if (@($State.steps.PSObject.Properties | Where-Object { $_.Value.status -eq 'running' }).Count -gt 0) {

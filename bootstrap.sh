@@ -76,6 +76,11 @@ show_help_notice() {
   HELP_NOTICE_SHOWN=1
 }
 
+# 설치 시작 안내 한 줄(테오 확정 문구 · 설치 도움 안내 바로 다음 줄) — 권한 확인 창 사전 통과 설정을 사용자에게 알린다. 윈 bootstrap.ps1 과 같은 글자.
+show_permission_notice() {
+  log "이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요."
+}
+
 # 진행 신호(8KB). 호출 1회는 client 안에서 3초 벽시계, 바깥에서 자식 프로세스 전체를 CALL_CAP+2초로 끊는다.
 # 실패는 CALL_CAP초로 쳐서 누적하고, 누적이 BUDGET초에 닿으면 이번 설치에서는 더 보내지 않는다.
 # 실패해도 한 번만 알리고 설치를 계속한다. 본문·오류 원문은 출력하지 않는다.
@@ -1167,6 +1172,7 @@ main() {
   fi
   HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
   show_help_notice
+  show_permission_notice
   init_state
   attempt_start
   # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)

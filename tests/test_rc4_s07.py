@@ -196,5 +196,22 @@ class WaitLoop(S07Base):
         self.assertLess(time.monotonic() - t0, 40)
 
 
+class PermissionNotice(S07Base):
+    TEXT = "이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요."
+
+    def test_mac_prints_the_confirmed_line_after_the_help_notice(self):
+        r = self.bash('show_permission_notice')
+        self.assertIn(self.TEXT, r.stderr)
+        src = (ROOT / 'bootstrap.sh').read_text()
+        self.assertLess(src.index('\n  show_help_notice\n'), src.index('\n  show_permission_notice\n'))
+        self.assertLess(src.index('\n  show_permission_notice\n'), src.index('\n  init_state\n'))
+
+    def test_windows_says_the_same_line_right_after_the_help_notice(self):
+        src = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn("Say '" + self.TEXT + "'", src)
+        self.assertLess(src.index('  Show-HelpNotice\n}'), src.index("Say '" + self.TEXT))
+        self.assertLess(src.index("Say '" + self.TEXT), src.index('\nInit-State'))
+
+
 if __name__ == '__main__':
     unittest.main()

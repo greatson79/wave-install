@@ -77,6 +77,37 @@ class TarballSelfFetch(unittest.TestCase):
         self.assertIn(str(sb.home / ".wave/src/pack/steps.json"), r.stderr)  # 풀린 폴더에서 재실행됨
         self.assertTrue((sb.home / ".wave/src/pack/wave-pack").is_dir())
 
+    def run_piped(self, sb, *args, **extra):
+        # curl -fsSL <주소> | bash 와 같은 모양: 스크립트를 표준입력으로 먹인다(BASH_SOURCE 가 비는 실행).
+        return subprocess.run(["bash", "-s", "--", *args], input=BOOT.read_text(), env=dict(sb.env, **extra), text=True,
+                              capture_output=True, cwd=str(sb.home))
+
+    def test_piped_run_enters_through_the_pack_download_without_a_warning(self):
+        sb = Sandbox(self)
+        tgz = self.make_tarball(sb)
+        r = self.run_piped(sb, "--dry-run", WAVE_INSTALL_TARBALL_URL=f"file://{tgz}", WAVE_INSTALL_TARBALL_SHA256=sha(tgz))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("unbound variable", r.stderr)
+        self.assertNotIn("BASH_SOURCE", r.stderr)
+        self.assertIn(str(sb.home / ".wave/src/pack/steps.json"), r.stderr)   # 받아 푼 설치팩에서 다시 시작됨
+
+    def test_piped_run_never_trusts_a_steps_json_in_the_current_folder(self):
+        # 표준입력 실행에서 SCRIPT_DIR 을 현재 폴더로 착각하면 안 된다: 현재 폴더의 steps.json/wave-pack 은 설치팩으로 안 쓴다.
+        sb = Sandbox(self)
+        tgz = self.make_tarball(sb)
+        (sb.home / "steps.json").write_text("{}")
+        (sb.home / "wave-pack").mkdir()
+        r = self.run_piped(sb, "--dry-run", WAVE_INSTALL_TARBALL_URL=f"file://{tgz}", WAVE_INSTALL_TARBALL_SHA256=sha(tgz))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(str(sb.home / ".wave/src/pack/steps.json"), r.stderr)
+
+    def test_piped_run_without_pack_pin_stops_with_the_known_message(self):
+        sb = Sandbox(self)
+        r = self.run_piped(sb, "--dry-run")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("unbound variable", r.stderr)
+        self.assertIn("설치팩 URL·SHA256 이 릴리스 때 채워지지 않음", r.stderr)
+
     def test_sha_mismatch_stops_before_extract(self):
         sb = Sandbox(self)
         tgz = self.make_tarball(sb)

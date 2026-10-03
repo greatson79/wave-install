@@ -165,6 +165,12 @@ jobs:
           EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
           python3 tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
           ls -l "$RUNNER_TEMP/rcrel"
+      - name: Cross-compile the Windows synthetic claude.exe (a native process named claude.exe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq gcc-mingw-w64-x86-64
+          x86_64-w64-mingw32-gcc -O0 -municode -static -o "$RUNNER_TEMP/rcrel/claude-launcher.exe" tests/rc/claude_launcher_win.c
+          file "$RUNNER_TEMP/rcrel/claude-launcher.exe"; ls -l "$RUNNER_TEMP/rcrel/claude-launcher.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: rcrel-win-${{ github.run_id }}

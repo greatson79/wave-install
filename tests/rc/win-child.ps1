@@ -28,6 +28,12 @@ function Install-Fake {
   foreach ($n in @('claude.exe')) { $real = Join-Path $bin $n; if (Test-Path $real) { Move-Item $real ($real + '.real') -Force } }
   Copy-Item (Join-Path $rc 'fake_claude.py') (Join-Path $bin 'claude\fake_claude.py') -Force
   "@echo off`r`n`"$Py`" `"%~dp0claude\fake_claude.py`" %*`r`n" | Set-Content (Join-Path $bin 'claude.cmd') -Encoding ASCII
+  # 네이티브 claude.exe 런처(ubuntu 에서 mingw 로 cross-compile, rcrel 에 동봉) — 이름이 처음부터 claude.exe 여야 cysd 워치독(앱 8e124a4 의 .exe 인식)이 잡는다. cfg 는 UTF-16LE(한글 경로 안전)
+  $launcher = Join-Path (Split-Path -Parent $RcJson) 'claude-launcher.exe'
+  if (Test-Path $launcher) {
+    Copy-Item $launcher (Join-Path $bin 'claude.exe') -Force
+    ($Py + "`r`n" + (Join-Path $bin 'claude\fake_claude.py') + "`r`n") | Set-Content (Join-Path $bin 'claude.cfg') -Encoding Unicode
+  }
   $env:PATH = "$bin;$env:PATH"
   [Environment]::SetEnvironmentVariable('Path', "$bin;" + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
 }

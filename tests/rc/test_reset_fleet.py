@@ -127,6 +127,7 @@ class ResetFleetTest(unittest.TestCase):
         def spawn(home):
             return {
                 "bridge": line_proc("%s/.wave/apps/Wave Terminal.app/Contents/Resources/python/bin/python3 %s/.cys/pack/bin/javis_hud_bridge.py" % (home, home)),
+                "bridge-framework": line_proc("/opt/homebrew/Cellar/python@3.14/3.14.0/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python %s/.cys/pack/bin/javis_hud_bridge.py" % home),
                 "events-link": line_proc("%s/.wave/bin/cys events --reconnect --cursor-file x" % home),
                 "events-app": line_proc("%s/.wave/apps/Wave Terminal.app/Contents/MacOS/cys events --reconnect" % home),
                 "other-bridge": line_proc("python3 %s/other/.cys/pack/bin/javis_hud_bridge.py" % home),
@@ -134,7 +135,7 @@ class ResetFleetTest(unittest.TestCase):
             }
         home, procs, result = self.run_with_fakes(spawn)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        for name in ("bridge", "events-link", "events-app"):
+        for name in ("bridge", "bridge-framework", "events-link", "events-app"):
             self.assertIsNotNone(procs[name].poll(), "%s must be stopped" % name)
         for name in ("other-bridge", "status-call"):
             self.assertIsNone(procs[name].poll(), "%s must survive" % name)

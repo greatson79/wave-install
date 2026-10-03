@@ -17,7 +17,7 @@ WAVE_TARBALL_SHA256="${WAVE_INSTALL_TARBALL_SHA256:-__WAVE_TARBALL_SHA256__}"
 CLAUDE_INSTALL_URL="${WAVE_CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CLAUDE_DIRECT_BASE_URL="${WAVE_CLAUDE_DIRECT_BASE_URL:-https://downloads.claude.ai/claude-code-releases}"
 REINSTALL=0
-RUN_STARTED="$(date +%s)"  # 이번 실행의 시작 — 재설치 때 데몬 시작 직후 자동복원이 만든 master 가 이번 실행 것인지 가르는 기준
+RUN_STARTED="$(date +%s)"  # 이번 설치 시도의 시작 — 재설치 때 데몬 시작 직후 자동복원이 만든 master 가 이번 시도 것인지 가르는 기준(attempt_start 가 재개 때 기록값으로 바꾼다)
 RESUME=0
 DRY_RUN=0
 STEP_OBSERVED='{}'
@@ -224,6 +224,18 @@ with open(state_path, "w", encoding="utf-8") as handle:
     json.dump(state, handle, ensure_ascii=False, indent=2)
     handle.write("\n")
 PY
+}
+
+# 설치 시도의 시작 시각을 $WAVE_HOME/attempt-started 에 기록한다. --resume 은 새로 잡지 않고 그 값을 읽는다 —
+# 첫 시도 중 복원이 만든 master 는 표식을 쓰기 전에 실패한 뒤 재개해도 같은 시도의 master 로 남아야 한다.
+# --reinstall·새 설치(--resume 아님)·기록 없음/깨짐은 새로 기록한다(오래된 표식을 재사용하지 않는다).
+attempt_start() {
+  local f="$WAVE_HOME/attempt-started" saved=
+  if [[ "$RESUME" == 1 && "$REINSTALL" != 1 && -f "$f" ]]; then
+    saved="$(head -n1 "$f" 2>/dev/null)"
+    if [[ "$saved" =~ ^[0-9]+$ ]]; then RUN_STARTED="$saved"; return 0; fi
+  fi
+  mkdir -p "$WAVE_HOME" && printf '%s\n' "$RUN_STARTED" > "$f"
 }
 
 init_state() {
@@ -1076,6 +1088,7 @@ main() {
   HELP_VERSION="$(json_value "$STEPS_FILE" version 2>/dev/null || echo unknown)"
   show_help_notice
   init_state
+  attempt_start
   # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)
   local id idx title status
   while IFS=$'\t' read -r id idx title; do

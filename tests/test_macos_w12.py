@@ -78,4 +78,19 @@ class W12Tests(unittest.TestCase):
             (proj/'s.jsonl').write_text('{"type":"user"}\n'); self.assertEqual(state(now),'unconfirmed')
             (proj/'s.jsonl').write_text('{"type":"user"}\n{"type":"assistant"}\n'); self.assertEqual(state(now),'confirmed')
             self.assertEqual(state(now+3600),'unconfirmed','stale transcript must not count')
+    def test_progress_lines_match_windows_say_step(self):
+        # 화면 진행 표시 = Windows Say-Step 과 같은 꼴 [n/10] title — 시작, 10개 (steps.json index·title)
+        import re
+        steps=sorted(json.loads((ROOT/'steps.json').read_text(encoding='utf-8'))['steps'],key=lambda s:s['index'])
+        with tempfile.TemporaryDirectory() as td:
+            lib=Path(td)/'lib.sh'; lib.write_text((ROOT/'bootstrap.sh').read_text().rsplit('\nmain "$@"',1)[0])
+            stubs='ensure_pack(){ :; }; load_config(){ :; }; show_help_notice(){ :; }; init_state(){ :; }; json_value(){ echo pending; }; run_step(){ :; }; help_progress(){ :; }; mark_required_complete(){ :; }; mark_install_complete(){ :; }'
+            r=subprocess.run(['bash','-c','source "$1"; STEPS_FILE="$2"; '+stubs+'; main','t',str(lib),str(ROOT/'steps.json')],
+                             env=dict(os.environ,HOME=td,WAVE_HOME=str(Path(td)/'wave')),capture_output=True,text=True,timeout=30)
+            self.assertEqual(r.returncode,0,r.stderr)
+            got=re.findall(r'^\[[^]]+\] \[(\d+)/10\] (.+) — 시작$',r.stderr,re.M)
+            self.assertEqual(got,[(str(s['index']+1),s['title']) for s in steps])
+            self.assertEqual(len(got),10)
+            self.assertNotRegex(r.stderr,r'\[S0\d_')
+
 if __name__=='__main__': unittest.main()

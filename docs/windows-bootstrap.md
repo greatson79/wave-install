@@ -37,7 +37,7 @@ Say 단계 출력, 지문 확인 뒤 웹 표식 제거, J-코드, fail-open 진�
 배포 시 `scripts/make-release.sh`가 `bootstrap.ps1`의 `__WAVE_INSTALL_ZIP_URL__`과 `__WAVE_INSTALL_ZIP_SHA256__`을 ZIP URL·측정 SHA256으로 채웁니다. 원본 자리표시자 상태는 실행을 거부합니다. 릴리스 게시 뒤 사용자 명령은 아래 한 줄입니다. 현재 URL은 게시 전이므로 실행 명령이 아니라 확정 문자열입니다.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.2.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
 ```
 
 이 한 줄은 설치기를 사용자 폴더에 `install-wave.ps1` 파일로 내려받아 `-File` 로 실행합니다(`irm | iex` 는 쓰지 않습니다 — 릴리스 파일의 UTF-8 BOM 이 문자열로 섞여 Windows PowerShell 5.1 파서가 깨짐 · 2026-10-01 실기 실측). 이 단계에는 SmartScreen 창이 없습니다. ZIP 검증 뒤 설치기가 다시 시작되고, Claude Code 설치·업데이트가 필요하면 이 창에서 실행합니다. 미로그인 상태면 브라우저 인증과 코드 붙여넣기를 요청합니다. Wave Terminal `setup.exe` 실행 시 SmartScreen 경고가 나타날 수 있으며, Defender·V3·알약이 다운로드나 실행을 차단하면 해당 백신의 알림·격리 기록을 확인합니다. 메모리에서 실행된 스크립트는 HTTPS ZIP을 받아 고정 SHA256을 검사하고, ZIP 안의 절대·상위 경로와 symlink를 거부한 뒤 `powershell.exe -ExecutionPolicy Bypass -File`로 검증된 팩의 설치기를 다시 실행합니다.
@@ -150,7 +150,7 @@ PowerShell 6개 실행 블록은 로컬 PowerShell 7 파서로 검사했습니�
 
 `one-line-e2e.yml`은 새 표준 사용자를 만들고 Windows PowerShell 5.1을 그 계정과 프로필로 실행합니다. Administrators 그룹 부재와 실제 사용자 SID의 HKCU를 검사합니다.
 
-1. `published`: README의 Windows 한 줄을 그대로 실행합니다. S00/S01 통과와 S02 로그인 경계까지만 판정하며 전체 설치 성공으로 표시하지 않습니다. v0.2.4 공개 자산이 없으면 이 잡은 실패합니다. 발행 후 다시 실행해야 합니다.
+1. `published`: README의 Windows 한 줄을 그대로 실행합니다. S00/S01 통과와 S02 로그인 경계까지만 판정하며 전체 설치 성공으로 표시하지 않습니다. v0.3.0 공개 자산이 없으면 이 잡은 실패합니다. 발행 후 다시 실행해야 합니다.
 2. `post-login`: S00~S02에 `TEST_SYNTHETIC_BYPASS` 전제를 명시하고 checkout의 원본 S03~S09를 실행합니다. 실제 S02 로그인 성공을 주장하지 않으며 최종 전체 성공 상태를 거부합니다. 과거 S05의 schtasks 명령이 실제로 접근 거부되는지도 기록합니다. 대조군 미재현은 경고이며 본 설치를 중단하지 않습니다.
 
 `Start-Process -Wait`는 자식 데몬까지 기다릴 수 있으므로 `-Credential -LoadUserProfile -PassThru`와 25분 제한 `WaitForExit`를 사용합니다. 종료 뒤 해당 CI 사용자 프로세스를 정리합니다. 신원·상태·로그·대조군·소스 해시를 artifact로 보존합니다. Windows 실측 결과는 CI 실행 후에만 확정할 수 있습니다.

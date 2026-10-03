@@ -126,9 +126,10 @@ try {
   New-Item -ItemType Directory -Force (Join-Path $e 'phaseA'), (Join-Path $e 'G6') | Out-Null
   # 동일 OneLine 경로의 PS 5.1 출력을 바이트로 검산한다(무 BOM·한글 UTF-8 완전 일치).
   $marker = '한글 바이트 왕복'; $probe = Join-Path $e 'G6\utf8-probe.log'
-  $probeExit = OneLine "[Console]::Write('$marker')" $probe 20
+  $probeExit = OneLine "[Console]::Write('$marker'); exit 0" $probe 20
   $want = ([Text.UTF8Encoding]::new($false)).GetBytes($marker)
-  if ($probeExit -ne 0 -or [BitConverter]::ToString([IO.File]::ReadAllBytes($probe)) -cne [BitConverter]::ToString($want)) { throw 'PS 5.1 UTF-8 바이트 왕복 실패' }
+  [IO.File]::WriteAllText((Join-Path $e 'G6\utf8-probe.exit'), "$probeExit`n", [Text.UTF8Encoding]::new($false))
+  if ($probeExit -ne 0 -or [BitConverter]::ToString([IO.File]::ReadAllBytes($probe)) -cne [BitConverter]::ToString($want)) { throw "PS 5.1 UTF-8 바이트 왕복 실패 (exit=$probeExit)" }
   $env:BROWSER = 'false'; OneLine $one (Join-Path $e 'phaseA\run.log') 300 | Out-Null; Copy-FleetStatusEvidence (Join-Path $e 'phaseA'); Remove-Item Env:BROWSER
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'phaseA\state.json') -ErrorAction SilentlyContinue
   # 설치기가 시작 직후 죽는 경우(10차: Get-JCode 미인식)를 가리기 위한 진단 — 설치팩 bootstrap.ps1 의 파싱 결과·인코딩·함수 목록·설치 로그

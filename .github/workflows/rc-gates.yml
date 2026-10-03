@@ -446,7 +446,7 @@ jobs:
           if-no-files-found: error
   judge:
     name: gate.py table
-    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-gates-kr, win-upgrade, freeze]
+    needs: [cfg, mac-gates, mac-upgrade, mac-noboot, win-gates, win-gates-kr, win-upgrade, win-noboot, win-nonhome-cwd, freeze]   # win-ctrlc 는 측정 전용이라 제외
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -468,6 +468,11 @@ jobs:
           [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
           { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
           python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
+      - name: Every required job must have succeeded (one failed job fails the whole run)
+        if: always()
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 -c "import json,os,sys; n=json.loads(os.environ['NEEDS']); bad={k:v['result'] for k,v in n.items() if v['result']!='success'}; print('실패·건너뜀:', bad) if bad else print('필수 잡 %d개 전부 success' % len(n)); sys.exit(1 if bad else 0)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

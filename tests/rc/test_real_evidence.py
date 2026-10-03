@@ -27,5 +27,14 @@ class Real(unittest.TestCase):
             json.dump({"os": "win", "seats": ["master"]}, open(os.path.join(t, "win.json"), "w"))
             self.assertEqual(run("check", t).returncode, 1)
             with tempfile.TemporaryDirectory() as e: self.assertEqual(run("check", e).returncode, 1)
+    def test_unknown_fleet_state_does_not_pass(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(self.make(t, 0, {}).returncode, 0)   # 관측값이 없으면 make 가 unknown 으로 기록
+            self.assertEqual(json.load(open(os.path.join(t, "real", "mac.json")))["fleet_state"], "unknown")
+            r = run("check", os.path.join(t, "real")); self.assertEqual(r.returncode, 1); self.assertIn("unknown", r.stdout)
+    def test_folder_with_only_non_evidence_json_does_not_pass(self):
+        with tempfile.TemporaryDirectory() as t:
+            json.dump({"something": "else"}, open(os.path.join(t, "x.json"), "w"))
+            r = run("check", t); self.assertEqual(r.returncode, 1); self.assertIn("0개", r.stdout)
 
 if __name__ == "__main__": unittest.main()

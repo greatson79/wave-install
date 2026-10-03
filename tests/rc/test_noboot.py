@@ -34,15 +34,22 @@ class Judge(unittest.TestCase):
         self.assertEqual(self.run_case({"unconfirmed_exit": 7, "diag_code": "J-X"}, log="J-UNK-00"), 1)
 
 class FirstRunLeak(unittest.TestCase):
-    def run_case(self, exit_txt, observed, status="passed"):
+    def run_case(self, exit_txt, observed=None, statuses=("passed", "passed", "passed")):
         with tempfile.TemporaryDirectory() as d:
             if exit_txt is not None: open(os.path.join(d, "exit"), "w").write(exit_txt)
-            open(os.path.join(d, "s.json"), "w").write(json.dumps({"steps": {"S07_INITIAL_FLEET": {"status": status, "observed": observed}}}))
+            steps = {"S07_INITIAL_FLEET": {"status": statuses[0], "observed": observed or {}}, "S08_VERIFY": {"status": statuses[1]}, "S09_COMPLETE": {"status": statuses[2]}}
+            open(os.path.join(d, "s.json"), "w").write(json.dumps({"steps": steps}))
             return check_first_run.judge(os.path.join(d, "exit"), os.path.join(d, "s.json"))[0]
     def test_clean_pass(self): self.assertEqual(self.run_case("0\n", {"fleet_started": True}), 0)
-    def test_exit2_leaks(self): self.assertEqual(self.run_case("2\n", {"fleet_started": False, "fleet_state": "alive_unconfirmed"}, "failed"), 1)
+    def test_nonzero_exit_fails_even_with_passed_steps(self): self.assertEqual(self.run_case("1\n"), 1)
+    def test_exit2_fails(self): self.assertEqual(self.run_case("2\n", {"fleet_state": "alive_unconfirmed"}, ("failed", "pending", "pending")), 1)
+    def test_exit0_but_a_gated_step_failed_fails(self):
+        for i in range(3): self.assertEqual(self.run_case("0\n", {}, tuple("failed" if j == i else "passed" for j in range(3))), 1)
     def test_alive_unconfirmed_even_if_exit_0(self): self.assertEqual(self.run_case("0\n", {"fleet_state": "alive_unconfirmed"}), 1)
-    def test_missing_evidence(self): self.assertEqual(self.run_case(None, {}), 1)
+    def test_missing_evidence_fails(self): self.assertEqual(self.run_case(None, {}), 1)
+    def test_signal_evidence_win_gates_is_caught(self):   # 신호용 RC 증거(첫 설치 exit 1 · S07 failed)가 새 단정에서 잡힌다 — 있을 때만
+        e = "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-gates-37134620023/win"
+        if os.path.isdir(e): self.assertEqual(check_first_run.judge(e + "/run.exit", e + "/G1_state.json")[0], 1)
 
 class FakeClaudeSwitch(unittest.TestCase):
     def boot(self, skip):

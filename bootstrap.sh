@@ -840,7 +840,7 @@ wait_gui_onboarded() {
     fi
     sleep 1
   done
-  fail_message "J-VER-02 — W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다. 앱 창을 열어 둔 채 같은 설치 명령을 --resume 으로 다시 실행하세요."
+  fail_message "J-VER-02 — W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다. 앱 창을 열어 둔 채 같은 설치 명령을 다시 실행하세요(처음에 --reinstall 을 붙였다면 그것은 빼고 --resume 만 붙입니다)."
 }
 
 verify_live_fleet() {

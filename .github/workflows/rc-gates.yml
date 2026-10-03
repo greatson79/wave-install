@@ -453,8 +453,33 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.cfg.outputs.gate_ref }}', path: gateref }
-      - uses: actions/download-artifact@v4
-        with: { pattern: 'rc-evidence-*', path: evidence, merge-multiple: true }
+      # 판정 입력은 이 여섯 잡의 증거뿐이다 — 같은 win/ 경로로 올리는 noboot·nonhome·ctrlc 증거를 pattern 으로 합치면 파일이 섞여 G3·G4 해시가 깨진다(정식 1회차 37138057562). 그 잡들의 증거는 각자 아티팩트로 남는다.
+      - name: Evidence of mac-gates (judge input)
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
+        with: { name: 'rc-evidence-mac-${{ github.run_id }}', path: evidence }
+      - name: Evidence of mac-upgrade (judge input)
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
+        with: { name: 'rc-evidence-mac-g5-${{ github.run_id }}', path: evidence }
+      - name: Evidence of win-upgrade (judge input)
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
+        with: { name: 'rc-evidence-win-upgrade-${{ github.run_id }}', path: evidence }
+      - name: Evidence of win-gates-kr (judge input)
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
+        with: { name: 'rc-evidence-win-kr-${{ github.run_id }}', path: evidence }
+      - name: Evidence of win-gates (judge input — 윈 잡 중 마지막에 받아 루트 identity.json·child.log 가 이 잡 것이 되게)
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
+        with: { name: 'rc-evidence-win-gates-${{ github.run_id }}', path: evidence }
+      - name: Evidence of freeze (judge input)
+        uses: actions/download-artifact@v4
+        continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
+        with: { name: 'rc-evidence-freeze-${{ github.run_id }}', path: evidence }
+      - name: Judge input must be pure (no other job's evidence mixed in)
+        run: python3 tests/rc/check_evidence_mix.py evidence
       - name: G9 real-device evidence must carry installer exit and fleet_state (gate.py does not read them)
         run: if [ -d evidence/real ]; then python3 tests/rc/real_evidence.py check evidence/real; else echo "evidence/real 없음 - 실기 증거 미제출"; fi
       - name: Judge (exit 1 = some gate is FAIL or unmeasured; Windows and G8/G9 stay unmeasured here)
@@ -468,6 +493,9 @@ jobs:
           [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
           { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
           python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
+      - name: The gate table must have no FAIL (unmeasured cells are fine) — gate.py exits 1 on unmeasured, so its exit code is not usable here
+        if: always()
+        run: python3 tests/rc/check_gate_table.py gate-result.json gate-result-kr.json
       - name: Every required job must have succeeded (one failed job fails the whole run)
         if: always()
         env:

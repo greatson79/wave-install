@@ -36,6 +36,7 @@ def os_set(b):
             shutil.copy(b / n, s / n)
             for f in b.glob(n + ".raw"): shutil.copy(f, s / f.name)
         put(s, extra[0], dict(extra[1]))
+    put(b / "G5", "G7b_schedule_freeze.json", {"baseline_sha256": "a" * 64, "current_sha256": "a" * 64})
     put(b, "H1_help_landing.json", {"landed_s": 42, "dashboard_listed": True})
     put(b, "H2_answer_shown.json", {"shown_s": 90})
     put(b, "H3_mask.json", {"planted": ["t"], "found_in": {"ledger": 0, "dashboard": 0, "sheet": 0, "drive": 0}})
@@ -126,6 +127,19 @@ class T(unittest.TestCase):
         b = self.d / "mac"; f = b / "G5" / "G3_inject.json"; doc = json.loads(f.read_text()); doc["new_file_count"] = 2
         f.write_text(json.dumps(doc)); v = gate.g5(b, self.d / "common")
         self.assertEqual(v[0], gate.FAIL)
+
+    def test_g7b_schedule_freeze(self):
+        b = self.d / "mac"; f = b / "G5" / "G7b_schedule_freeze.json"
+        def put7(doc):
+            (b / "G5" / "x.raw").write_text("raw")
+            doc["raw"] = [{"path": "x.raw", "sha256": hashlib.sha256(b"raw").hexdigest()}]; f.write_text(json.dumps(doc))
+            return gate.g7b(b)
+        a, c = "a" * 64, "b" * 64
+        self.assertEqual(put7({"baseline_sha256": a, "current_sha256": a})[0], gate.PASS)
+        self.assertEqual(put7({"baseline_sha256": a, "current_sha256": c})[0], gate.FAIL)
+        v = put7({"baseline_sha256": a, "baseline_sha256_lf": c, "baseline_crlf": 5, "current_sha256": c}); self.assertEqual(v[0], gate.FAIL); self.assertIn("줄바꿈", v[1])
+        self.assertEqual(put7({"baseline_sha256": "x", "current_sha256": a})[0], gate.FAIL)
+        f.unlink(); self.assertEqual(gate.g7b(b)[0], gate.NA)
 
     def test_g1_ci_scope(self):
         f = self.d / "mac" / "G1_state.json"; d = json.loads(f.read_text())

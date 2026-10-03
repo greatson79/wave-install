@@ -99,6 +99,8 @@ jobs:
           sleep 2; CURL_CA_BUNDLE="$D/c.pem" curl -fsS "${RC_BASE}rc-release.json" >/dev/null
       - name: One-line install and evidence (phase A boundary, phase B, G6 reinstall)
         run: bash tests/rc/mac-run.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - name: First install must not end as alive-but-unconfirmed (exit 2 / J-VER-04 never passes)
+        run: python3 tests/rc/check_first_run.py "$RUNNER_TEMP/ev/mac/exit" "$RUNNER_TEMP/ev/mac/G1_state.json"
       - name: G7 release text and package licenses
         if: always()
         run: python3 tests/rc/g7.py --gen textref/tools/release-text/gen.py --tar "$RUNNER_TEMP"/rcrel/wave-install-*.tar.gz --out "$RUNNER_TEMP/ev/common"
@@ -139,6 +141,8 @@ jobs:
           nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
           sleep 2
       - run: bash tests/rc/mac-upgrade.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - name: Upgrade install must not end as alive-but-unconfirmed
+        run: python3 tests/rc/check_first_run.py "$RUNNER_TEMP/ev/mac/G5/exit" "$RUNNER_TEMP/ev/mac/G5/state.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -198,6 +202,9 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode main -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: First install must not end as alive-but-unconfirmed (exit 2 / J-VER-04 never passes)
+        shell: bash
+        run: python tests/rc/check_first_run.py "$RUNNER_TEMP/ev/win/run.exit" "$RUNNER_TEMP/ev/win/G1_state.json"
       - name: Fail the job when required evidence is missing
         if: always()
         shell: powershell
@@ -235,6 +242,9 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode main -UserName "Kyle U+CD5C" -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: First install must not end as alive-but-unconfirmed (exit 2 / J-VER-04 never passes)
+        shell: bash
+        run: python tests/rc/check_first_run.py "$RUNNER_TEMP/ev/win/run.exit" "$RUNNER_TEMP/ev/win/G1_state.json"
       - name: Fail the job when required evidence is missing
         if: always()
         shell: powershell
@@ -308,6 +318,9 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode upgrade -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Upgrade install must not end as alive-but-unconfirmed
+        shell: bash
+        run: python tests/rc/check_first_run.py "$RUNNER_TEMP/ev/win/G5/run.exit" "$RUNNER_TEMP/ev/win/G5/state.json"
       - name: Fail the job when required evidence is missing
         if: always()
         shell: powershell
@@ -318,6 +331,43 @@ jobs:
         if: always()
         with:
           name: rc-evidence-win-upgrade-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  mac-noboot:
+    # rc4 상시 잡(맥 대칭): 부트 점검을 건너뛰는 합성 Claude — 기대 종료값·진단 코드·관측값은 tests/rc/rc4-expect.json 한 곳(윈과 공용)
+    needs: cfg
+    name: macOS fake Claude that skips the boot check (expects the unconfirmed exit, never exit 1)
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.mac_run_id }}
+          github-token: ${{ github.token }}
+          pattern: w3-macos-arm64-*
+          path: app
+      - name: Ad-hoc re-sign for the test (not Developer ID), assemble test release and https server
+        run: |
+          set -euo pipefail
+          DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
+          mkdir -p "$RUNNER_TEMP/resigned" "$RUNNER_TEMP/ev/common"
+          bash tests/rc/mac-resign.sh "$DMG" "$RUNNER_TEMP/resigned/$(basename "$DMG")" "$RUNNER_TEMP/ev/common/mac_resign.txt" || { cat "$RUNNER_TEMP/ev/common/mac_resign.txt"; exit 1; }
+          CDH="$(sed -n 's/^cdhash=//p' "$RUNNER_TEMP/ev/common/mac_resign.txt")"; test -n "$CDH"
+          python3 tests/rc/rc_release.py --os mac --asset "$RUNNER_TEMP/resigned/$(basename "$DMG")" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" --cdhash "$CDH"
+          D="$RUNNER_TEMP/tls"; mkdir -p "$D"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$D/k.pem" -out "$D/c.pem" -days 1 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
+          nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
+          sleep 2
+      - run: bash tests/rc/mac-noboot.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - name: Judge against tests/rc/rc4-expect.json
+        run: python3 tests/rc/check_noboot.py "$RUNNER_TEMP/ev/mac/noboot"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-mac-noboot-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   win-noboot:

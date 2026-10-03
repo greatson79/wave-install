@@ -2,7 +2,7 @@
 import json, os, subprocess, sys, tempfile, time, unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import check_noboot
+import check_noboot, check_first_run
 
 class Judge(unittest.TestCase):
     def run_case(self, exp, exit_txt="7", absent=True, log="", state=None):
@@ -32,6 +32,17 @@ class Judge(unittest.TestCase):
     def test_diag_code(self):
         self.assertEqual(self.run_case({"unconfirmed_exit": 7, "diag_code": "J-X"}, log="… J-X …"), 0)
         self.assertEqual(self.run_case({"unconfirmed_exit": 7, "diag_code": "J-X"}, log="J-UNK-00"), 1)
+
+class FirstRunLeak(unittest.TestCase):
+    def run_case(self, exit_txt, observed, status="passed"):
+        with tempfile.TemporaryDirectory() as d:
+            if exit_txt is not None: open(os.path.join(d, "exit"), "w").write(exit_txt)
+            open(os.path.join(d, "s.json"), "w").write(json.dumps({"steps": {"S07_INITIAL_FLEET": {"status": status, "observed": observed}}}))
+            return check_first_run.judge(os.path.join(d, "exit"), os.path.join(d, "s.json"))[0]
+    def test_clean_pass(self): self.assertEqual(self.run_case("0\n", {"fleet_started": True}), 0)
+    def test_exit2_leaks(self): self.assertEqual(self.run_case("2\n", {"fleet_started": False, "fleet_state": "alive_unconfirmed"}, "failed"), 1)
+    def test_alive_unconfirmed_even_if_exit_0(self): self.assertEqual(self.run_case("0\n", {"fleet_state": "alive_unconfirmed"}), 1)
+    def test_missing_evidence(self): self.assertEqual(self.run_case(None, {}), 1)
 
 class FakeClaudeSwitch(unittest.TestCase):
     def boot(self, skip):

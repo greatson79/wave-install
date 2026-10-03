@@ -132,7 +132,8 @@ try {
     if ($from -ne '0.2.3') { Write-Host "v0.2.3 이 아님($from) — G5 측정 불가"; return }
     $sha = (Get-FileHash (Join-Path $g5 'from_v023_state.json') -Algorithm SHA256).Hash.ToLower()
     "{`"from_version`":`"$from`",`"raw`":[{`"path`":`"from_v023_state.json`",`"sha256`":`"$sha`"}]}" | Set-Content (Join-Path $g5 'G5_meta.json') -Encoding ASCII
-    Reset-Fleet; OneLine $one (Join-Path $g5 'run.log') | Out-Null; Copy-FleetStatusEvidence $g5; Collect $g5
+    Reset-Fleet; $rx = OneLine $one (Join-Path $g5 'run.log'); [IO.File]::WriteAllText((Join-Path $g5 'run.exit'), ([string]$rx + "`n"), ([Text.UTF8Encoding]::new($false)))
+    Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $g5 'state.json') -ErrorAction SilentlyContinue; Copy-FleetStatusEvidence $g5; Collect $g5
     Copy-Item (Join-Path $h '.cys\pack\schedule.json') (Join-Path $g5 'installed_schedule_rc.json') -ErrorAction SilentlyContinue   # 증거만
     return
   }
@@ -162,7 +163,7 @@ try {
   }
   foreach ($lf in @('install.log', 'install-done.txt')) { Copy-Item (Join-Path $h ".wave\$lf") (Join-Path $e "phaseA\$lf") -ErrorAction SilentlyContinue }
   Install-Fake
-  OneLine $one (Join-Path $e 'run.log') | Out-Null
+  $rx = OneLine $one (Join-Path $e 'run.log'); [IO.File]::WriteAllText((Join-Path $e 'run.exit'), ([string]$rx + "`n"), ([Text.UTF8Encoding]::new($false)))   # rc4: 첫 설치 종료값(종료값 2 가 PASS 로 새지 않는지 check_first_run.py 가 본다)
   Copy-FleetStatusEvidence $e
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'G1_state.json')
   Collect $e

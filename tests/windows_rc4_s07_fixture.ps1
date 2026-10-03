@@ -62,3 +62,17 @@ if ($Mode -eq 'exit2') {
   Invoke-Step 'S07_INITIAL_FLEET' { $script:AliveUnconfirmed = $true; $script:StepObserved = [ordered]@{ fleet_started = $false }; throw 'W-FLEET-ALIVE-UNCONFIRMED' }
   Write-Host 'NOT REACHED'; exit 9
 }
+
+if ($Mode -eq 'cwd') {
+  # 2238 결재: 설치기가 띄우는 모든 cys 호출(데몬 자동기동 포함)은 홈에서 시작한다 — 호출자 cwd(예: 프로젝트 폴더)를 상속시키지 않는다.
+  $home1 = Join-Path $env:RC4_FIXTURE_DIR 'userhome'; New-Item -ItemType Directory -Force $home1 | Out-Null
+  $elsewhere = Join-Path $env:RC4_FIXTURE_DIR 'project'; New-Item -ItemType Directory -Force $elsewhere | Out-Null
+  $env:USERPROFILE = $home1; $WaveHome = Join-Path $home1 '.wave'
+  Set-Location $elsewhere
+  $r = Invoke-BoundedCheck (Get-Process -Id $PID).Path @('-NoProfile', '-Command', '(Get-Location).Path') 'cwd' 20000
+  $got = ([string]$r.stdout).Trim()
+  # macOS 임시 폴더의 /private 별칭 차이만 흡수한다
+  if (($got -replace '^/private', '') -ne ($home1 -replace '^/private', '')) { throw "child cwd was '$got', expected the user home" }
+  Write-Host 'PASS bounded cys calls start in the user home'
+  exit 0
+}

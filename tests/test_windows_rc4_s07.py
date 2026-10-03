@@ -33,6 +33,16 @@ class WindowsRc4S07Tests(unittest.TestCase):
             self.assertIn("jcode|J-VER-04", lines)   # J-UNK-00 이 아니라 전용 진단 코드
             self.assertEqual(lines[-1], "S07_INITIAL_FLEET|failed|2|WT-S07-FLEET")
 
+    def test_installer_starts_cys_processes_in_the_user_home(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = self.run_fixture("cwd", {"RC4_FIXTURE_DIR": td})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS bounded cys calls start in the user home", r.stdout)
+        src = (ROOT / "bootstrap.ps1").read_text(encoding="utf-8-sig")
+        for line in src.splitlines():
+            if "Start-Process" in line and ("cys-app.exe" in line or "$app" in line or "cysd.exe" in line):
+                self.assertIn("-WorkingDirectory $env:USERPROFILE", line, line)
+
     def test_gate_needles_match_the_app_list(self):
         src = (ROOT / "bootstrap.ps1").read_text(encoding="utf-8-sig")
         for needle in ("Doyoutrustthisfolder", "InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval", "Trythenewfullscreenrenderer?"):

@@ -831,7 +831,7 @@ function Test-DaemonReady {
 function Start-WaveApp {
   $app = Join-Path $WaveHome 'bin\cys-app.exe'
   if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw 'cys-app.exe 없음' }
-  Start-Process -FilePath $app | Out-Null
+  Start-Process -FilePath $app -WorkingDirectory $env:USERPROFILE | Out-Null   # 홈에서 시작 — 앱이 띄우는 데몬·복원 좌석이 호출자 폴더를 상속하지 않게(2238)
 }
 
 function Run-S05 {
@@ -846,7 +846,7 @@ function Run-S05 {
   $fallback = $false
   if (-not $ready) {
     $fallback = $true
-    try { Start-Process -FilePath (Join-Path $WaveHome 'bin\cysd.exe') | Out-Null } catch { Write-Log $_.Exception.Message }
+    try { Start-Process -FilePath (Join-Path $WaveHome 'bin\cysd.exe') -WorkingDirectory $env:USERPROFILE | Out-Null } catch { Write-Log $_.Exception.Message }
     $ready = Test-DaemonReady
     if (-not $ready) {
       try { Start-WaveApp } catch { Write-Log $_.Exception.Message }
@@ -1294,7 +1294,7 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
   $stdoutPath = Join-Path $verify ($Name + '.stdout.log')
   $stderrPath = Join-Path $verify ($Name + '.stderr.log')
-  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -WorkingDirectory $env:USERPROFILE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
   $exitCode = $null
   $killError = $null
   try {

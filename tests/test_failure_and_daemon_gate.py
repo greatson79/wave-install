@@ -2,10 +2,13 @@
 """D1/D2 단위 회귀. 실제 인증·DMG·데몬·전체 설치는 실행하지 않는다."""
 import json
 import os
+import re
+import signal
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,6 +137,148 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertFalse((self.home / "cysd-executed").exists(), "S04 must never execute cysd")
         observed = json.loads(result.stdout.strip())
         self.assertEqual(observed["cysd_check"], "file+executable+symlink+copy-match")
+
+    def test_s04_running_or_unmeasured_app_is_preserved(self):
+        app = self.home / "wave/apps/Wave Terminal.app"
+        app.mkdir(parents=True)
+        marker = app / "original"
+        marker.write_text("keep")
+        (self.home / "artifact.dmg").write_text("mock only")
+        for mode, lsof in (("running", '#!/bin/sh\necho 123\n'),
+                           ("unknown", '#!/bin/sh\necho permission-denied >&2\nexit 1\n')):
+            with self.subTest(mode=mode):
+                fakebin = self.home / "fakebin"
+                fakebin.mkdir(exist_ok=True)
+                probe = fakebin / "lsof"
+                probe.write_text(lsof)
+                probe.chmod(0o755)
+                self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
+                result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                                   'hdiutil() { printf "mounted" > "$HOME/mounted"; }; '
+                                   'step_s04; printf "%s\\n" "$STEP_OBSERVED"')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(marker.read_text(), "keep")
+                self.assertFalse((self.home / "mounted").exists())
+
+    def test_s04_hold_has_distinct_install_state(self):
+        wave = self.home / "wave"
+        app = wave / "apps/Wave Terminal.app"
+        app.mkdir(parents=True)
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        (self.home / "artifact.dmg").write_text("mock only")
+        fakebin = self.home / "fakebin"
+        fakebin.mkdir()
+        lsof = fakebin / "lsof"
+        lsof.write_text('#!/bin/sh\necho 123\n')
+        lsof.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
+        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                           'hdiutil() { printf "mounted" > "$HOME/mounted"; }; '
+                           'run_step S04_INSTALL_LINK')
+        self.assertNotEqual(result.returncode, 0)
+        state = json.loads((wave / "install-state.json").read_text())
+        self.assertEqual(state["status"], "waiting_for_user")
+        step = state["steps"]["S04_INSTALL_LINK"]
+        self.assertEqual(step["status"], "failed")
+        self.assertEqual(step["observed"]["reinstall"], "waiting_for_app_exit")
+        self.assertFalse((self.home / "mounted").exists())
+
+    def test_s04_guard_distinguishes_daemon_and_missing_bundle(self):
+        wave = self.home / "wave"
+        (wave / "bin").mkdir(parents=True)
+        fake_cys = wave / "bin/cys"
+        fake_cys.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_DAEMON_STATUS"\n')
+        fake_cys.chmod(0o755)
+        for status, expected in (("registered=true loaded=true socket_alive=false", 0),
+                                 ("registered=false loaded=false socket_alive=true", 0),
+                                 ("registered=false loaded=false socket_alive=false", 1)):
+            with self.subTest(status=status):
+                self.env["FAKE_DAEMON_STATUS"] = status
+                result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                                   'then echo 0; else echo $?; fi')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(int(result.stdout.strip()), expected)
+        # 앱이 지워져 끊긴 bin/cys 링크: 물어볼 제어 명령도 앱 프로세스도 없다 = 가동 중 아님(재실행이 막히면 안 된다)
+        fake_cys.unlink()
+        fake_cys.symlink_to(wave / "apps/Wave Terminal.app/Contents/MacOS/cys")
+        result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                           'then echo 0; else echo $?; fi')
+        self.assertEqual(result.stdout.strip(), "1")
+        # 링크가 아닌 실행 불가 파일은 상태를 알 수 없으므로 그대로 차단(2)
+        fake_cys.unlink()
+        fake_cys.write_text("not executable")
+        fake_cys.chmod(0o644)
+        result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                           'then echo 0; else echo $?; fi')
+        self.assertEqual(result.stdout.strip(), "2")
+
+    def hold_message(self, status):
+        wave = self.home / "wave"
+        (wave / "bin").mkdir(parents=True, exist_ok=True)
+        (wave / "apps/Wave Terminal.app").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        (self.home / "artifact.dmg").write_text("mock only")
+        fake_cys = wave / "bin/cys"
+        fake_cys.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_DAEMON_STATUS"\n')
+        fake_cys.chmod(0o755)
+        self.env["FAKE_DAEMON_STATUS"] = status
+        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                           'hdiutil() { return 0; }; step_s04')
+        self.assertNotEqual(result.returncode, 0)
+        return result.stdout + result.stderr
+
+    def test_s04_hold_names_the_stop_that_matches_who_owns_the_daemon(self):
+        launchd = self.hold_message("registered=true loaded=true socket_alive=true")
+        self.assertIn("daemon uninstall", launchd)
+        other = self.hold_message("registered=false loaded=false socket_alive=true")
+        self.assertNotIn("daemon uninstall", other)  # launchd 소유가 아니면 uninstall 은 아무것도 멈추지 못한다
+        self.assertIn("pkill -f", other)
+
+    def test_s04_printed_stop_line_stops_only_this_installs_daemons(self):
+        other = self.hold_message("registered=false loaded=false socket_alive=true")
+        cmd = "pkill -f '" + re.search(r"pkill -f '([^']*)'", other).group(1) + "'"
+        wave = self.home / "wave"
+        app_cysd = wave / "apps/Wave Terminal.app/Contents/MacOS/cysd"
+        link_cysd = wave / "bin/cysd"  # bin/cys 링크로 뜬 데몬은 명령줄이 링크 경로다(current_exe 가 링크를 안 푼다)
+        other_install = self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"
+        app_cysd.parent.mkdir(parents=True, exist_ok=True)
+        app_cysd.write_text("")  # 이 경로를 인자로만 가진 프로세스(tail) 대조군용 파일
+        # 서명 문제 없이 명령줄만 원하는 경로로 보이게 한다: argv[0]=가짜 경로, 실제 실행 파일=/bin/sleep
+        fake = lambda path: subprocess.Popen([str(path), "60"], executable="/bin/sleep")
+        targets = {"app": fake(app_cysd), "link": fake(link_cysd)}
+        controls = {"other-install": fake(other_install),
+                    "path-as-argument": subprocess.Popen(["tail", "-f", str(app_cysd)])}
+        everything = {**targets, **controls}
+        self.addCleanup(lambda: [(q.poll() is None and q.kill(), q.wait()) for q in everything.values()])
+        time.sleep(0.7)
+        for name, proc in everything.items():  # 안내 줄 실행 전에 모두 살아 있어야 시험이 공허하지 않다
+            self.assertIsNone(proc.poll(), "%s died before the stop line ran" % name)
+        subprocess.run(["bash", "-c", cmd], env=self.env, timeout=10)
+        for name, proc in targets.items():
+            proc.wait(timeout=5)
+            self.assertEqual(proc.returncode, -signal.SIGTERM, "%s not stopped by: %s" % (name, cmd))
+        time.sleep(0.5)
+        for name, proc in controls.items():
+            self.assertIsNone(proc.poll(), "%s must survive: %s" % (name, cmd))
+
+    def test_s04_guard_detects_gui_without_daemon(self):
+        wave = self.home / "wave"
+        app = wave / "apps/Wave Terminal.app"
+        app.mkdir(parents=True)
+        fakebin = self.home / "fakebin"
+        fakebin.mkdir()
+        for name, body in {
+            "lsof": '#!/bin/sh\nexit 1\n',
+            "ps": '#!/bin/sh\nprintf "%s\\n" "$HOME/wave/apps/Wave Terminal.app/Contents/MacOS/Wave Terminal"\n',
+        }.items():
+            tool = fakebin / name
+            tool.write_text(body)
+            tool.chmod(0o755)
+        self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
+        result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                           'then echo 0; else echo $?; fi')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "0")
 
     def test_s04_nonexecutable_daemon_is_rejected_without_start(self):
         result = self.s04("nonexec")

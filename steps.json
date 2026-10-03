@@ -19,8 +19,8 @@
     },
     "bytes": {"windows_x64": 128899424},
     "sha256": {
-      "macos_arm64": "9219ad876eb02af89ba7edbbe2cc79751fdcf3c46febaa0c220c574bc2cd8cb5",
-      "macos_x64": "9219ad876eb02af89ba7edbbe2cc79751fdcf3c46febaa0c220c574bc2cd8cb5",
+      "macos_arm64": "599e406c4ba11e6f6de2eb4e03f87d7e786ddb0453e298ed0f16d4e08a3d7897",
+      "macos_x64": "599e406c4ba11e6f6de2eb4e03f87d7e786ddb0453e298ed0f16d4e08a3d7897",
       "windows_x64": "8c13234b0c675f7d415ae0664f5e00174cfe6c2cba8838b3123afff72ca47d9c"
     },
     "sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/SHA256SUMS",
@@ -33,8 +33,8 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "5f6c11301d6582d10447811360b167a21da0041d",
-      "macos_x64": "5f6c11301d6582d10447811360b167a21da0041d"
+      "macos_arm64": "24fc341cd7c075bcca0526912550519fbf0b50a4",
+      "macos_x64": "24fc341cd7c075bcca0526912550519fbf0b50a4"
     }
   },
   "reinstall": {

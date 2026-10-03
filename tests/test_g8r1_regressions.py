@@ -268,6 +268,8 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
         self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(self.since))
         self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+        self.assertIn('"master_ref":"surface:5"', r.stdout.replace(' ', ''))   # 사후 대조용 기록
+        self.assertIn('"master_source":"reused"', r.stdout.replace(' ', ''))
         self.assertNotIn('send ', self.log.read_text())
 
     def test_declared_reuse_sends_nothing(self):
@@ -316,8 +318,10 @@ class MacResumeAndPackTests(unittest.TestCase):
         after.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', future), self.seat('surface:20', 'cso', future),
                                                   self.seat('surface:21', 'worker-1', future)]}))
         self.env['FLEET_AFTER'] = str(after)
-        r = self.bash('step_s07; echo "RC=$?"')
+        r = self.bash('step_s07; echo "RC=$?"; echo "$STEP_OBSERVED"')
         self.assertIn('RC=0', r.stdout, r.stderr)
+        self.assertIn('"master_ref":"surface:5"', r.stdout.replace(' ', ''))
+        self.assertIn('"master_source":"created"', r.stdout.replace(' ', ''))
         calls = self.log.read_text().splitlines()
         launch = next(i for i, c in enumerate(calls) if c.startswith('launch-agent --role master'))
         send = next(i for i, c in enumerate(calls) if c.startswith('send --queued --to master 너는 마스터다 — '))
@@ -346,6 +350,8 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:9')
         self.assertGreater(int((self.wave / 'fleet/started-at').read_text().strip()), self.since)
         self.assertIn('"master_reused":true', r.stdout.replace(' ', ''))
+        self.assertIn('"master_ref":"surface:9"', r.stdout.replace(' ', ''))
+        self.assertIn('"master_source":"restored"', r.stdout.replace(' ', ''))
         # 낡은 선언 표식은 이번 master 에 대한 증거가 아니므로 지워 선언 재전송 경로를 되살린다
         self.assertFalse((self.wave / 'fleet/declared').exists())
 
@@ -404,6 +410,43 @@ class MacResumeAndPackTests(unittest.TestCase):
         for recorded in (None, 'garbage\n', '\n'):                            # 기록 없음·깨짐 = 새로 기록
             got, written = self.attempt('RESUME=1', recorded)
             self.assertGreaterEqual(got, now); self.assertEqual(written, str(got))
+
+    def implicit(self, status, recorded, flags='', run=1700000000):
+        """인자 없는 재실행(또는 flags) — 설치 기록 status 와 시도 기록을 만들어 attempt_start 를 돌린다."""
+        f = self.wave / 'attempt-started'
+        f.unlink(missing_ok=True)
+        if recorded is not None:
+            f.write_text(str(recorded) + '\n')
+        state = self.wave / 'install-state.json'
+        state.unlink(missing_ok=True)
+        if status is not None:
+            state.write_text(json.dumps({'status': status}))
+        r = self.bash('RUN_STARTED=%d; %s attempt_start; echo "RUN=$RUN_STARTED"' % (run, flags))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        got = int(r.stdout.split('RUN=')[1].split()[0])
+        return got, '이전 설치를 이어서 진행합니다' in (r.stdout + r.stderr), f.read_text().strip()
+
+    def test_plain_rerun_continues_an_unfinished_attempt_within_24h(self):
+        base = 1700000000
+        for status in ('running', 'waiting_for_user', 'not_started'):          # 끝나지 않은 시도
+            with self.subTest(status):
+                self.assertEqual(self.implicit(status, base - 100), (base - 100, True, str(base - 100)))
+        # 24시간 경계 양쪽 1건씩(정각=이어받음 · 1초 넘으면 새로 기록하고 알림 없음)
+        self.assertEqual(self.implicit('running', base - 86400), (base - 86400, True, str(base - 86400)))
+        self.assertEqual(self.implicit('running', base - 86401), (base, False, str(base)))
+        # 미래 값·기록 손상·기록 없음 = 새로 기록
+        for label, recorded in (('future', base + 1), ('garbage', 'garbage'), ('huge', '9' * 20), ('absent', None)):
+            with self.subTest(label):
+                self.assertEqual(self.implicit('running', recorded), (base, False, str(base)))
+
+    def test_plain_rerun_after_a_finished_install_or_with_reinstall_starts_a_new_attempt(self):
+        base = 1700000000
+        for status in ('complete', 'complete_with_exceptions', None):          # 끝난 설치·설치 기록 없음
+            with self.subTest(status):
+                self.assertEqual(self.implicit(status, base - 100), (base, False, str(base)))
+        # --reinstall 은 끝나지 않은 시도가 있어도 새로 기록, --resume 은 끝난 설치여도 24시간 안이면 이어받음(종전 동작)
+        self.assertEqual(self.implicit('running', base - 100, flags='REINSTALL=1;'), (base, False, str(base)))
+        self.assertEqual(self.implicit('complete', base - 100, flags='RESUME=1;'), (base - 100, True, str(base - 100)))
 
     def test_resumed_attempt_still_takes_over_the_master_restored_in_the_first_attempt(self):
         # 첫 시도: 복원이 master 를 만든 뒤 S07 이 표식을 쓰기 전에 실패 → --resume. 새 RUN_STARTED 로는 그 master 가

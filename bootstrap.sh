@@ -537,7 +537,7 @@ step_s04() {
       local esc escp stop_pattern
       esc="$(printf '%s' "$WAVE_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
       escp="$(printf '%s' "$PACK_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
-      stop_pattern="^$esc/(apps/Wave Terminal\\.app/Contents/MacOS|bin)/(cysd|cys events)( |\$)|^.*python[0-9.]* $escp/bin/javis_hud_bridge\\.py( |\$)"
+      stop_pattern="^$esc/(apps/Wave Terminal\\.app/Contents/MacOS|bin)/(cysd|cys events)( |\$)|^.*[pP]ython[0-9.]* $escp/bin/javis_hud_bridge\\.py( |\$)"
       fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$stop_pattern' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     elif [[ -x "$WAVE_HOME/bin/cys" ]]; then
       fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."

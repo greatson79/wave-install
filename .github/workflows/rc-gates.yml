@@ -458,6 +458,8 @@ jobs:
         with: { ref: '${{ needs.cfg.outputs.gate_ref }}', path: gateref }
       - uses: actions/download-artifact@v4
         with: { pattern: 'rc-evidence-*', path: evidence, merge-multiple: true }
+      - name: G9 real-device evidence must carry installer exit and fleet_state (gate.py does not read them)
+        run: if [ -d evidence/real ]; then python3 tests/rc/real_evidence.py check evidence/real; else echo "evidence/real 없음 - 실기 증거 미제출"; fi
       - name: Judge (exit 1 = some gate is FAIL or unmeasured; Windows and G8/G9 stay unmeasured here)
         run: |
           set -u

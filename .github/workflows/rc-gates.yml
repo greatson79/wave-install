@@ -320,6 +320,66 @@ jobs:
           name: rc-evidence-win-upgrade-${{ github.run_id }}
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
+  win-noboot:
+    # rc4 상시 잡(테오 2303): 좌석 셋은 뜨지만 부트 점검(javis_bootstrap.py)을 건너뛰어 표지가 안 써지는 합성 Claude. 기대 = 설치기의 「세 칸 생존 · 확인 미완」 별도 종료값 + 진단 코드(tests/rc/rc4-expect.json 한 곳) · exit 1 이면 FAIL · 기대값 미정이면 FAIL(판정 보류를 통과로 치지 않는다)
+    name: Windows fake Claude that skips the boot check (expects the unconfirmed exit, never exit 1)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode noboot -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Judge against tests/rc/rc4-expect.json
+        shell: bash
+        run: python tests/rc/check_noboot.py "$RUNNER_TEMP/ev/win/noboot"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-noboot-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  win-nonhome-cwd:
+    # 테오 2238: 설치기 실행 기본은 홈(win-gates 등)으로 옮기되 홈 아닌 폴더에서 재설치하는 잡 1개는 남겨 결함이 계속 보이게 한다.
+    # 앱 수리(v0.3.1) 전까지 이 잡의 FAIL 은 알려진 결함 — continue-on-error 로 전체 실행을 붉게 만들지 않되 증거는 올린다. 판정기·gate.py 입력 아님.
+    name: Windows reinstall from a non-home folder (KNOWN FAIL until app v0.3.1)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode main -Cwd evidence -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Show the reinstall result (known FAIL is expected here)
+        if: always()
+        shell: powershell
+        run: |
+          $f = "$env:RUNNER_TEMP\ev\win\G6\exit"; if (Test-Path $f) { 'G6 reinstall exit: ' + (Get-Content $f -Raw) } else { 'G6\exit 없음' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-nonhome-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: warn
   freeze:
     name: G7b schedule.json freeze (previous public app source vs this app, raw bytes)
     needs: cfg

@@ -47,7 +47,8 @@ if role == "master":
     open(os.path.join(rc, "preflight_path.txt"), "w", encoding="utf-8").write(diag)
     pack = os.environ.get("CYS_PACK_DIR") or os.path.join(home, ".cys", "pack")
     _tl("bootstrap start")
-    r = subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
+    # rc4: ~/.wave/rc-skip-bootstrap 이 있으면 부트 점검을 건너뛴다(실기 master 가 산문 지침만 읽고 표지를 못 쓴 경우의 합성). rc/ 밖에 둔 이유 = Reset-Fleet 이 rc/ 를 지운다
+    r = subprocess.CompletedProcess([], "skipped", b"", b"") if os.path.exists(os.path.join(home, ".wave", "rc-skip-bootstrap")) else subprocess.run([sys.executable, os.path.join(pack, "bin", "javis_bootstrap.py")], capture_output=True)
     _tl("bootstrap done rc=%s" % r.returncode)
     open(os.path.join(rc, "bootstrap.out"), "wb").write(r.stdout); open(os.path.join(rc, "bootstrap.err"), "wb").write(r.stderr)
     open(os.path.join(rc, "bootstrap.rc"), "w").write(str(r.returncode))

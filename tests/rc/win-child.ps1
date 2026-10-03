@@ -1,11 +1,12 @@
 ﻿# 비관리자 새 계정 안에서 실행(PowerShell 5.1). 시험 릴리스 한 줄 그대로 → G1-CI/G2/G3/G4-CI(+G5/G6) 증거.
 #  win-child.ps1 -Mode main|upgrade -RcJson <rc-release.json> -Evidence <폴더> -Repo <체크아웃> -Py <러너 python.exe>
-[CmdletBinding()] param([string]$Mode, [string]$RcJson, [string]$Evidence, [string]$Repo, [string]$Py)
+[CmdletBinding()] param([string]$Mode, [string]$RcJson, [string]$Evidence, [string]$Repo, [string]$Py, [string]$Cwd = 'home')
 $ErrorActionPreference = 'Continue'; $ProgressPreference = 'SilentlyContinue'
 $env:WAVE_NO_PROGRESS = '1'   # 실서버(waveainetworks.com) 진행 신호 전송 0 — 새 계정 환경은 러너 env 를 물려받지 않는다
 $env:PYTHONUTF8 = '1'   # 한글 프로필 경로가 콘솔 코드페이지(cp1252)에서 파이썬을 깨지 않게
 Start-Transcript -Path (Join-Path $Evidence 'child.log') -Force | Out-Null
 $rc = Join-Path $Repo 'tests\rc'; $h = $env:USERPROFILE
+$wd = if ($Cwd -eq 'evidence') { $Evidence } else { $h }   # rc4(테오 2238): 설치기 실행 폴더 기본 = 홈 · evidence = 홈 아닌 폴더 잡(앱 수리 v0.3.1 전 알려진 FAIL)
 $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $admin = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 @{ user = $id.Name; administrator = $admin; profile = $h; ps = $PSVersionTable.PSVersion.ToString() } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'identity.json') -Encoding UTF8
 if ($admin) { throw 'administrator token is prohibited' }
@@ -15,7 +16,7 @@ function OneLine([string]$line, [string]$log, [int]$sec = 1500) {
   # 자식 PS 5.1의 기본 콘솔 코드페이지는 한글을 ?로 바꿀 수 있다. 출력 생산 단계에서 UTF-8(무 BOM)로 고정한다.
   $script = '$utf8 = [Text.UTF8Encoding]::new($false); [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; $env:PYTHONIOENCODING = "utf-8"; $global:LASTEXITCODE = 0; ' + $line + '; exit $LASTEXITCODE'
   $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)); $empty = Join-Path $env:TEMP 'rc-empty.txt'; '' | Set-Content $empty
-  $p = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -RedirectStandardInput $empty -PassThru -WindowStyle Hidden
+  $p = Start-Process powershell -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -RedirectStandardInput $empty -WorkingDirectory $wd -PassThru -WindowStyle Hidden
   $null = $p.Handle  # PS 5.1: 핸들을 먼저 잡아 두지 않으면 빨리 끝난 자식의 ExitCode 가 비어 온다
   if (-not $p.WaitForExit($sec * 1000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Get-Process claude -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; return 124 }
   return $p.ExitCode
@@ -107,6 +108,17 @@ try {
       Copy-Item $src (Join-Path $cd $f) -ErrorAction SilentlyContinue
     }
     $meta | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $cd 'ctrlc_result.json') -Encoding UTF8
+    return
+  }
+  if ($Mode -eq 'noboot') {
+    # rc4: 부트 점검을 건너뛰는 합성 master — 좌석 셋은 뜨지만 표지(.master-bootstrapped)가 안 써진다. 기대 = rc4-expect.json 의 별도 종료값(판정 = check_noboot.py)
+    $nb = Join-Path $e 'noboot'; New-Item -ItemType Directory -Force $nb | Out-Null; Install-Fake
+    New-Item -ItemType Directory -Force (Join-Path $h '.wave') | Out-Null; '' | Set-Content (Join-Path $h '.wave\rc-skip-bootstrap'); Reset-Fleet
+    $env:BROWSER = 'false'; $ex = OneLine $one (Join-Path $nb 'run.log'); Remove-Item Env:BROWSER
+    [IO.File]::WriteAllText((Join-Path $nb 'exit'), ([string]$ex + "`n"), ([Text.UTF8Encoding]::new($false)))
+    if (-not (Test-Path (Join-Path $h '.cys\.master-bootstrapped'))) { '' | Set-Content (Join-Path $nb 'marker_absent') }
+    foreach ($f in @('install-state.json', 'install.log')) { Copy-Item (Join-Path $h ".wave\$f") (Join-Path $nb $f) -ErrorAction SilentlyContinue }
+    Copy-FleetStatusEvidence $nb; Copy-Item (Join-Path $h '.wave\rc') (Join-Path $nb 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
     return
   }
   if ($Mode -eq 'upgrade') {

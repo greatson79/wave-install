@@ -1,6 +1,6 @@
 ﻿# 윈도우 러너(관리자): 시험 인증서 신뢰 → https 서버 → 비관리자 새 계정으로 win-child.ps1 실행 → 증거 회수.
 #  win-driver.ps1 -Mode main|upgrade -RcDir <조립 폴더> -Evidence <루트> -Repo <체크아웃> -Py <python.exe>
-[CmdletBinding()] param([string]$Mode, [string]$RcDir, [string]$Evidence, [string]$Repo, [string]$Py, [string]$UserName = '')
+[CmdletBinding()] param([string]$Mode, [string]$RcDir, [string]$Evidence, [string]$Repo, [string]$Py, [string]$UserName = '', [string]$Cwd = 'home')
 $ErrorActionPreference = 'Stop'
 $tls = Join-Path $env:RUNNER_TEMP 'tls'; New-Item -ItemType Directory -Force $tls | Out-Null
 $ossl = 'C:\Program Files\Git\usr\bin\openssl.exe'
@@ -30,7 +30,7 @@ New-Item -ItemType Directory -Force $Evidence | Out-Null
 foreach ($p in @($Evidence)) { Native { & icacls $p /grant "${name}:(OI)(CI)M" } }
 foreach ($p in @($Repo, $RcDir, (Split-Path $Py))) { Native { & icacls $p /grant "${name}:(OI)(CI)RX" } }
 $cred = New-Object Management.Automation.PSCredential("$env:COMPUTERNAME\$name", $pw)
-$args2 = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -RcJson "{2}" -Evidence "{3}" -Repo "{4}" -Py "{5}"' -f (Join-Path $Repo 'tests\rc\win-child.ps1'), $Mode, (Join-Path $RcDir 'rc-release.json'), $Evidence, $Repo, $Py
+$args2 = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Mode {1} -RcJson "{2}" -Evidence "{3}" -Repo "{4}" -Py "{5}" -Cwd {6}' -f (Join-Path $Repo 'tests\rc\win-child.ps1'), $Mode, (Join-Path $RcDir 'rc-release.json'), $Evidence, $Repo, $Py, $Cwd
 $p = Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $cred -LoadUserProfile -WorkingDirectory $Evidence -ArgumentList $args2 -PassThru
 if (-not $p.WaitForExit(3000000)) { cmd /c "taskkill /PID $($p.Id) /T /F" | Out-Host }
 Get-CimInstance Win32_Process | ForEach-Object { $o = Invoke-CimMethod -InputObject $_ -MethodName GetOwner -ErrorAction SilentlyContinue; if ($o -and $o.User -eq $name) { cmd /c "taskkill /PID $($_.ProcessId) /T /F" | Out-Null } }

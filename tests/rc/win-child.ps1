@@ -138,14 +138,17 @@ try {
   Collect $e
   Copy-Item (Join-Path $h '.wave\rc') (Join-Path $e 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
   & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase before
-  Reset-Fleet
-  # 배포용 최상위 bootstrap에는 ZIP 해시가 주입된다. src 안의 재설치 파일은 ZIP 속 원본과 대조한다.
-  $expectedBootstrapSha = (Get-FileHash -LiteralPath (Join-Path $Repo 'bootstrap.ps1') -Algorithm SHA256).Hash
-  $installedBootstrap = Get-ChildItem -LiteralPath (Join-Path $h '.wave\src') -Recurse -Filter bootstrap.ps1 -File |
-    Where-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -eq $expectedBootstrapSha } |
-    Sort-Object FullName | Select-Object -First 1
-  if (-not $installedBootstrap) { throw 'G6: installed bootstrap.ps1 missing' }
-  if ((OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($installedBootstrap.FullName)`" -Reinstall" (Join-Path $e 'G6\run.log')) -ne 0) { throw 'G6: reinstall failed' }
-  Collect (Join-Path $e 'G6')
-  & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after
+  try {
+    Reset-Fleet
+    # 배포용 최상위 bootstrap에는 ZIP 해시가 주입된다. src 안의 재설치 파일은 ZIP 속 원본과 대조한다.
+    $expectedBootstrapSha = (Get-FileHash -LiteralPath (Join-Path $Repo 'bootstrap.ps1') -Algorithm SHA256).Hash
+    $installedBootstrap = Get-ChildItem -LiteralPath (Join-Path $h '.wave\src') -Recurse -Filter bootstrap.ps1 -File |
+      Where-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -eq $expectedBootstrapSha } |
+      Sort-Object FullName | Select-Object -First 1
+    if (-not $installedBootstrap) { throw 'G6: installed bootstrap.ps1 missing' }
+    if ((OneLine "powershell -NoProfile -ExecutionPolicy Bypass -File `"$($installedBootstrap.FullName)`" -Reinstall" (Join-Path $e 'G6\run.log')) -ne 0) { throw 'G6: reinstall failed' }
+    Collect (Join-Path $e 'G6')
+  } finally {
+    & $Py (Join-Path $rc 'collect.py') claude-hash --out (Join-Path $e 'G6') --phase after
+  }
 } finally { Stop-Transcript | Out-Null }

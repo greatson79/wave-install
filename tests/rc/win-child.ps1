@@ -34,10 +34,11 @@ function Collect([string]$d) {
   New-Item -ItemType Directory -Force $d | Out-Null
   $wb = Join-Path $h '.wave\bin'; $env:PATH = "$wb;$env:PATH"
   $bp = Join-Path $wb 'runtime\python\python3.exe'; if (-not (Test-Path $bp)) { $bp = $Py }
-  & $Py (Join-Path $rc 'collect.py') g2 --out $d --python $bp --preflight (Join-Path $h '.cys\pack\bin\javis_preflight.py')
-  cmd /c "`"$wb\cys.exe`" pack-manifest > `"$d\pack-manifest.src.json`""
-  & $Py (Join-Path $rc 'collect.py') g3 --out $d --manifest "$d\pack-manifest.src.json"
-  & $Py (Join-Path $rc 'collect.py') g4 --out $d --cys "$wb\cys.exe"
+  $log = Join-Path $d 'collect.log'   # 14차: g2 수집기가 조용히 실패(G2_preflight.json 없음, 원인 로그 0) → 모든 수집기 stdout/stderr 를 파일로
+  & $Py (Join-Path $rc 'collect.py') g2 --out $d --python $bp --preflight (Join-Path $h '.cys\pack\bin\javis_preflight.py') *>> $log
+  cmd /c "`\"$wb\cys.exe`\" pack-manifest > `\"$d\pack-manifest.src.json`\""
+  & $Py (Join-Path $rc 'collect.py') g3 --out $d --manifest "$d\pack-manifest.src.json" *>> $log
+  & $Py (Join-Path $rc 'collect.py') g4 --out $d --cys "$wb\cys.exe" *>> $log
   Copy-Item (Join-Path $h '.wave\verify\G3_inject.json') (Join-Path $d 'installer_G3_inject.json') -ErrorAction SilentlyContinue
 }
 $e = Join-Path $Evidence 'win'; New-Item -ItemType Directory -Force $e | Out-Null

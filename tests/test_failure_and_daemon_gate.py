@@ -2,6 +2,7 @@
 """D1/D2 단위 회귀. 실제 인증·DMG·데몬·전체 설치는 실행하지 않는다."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -195,11 +196,58 @@ printf '%s\n' "$STEP_OBSERVED"
                                    'then echo 0; else echo $?; fi')
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(int(result.stdout.strip()), expected)
+        # 앱이 지워져 끊긴 bin/cys 링크: 물어볼 제어 명령도 앱 프로세스도 없다 = 가동 중 아님(재실행이 막히면 안 된다)
         fake_cys.unlink()
         fake_cys.symlink_to(wave / "apps/Wave Terminal.app/Contents/MacOS/cys")
         result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
                            'then echo 0; else echo $?; fi')
+        self.assertEqual(result.stdout.strip(), "1")
+        # 링크가 아닌 실행 불가 파일은 상태를 알 수 없으므로 그대로 차단(2)
+        fake_cys.unlink()
+        fake_cys.write_text("not executable")
+        fake_cys.chmod(0o644)
+        result = self.bash('if wave_bundle_in_use "$WAVE_HOME/apps/Wave Terminal.app"; '
+                           'then echo 0; else echo $?; fi')
         self.assertEqual(result.stdout.strip(), "2")
+
+    def hold_message(self, status):
+        wave = self.home / "wave"
+        (wave / "bin").mkdir(parents=True, exist_ok=True)
+        (wave / "apps/Wave Terminal.app").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        (self.home / "artifact.dmg").write_text("mock only")
+        fake_cys = wave / "bin/cys"
+        fake_cys.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_DAEMON_STATUS"\n')
+        fake_cys.chmod(0o755)
+        self.env["FAKE_DAEMON_STATUS"] = status
+        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                           'hdiutil() { return 0; }; step_s04')
+        self.assertNotEqual(result.returncode, 0)
+        return result.stdout + result.stderr
+
+    def test_s04_hold_names_the_stop_that_matches_who_owns_the_daemon(self):
+        launchd = self.hold_message("registered=true loaded=true socket_alive=true")
+        self.assertIn("daemon uninstall", launchd)
+        other = self.hold_message("registered=false loaded=false socket_alive=true")
+        self.assertNotIn("daemon uninstall", other)  # launchd 소유가 아니면 uninstall 은 아무것도 멈추지 못한다
+        self.assertIn("pkill -f", other)
+
+    def test_s04_printed_stop_line_really_stops_a_daemon_it_names(self):
+        other = self.hold_message("registered=false loaded=false socket_alive=true")
+        cmd = re.search(r"pkill -f '[^']*'", other).group(0)
+        fake = self.home / "wave/apps/Wave Terminal.app/Contents/MacOS/cysd"
+        fake.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile("/bin/sleep", fake)
+        fake.chmod(0o755)
+        daemon = subprocess.Popen([str(fake), "60"])
+        self.addCleanup(lambda: daemon.poll() is None and daemon.kill())
+        try:
+            subprocess.run(["bash", "-c", cmd], env=self.env, timeout=10)
+            self.assertIsNotNone(daemon.wait(timeout=5), cmd)
+            self.assertNotEqual(daemon.returncode, 0)
+        finally:
+            if daemon.poll() is None:
+                daemon.kill()
 
     def test_s04_guard_detects_gui_without_daemon(self):
         wave = self.home / "wave"

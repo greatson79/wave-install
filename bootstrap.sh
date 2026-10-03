@@ -450,6 +450,7 @@ PY
 
 wave_bundle_in_use() {
   local app_dest="$1" found rc errors processes process daemon_status
+  WAVE_HOLD=
   if [[ -e "$app_dest" || -L "$app_dest" ]]; then
     [[ -d "$app_dest" && ! -L "$app_dest" ]] || return 2
     command -v lsof >/dev/null 2>&1 || return 2
@@ -466,11 +467,14 @@ wave_bundle_in_use() {
   while IFS= read -r process; do
     case "$process" in "$app_dest"/Contents/*) return 0 ;; esac
   done <<< "$processes"
-  if [[ -e "$WAVE_HOME/bin/cys" || -L "$WAVE_HOME/bin/cys" ]]; then
+  # 끊긴 링크(앱이 지워진 뒤)는 물어볼 제어 명령이 없다 = 앞의 프로세스 검사가 전부다. 링크 잔존만으로 막지 않는다.
+  if [[ -e "$WAVE_HOME/bin/cys" ]]; then
     [[ -x "$WAVE_HOME/bin/cys" ]] || return 2
     daemon_status="$(env -u CYS_SOCKET -u JAVIS_SOCKET -u AITERM_SOCKET "$WAVE_HOME/bin/cys" daemon status 2>&1)" || return 2
     case "$daemon_status" in
-      *registered=true*|*loaded=true*|*socket_alive=true*) return 0 ;;
+      *registered=true*|*loaded=true*) return 0 ;;
+      # launchd 소유가 아닌 데몬(앱·수동 기동): daemon uninstall 로는 멈추지 않는다
+      *socket_alive=true*) WAVE_HOLD=unowned; return 0 ;;
       *registered=false*loaded=false*socket_alive=false*) ;;
       *) return 2 ;;
     esac
@@ -491,7 +495,9 @@ step_s04() {
   if wave_bundle_in_use "$app_dest"; then in_use_rc=0; else in_use_rc=$?; fi
   if [[ "$in_use_rc" -ne 1 ]]; then
     STEP_OBSERVED='{"reinstall":"waiting_for_app_exit"}'
-    if [[ -x "$WAVE_HOME/bin/cys" ]]; then
+    if [[ "${WAVE_HOLD:-}" == unowned ]]; then
+      fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$app_dest/Contents/MacOS/cysd' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+    elif [[ -x "$WAVE_HOME/bin/cys" ]]; then
       fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     else
       fail_message "Wave Terminal의 실행 상태를 확인할 수 없습니다. 앱을 종료하고 설치된 제어 명령을 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."

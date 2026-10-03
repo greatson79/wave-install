@@ -237,17 +237,25 @@ printf '%s\n' "$STEP_OBSERVED"
     def test_s04_printed_stop_line_stops_only_this_installs_daemons(self):
         other = self.hold_message("registered=false loaded=false socket_alive=true")
         cmd = "pkill -f '" + re.search(r"pkill -f '([^']*)'", other).group(1) + "'"
-        wave = self.home / "wave"
+        wave, pack = self.home / "wave", self.home / ".cys/pack"
         app_cysd = wave / "apps/Wave Terminal.app/Contents/MacOS/cysd"
-        link_cysd = wave / "bin/cysd"  # bin/cys 링크로 뜬 데몬은 명령줄이 링크 경로다(current_exe 가 링크를 안 푼다)
-        other_install = self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"
         app_cysd.parent.mkdir(parents=True, exist_ok=True)
         app_cysd.write_text("")  # 이 경로를 인자로만 가진 프로세스(tail) 대조군용 파일
-        # 서명 문제 없이 명령줄만 원하는 경로로 보이게 한다: argv[0]=가짜 경로, 실제 실행 파일=/bin/sleep
-        fake = lambda path: subprocess.Popen([str(path), "60"], executable="/bin/sleep")
-        targets = {"app": fake(app_cysd), "link": fake(link_cysd)}
-        controls = {"other-install": fake(other_install),
-                    "path-as-argument": subprocess.Popen(["tail", "-f", str(app_cysd)])}
+        # 서명 문제 없이 명령줄만 원하는 모양으로 보이게 한다: argv[0]=가짜 명령줄, 실제 실행 파일=/bin/sleep
+        fake = lambda line: subprocess.Popen([line, "60"], executable="/bin/sleep")
+        targets = {
+            "daemon-app-path": fake(app_cysd),
+            "daemon-link-path": fake(wave / "bin/cysd"),  # bin/cys 링크로 뜬 데몬은 명령줄이 링크 경로다
+            "events-client-link": fake("%s events --reconnect --cursor-file x" % (wave / "bin/cys")),
+            "events-client-app": fake("%s events --reconnect" % (wave / "apps/Wave Terminal.app/Contents/MacOS/cys")),
+            "office-bridge": fake("%s/runtime/python/bin/python3 %s/bin/javis_hud_bridge.py" % (wave / "apps/Wave Terminal.app", pack)),
+        }
+        controls = {
+            "other-install-daemon": fake(self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"),
+            "other-install-bridge": fake("python3 %s/other/.cys/pack/bin/javis_hud_bridge.py" % self.home),
+            "same-install-status-call": fake("%s status --json" % (wave / "bin/cys")),
+            "path-as-argument": subprocess.Popen(["tail", "-f", str(app_cysd)]),
+        }
         everything = {**targets, **controls}
         self.addCleanup(lambda: [(q.poll() is None and q.kill(), q.wait()) for q in everything.values()])
         time.sleep(0.7)
@@ -260,6 +268,30 @@ printf '%s\n' "$STEP_OBSERVED"
         time.sleep(0.5)
         for name, proc in controls.items():
             self.assertIsNone(proc.poll(), "%s must survive: %s" % (name, cmd))
+
+    def test_s04_stop_line_is_printed_when_only_children_remain(self):
+        # 데몬은 이미 없는데(상태 전부 false) 앱 번들을 연 자식(events 클라이언트 등)만 남아 lsof 가 막는 경우:
+        # 소용없는 daemon uninstall 을 반복하지 말고 같은 정지 한 줄을 안내한다.
+        wave = self.home / "wave"
+        (wave / "bin").mkdir(parents=True, exist_ok=True)
+        (wave / "apps/Wave Terminal.app").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "install-state.json", wave / "install-state.json")
+        (self.home / "artifact.dmg").write_text("mock only")
+        cys = wave / "bin/cys"
+        cys.write_text('#!/bin/sh\necho "registered=false loaded=false socket_alive=false"\n')
+        cys.chmod(0o755)
+        fakebin = self.home / "fakebin"
+        fakebin.mkdir(exist_ok=True)
+        (fakebin / "lsof").write_text("#!/bin/sh\necho 4242\n")
+        (fakebin / "lsof").chmod(0o755)
+        env = dict(self.env, PATH=str(fakebin) + os.pathsep + os.environ["PATH"])
+        r = subprocess.run(["bash", "-c", 'source "$1"; STEPS_FILE="$TEST_STEPS"; set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                            'hdiutil() { return 0; }; step_s04', "unit-test", str(self.lib)],
+                           env=dict(env, TEST_MODE="ok"), text=True, capture_output=True, timeout=10)
+        msg = r.stdout + r.stderr
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("pkill -f", msg)
+        self.assertNotIn("daemon uninstall", msg)
 
     def test_s04_guard_detects_gui_without_daemon(self):
         wave = self.home / "wave"

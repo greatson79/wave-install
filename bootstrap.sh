@@ -508,12 +508,21 @@ step_s04() {
   if wave_bundle_in_use "$app_dest"; then in_use_rc=0; else in_use_rc=$?; fi
   if [[ "$in_use_rc" -ne 1 ]]; then
     STEP_OBSERVED='{"reinstall":"waiting_for_app_exit"}'
-    if [[ "${WAVE_HOLD:-}" == unowned ]]; then
-      # 앱이 직접 띄운 데몬(앱 경로)과 bin/cys 링크로 뜬 데몬(명령줄이 링크 경로)을 모두 덮되,
-      # 명령줄이 이 설치본의 cysd 로 시작하는 프로세스만 고른다(다른 설치본·그 경로를 인자로 가진 프로세스 제외).
-      local esc stop_pattern
+    # launchd 소유 데몬이 아니면(소켓만 살아 있거나, 데몬은 이미 없는데 그 자식만 남음) daemon uninstall 은 소용없다.
+    local unowned=0 ds
+    [[ "${WAVE_HOLD:-}" == unowned ]] && unowned=1
+    if [[ -x "$WAVE_HOME/bin/cys" ]]; then
+      ds="$(env -u CYS_SOCKET -u JAVIS_SOCKET -u AITERM_SOCKET "$WAVE_HOME/bin/cys" daemon status 2>&1)" || ds=
+      case "$ds" in *registered=false*loaded=false*) unowned=1 ;; esac
+    fi
+    if [[ "$unowned" == 1 ]]; then
+      # 앱이 직접 띄운 데몬(앱 경로)·bin/cys 링크로 뜬 데몬(명령줄이 링크 경로)·데몬의 자식인 오피스 브리지(javis_hud_bridge.py)와
+      # 그 이벤트 구독 클라이언트(cys events — 데몬이 죽어도 재연결 루프로 남아 앱 번들 cys 를 연 채 설치를 막는다)를 모두 덮는다.
+      # 이 설치본 경로로 시작하는 명령줄만 고른다(다른 설치본·그 경로를 인자로만 가진 프로세스 제외).
+      local esc escp stop_pattern
       esc="$(printf '%s' "$WAVE_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
-      stop_pattern="^$esc/(apps/Wave Terminal\\.app/Contents/MacOS|bin)/cysd( |\$)"
+      escp="$(printf '%s' "$PACK_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
+      stop_pattern="^$esc/(apps/Wave Terminal\\.app/Contents/MacOS|bin)/(cysd|cys events)( |\$)|^.*python[0-9.]* $escp/bin/javis_hud_bridge\\.py( |\$)"
       fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$stop_pattern' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     elif [[ -x "$WAVE_HOME/bin/cys" ]]; then
       fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."

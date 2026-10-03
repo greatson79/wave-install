@@ -1,0 +1,140 @@
+"""rc.4 S07: 상한 도달 시 좌석이 살아 있으면 실패가 아니라 종료값 2 · 사람 확인 창이 떠 있는 동안은 상한을 멈춘다."""
+import json, os, subprocess, tempfile, threading, time, unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+GATE = "WARNING: Claude Code running in Bypass Permissions mode\n 1. No, exit\n 2. Yes, I accept\n"
+FAKE_CYS = r'''#!/bin/sh
+D="$(dirname "$0")/.."
+case "$1" in
+  launch-agent) echo surface:1 ;;
+  status) cat "$D/status.json" ;;
+  read-screen) if [ -f "$D/gate.on" ]; then cat "$D/gate.txt"; else echo "welcome"; fi ;;
+  *) : ;;
+esac
+'''
+
+
+class S07Base(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.home = Path(self.td.name)
+        self.wave = self.home / 'wave'
+        (self.wave / 'bin').mkdir(parents=True)
+        (self.wave / 'fleet').mkdir()
+        (self.home / '.cys').mkdir()
+        cys = self.wave / 'bin/cys'
+        cys.write_text(FAKE_CYS)
+        cys.chmod(0o755)
+        (self.wave / 'gate.txt').write_text(GATE)
+        self.lib = self.home / 'lib.sh'
+        self.lib.write_text((ROOT / 'bootstrap.sh').read_text().rsplit('\nmain "$@"', 1)[0])
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def status(self, roles, alive=True, created=None):
+        created = created if created is not None else int(time.time()) + 5
+        rows = [dict(surface_ref='surface:%d' % (i + 1), role=r, exited=False, agent_alive=alive, created_at=created)
+                for i, r in enumerate(roles)]
+        for d in (self.wave, self.wave / 'fleet'):   # 가짜 cys 는 앞쪽을, 직접 호출 시험은 fleet/ 쪽을 읽는다
+            (d / 'status.json').write_text(json.dumps({'surfaces': rows}))
+
+    def bash(self, script, extra_env=None, timeout=90):
+        env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), **(extra_env or {}))
+        return subprocess.run(['bash', '-c', 'source "$1"; set +e; SCRIPT_DIR="$2"; ' + script, 'x', str(self.lib), str(ROOT)],
+                              env=env, capture_output=True, text=True, timeout=timeout)
+
+    def run_s07(self, extra_env):
+        # 앱 기동·온보딩·신뢰 seed·선언 전달은 가짜로 막고, 대기 루프와 종료 판정만 진짜 코드로 돌린다.
+        stubs = ('wait_gui_onboarded(){ return 0; }; seed_claude_trust(){ return 0; }; '
+                 'awakening_command(){ shift; if [[ "$*" == *"status --json"* ]]; then echo \'{"surfaces":[]}\'; fi; return 0; }; ')
+        return self.bash(stubs + 'step_s07; echo RC=$?; echo "OBS=$STEP_OBSERVED"', extra_env)
+
+
+class LiveRoleSeats(S07Base):
+    def count(self):
+        r = self.bash('live_role_seats')
+        return r.stdout.strip()
+
+    def test_counts_only_live_agent_roles(self):
+        self.status(['master', 'cso', 'worker'])
+        self.assertEqual(self.count(), '3 cso,master,worker')
+        self.status(['master', 'worker-2', 'reviewer-codex'])
+        self.assertEqual(self.count(), '2 master,worker')
+        self.status(['master', 'cso', 'worker'], alive=False)
+        self.assertEqual(self.count(), '0')
+
+    def test_missing_status_is_zero(self):
+        self.assertEqual(self.count(), '0')
+
+
+class UnfinishedOutcome(S07Base):
+    def test_alive_seats_are_exit_2_not_a_failure(self):
+        self.status(['master', 'cso', 'worker'])
+        r = self.bash('s07_unfinished; echo RC=$?; echo "OBS=$STEP_OBSERVED"')
+        self.assertIn('RC=2', r.stdout)
+        obs = json.loads(r.stdout.split('OBS=')[1])
+        self.assertIs(obs['fleet_started'], False)
+        self.assertEqual(obs['fleet_state'], 'alive_unconfirmed')
+        self.assertEqual(obs['seats_alive'], 3)
+        self.assertNotIn('실패:', r.stderr)
+        self.assertIn('같은 설치 명령을 다시 실행', r.stderr)
+
+    def test_no_live_seat_is_a_failure(self):
+        self.status(['master', 'cso', 'worker'], alive=False)
+        r = self.bash('s07_unfinished; echo RC=$?')
+        self.assertIn('RC=1', r.stdout)
+        self.assertIn('실패:', r.stderr)
+
+
+class WaitLoop(S07Base):
+    def marker(self):
+        m = self.home / '.cys/.master-bootstrapped'
+        m.write_text(json.dumps({'surface_ref': 'surface:1', 'orchestra_check': 'exit 0'}))
+        os.utime(m, (time.time() + 20, time.time() + 20))
+
+    def test_all_good_still_passes(self):
+        self.status(['master', 'cso', 'worker'])
+        self.marker()
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '8'})
+        self.assertIn('RC=0', r.stdout, r.stderr)
+        self.assertIn('"fleet_started":true', r.stdout)
+
+    def test_alive_but_marker_missing_ends_with_2(self):
+        self.status(['master', 'cso', 'worker'])
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '4'})
+        self.assertIn('RC=2', r.stdout, r.stderr)
+        self.assertIn('alive_unconfirmed', r.stdout)
+
+    def test_nothing_alive_ends_with_1(self):
+        self.status([])
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '3'})
+        self.assertIn('RC=1', r.stdout, r.stderr)
+
+    def test_open_gate_stops_the_budget(self):
+        # 상한 6초인데 확인 창이 ~10초 떠 있다가 사람이 고른 뒤 마커가 생긴다 — 예산이 멈췄으면 통과해야 한다.
+        self.status(['master', 'cso', 'worker'])
+        (self.wave / 'gate.on').write_text('')
+
+        def human():
+            time.sleep(10)
+            (self.wave / 'gate.on').unlink()
+            self.marker()
+        t = threading.Thread(target=human)
+        t.start()
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '6'})
+        t.join()
+        self.assertIn('RC=0', r.stdout, r.stderr)
+
+    def test_gate_pause_is_capped(self):
+        self.status(['master', 'cso', 'worker'])
+        (self.wave / 'gate.on').write_text('')
+        t0 = time.monotonic()
+        r = self.run_s07({'WAVE_AWAKENING_SECONDS': '3', 'WAVE_GATE_PAUSE_MAX': '6'})
+        self.assertIn('RC=2', r.stdout, r.stderr)
+        self.assertLess(time.monotonic() - t0, 40)
+
+
+if __name__ == '__main__':
+    unittest.main()

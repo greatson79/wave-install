@@ -45,6 +45,10 @@ $ProgressWarned = $false
 $CurrentStep = '1/10'
 $DiagnosticWritten = $false
 $AwakeningStartedAt = $null
+$GatePausedMs = 0         # 사람이 고르는 첫 실행 확인 창이 떠 있던 시간 — 각성 대기 예산(420초)에서 뺀다
+$GateVisible = $false     # 이번 확인 때 확인 창이 보였는가(status 에는 관문 표시가 없어 화면을 읽는다)
+$AliveUnconfirmed = $false  # 상한 도달 시 좌석이 살아 있음 — 실패가 아니라 종료값 2
+$GatePauseMaxMs = 1800000   # 확인 창 대기로 늘릴 수 있는 총량 상한(무한 대기 방지)
 # 설치 도움(R5): lib/install-help.ps1 이 설치팩에 있으면 불러온다. 첫 화면 고지 전에는 진행·도움 모두 보내지 않는다.
 $HelpNoticeShown = $false
 $HelpInteractive = $false
@@ -929,7 +933,7 @@ function Test-AwakenedFleet([object]$Status) {
 }
 
 function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {
-  $remaining = 420000L - $ElapsedMs
+  $remaining = 420000L + [long]$script:GatePausedMs - $ElapsedMs
   if ($remaining -le 0) { return 0 }
   return [int][Math]::Min($LimitMs, $remaining)
 }
@@ -1128,7 +1132,8 @@ function Seed-WaveClaudeTrust {
 # 설치기는 어떤 키도 보내지 않는다 — 사람이 Wave 창에서 고른다. 판별은 질문문으로만 한다: 선택지 「Yes, I trust this folder」·확인 에코는
 # 근거가 아니다(원작 idoforgod/cys-terminal src/first_run_gates.rs needles · 2026-07-29 사고 원인).
 function Show-FirstRunGateNotice([object]$Status) {
-  if ((Get-Variable -Scope Script -Name GateNoticed -ValueOnly -ErrorAction SilentlyContinue) -or $null -eq $Status) { return }
+  $script:GateVisible = $false
+  if ($null -eq $Status) { return }
   $needles = @('Quicksafetycheck', 'Isthisaprojectyoucreatedoroneyoutrust', 'Doyoutrustthefilesinthisfolder', 'WARNING:ClaudeCoderunninginBypassPermissionsmode')
   foreach ($seat in @($Status.surfaces | Where-Object { $_.exited -eq $false -and ([string]$_.role) -match '^(master|cso|worker)' -and $_.surface_ref })) {
     try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { continue }
@@ -1136,8 +1141,11 @@ function Show-FirstRunGateNotice([object]$Status) {
     $flat = ([string]$screen.stdout) -replace '\s', ''
     foreach ($n in $needles) {
       if ($flat.Contains($n)) {
-        Write-Log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($($seat.surface_ref))이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."
-        $script:GateNoticed = $true
+        $script:GateVisible = $true
+        if (-not (Get-Variable -Scope Script -Name GateNoticed -ValueOnly -ErrorAction SilentlyContinue)) {
+          Write-Log "Wave 창에서 'Yes, I trust this folder'(또는 해당 동의)를 골라 주세요 — 좌석($($seat.surface_ref))이 첫 실행 확인 창에서 기다리고 있습니다. 설치기는 키를 보내지 않고 계속 기다립니다."
+          $script:GateNoticed = $true
+        }
         return
       }
     }
@@ -1177,6 +1185,7 @@ function Run-S07 {
     }
   }
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {
+    $tickStart = $clock.ElapsedMilliseconds
     $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
     if ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -le 0) { break }
     if (Test-AwakenedFleet $status) {
@@ -1186,9 +1195,32 @@ function Run-S07 {
     Show-FirstRunGateNotice $status
     $sleepMs = Get-AwakeningBudgetMs $clock.ElapsedMilliseconds
     if ($sleepMs -gt 0) { Start-Sleep -Milliseconds $sleepMs }
+    # 사람이 고르는 첫 실행 확인 창이 떠 있는 동안은 상한을 쓰지 않는다(총 $GatePauseMaxMs ms 까지).
+    if ($script:GateVisible -and $script:GatePausedMs -lt $script:GatePauseMaxMs) { $script:GatePausedMs += ($clock.ElapsedMilliseconds - $tickStart) }
+  }
+  Complete-S07Unfinished
+}
+
+# 상한에 닿았을 때: 좌석이 하나도 살아 있지 않으면 진척 없음 = 실패(종료값 1). 하나라도 살아 있으면 설치 실패가 아니라
+# 「좌석은 살아 있으나 확인 미완」(종료값 2) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
+function Get-LiveRoleSeats([object]$Status) {
+  if ($null -eq $Status) { return @() }
+  return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
+    ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique)
+}
+
+function Complete-S07Unfinished {
+  $last = $null
+  try { $last = Get-LiveFleet 5000 } catch { }
+  $roles = @(Get-LiveRoleSeats $last)
+  if ($roles.Count -ge 1) {
+    $script:AliveUnconfirmed = $true
+    $script:StepObserved = [ordered]@{ fleet_started = $false; fleet_state = 'alive_unconfirmed'; seats_alive = $roles.Count; roles_alive = ($roles -join ','); source = 'cys status --json' }
+    Say "좌석 $($roles.Count)개($($roles -join ','))는 살아 있지만 각성 확인을 끝내지 못했습니다 — 설치 실패가 아닙니다. Wave 창에서 확인 창이 남아 있으면 고르신 뒤, 같은 설치 명령을 다시 실행해 주세요."
+    throw 'W-FLEET-ALIVE-UNCONFIRMED'
   }
   $script:StepObserved = [ordered]@{ fleet_started = $false; master_awakened = $false; source = 'cys status --json'; reason = 'awakening_timeout' }
-  throw '마스터·CSO·워커 각성 확인 420초 시간 초과'
+  throw '마스터·CSO·워커 각성 확인 420초 안에 살아 있는 좌석을 확인하지 못했습니다'
 }
 
 function Get-StateField([object]$Object, [string]$Name) {
@@ -1440,6 +1472,11 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     Update-Step $Id $StepStatus 0 "" $StepObserved
     Send-Progress $CurrentStep 'end'
   } catch {
+    if ($script:AliveUnconfirmed) {
+      # 실패가 아니다: 도움 요청·진단 코드 없이 상태만 남기고 종료값 2 로 끝낸다(최상위 trap 은 1 이다).
+      Update-Step $Id "failed" 2 ([string]($Config.steps | Where-Object { $_.id -eq $Id }).on_fail.error_id) $StepObserved
+      exit 2
+    }
     $reason = $_.Exception.Message
     $position = $_.InvocationInfo.PositionMessage
     $code = Get-JCode $reason

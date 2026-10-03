@@ -1,4 +1,24 @@
 #!/usr/bin/env bash
-# 합성 좌석(sleep 86400 · 이름 claude)과 마스터 마커를 정리한다 — 업그레이드/재설치 전 상태 되돌림. 러너 전용.
-pkill -f 'local/bin/claude' 2>/dev/null; pkill -f '.wave/rc/bin_' 2>/dev/null; pkill -x cysd 2>/dev/null; rm -f "$HOME/.cys/.master-bootstrapped"; rm -rf "$HOME/.wave/rc" "$HOME/.cys/state/boot-last.json"; rm -f "$HOME/.wave/verify"/hook_*.out "$HOME/.wave/verify"/G3_inject.json  # 이전 설치의 증거가 다음 측정에 섞이지 않게
-sleep 2; true
+# 러너 전용: 등록을 해제해 KeepAlive 자동복원을 멈춘 뒤 실제 종료를 확인한다.
+set -euo pipefail
+app_bin="$HOME/.wave/apps/Wave Terminal.app/Contents/MacOS/"
+processes="$(ps -axo comm=)" || exit 1
+if [[ "$processes" == *"$app_bin"* ]]; then
+  osascript -e 'tell application id "com.waveainetworks.wave-terminal" to quit'
+fi
+"$HOME/.wave/bin/cys" daemon uninstall
+pkill -f "$HOME/.local/bin/claude" 2>/dev/null || true
+pkill -f "$HOME/.wave/rc/bin_" 2>/dev/null || true
+for attempt in {1..50}; do
+  status="$(env -u CYS_SOCKET -u JAVIS_SOCKET -u AITERM_SOCKET "$HOME/.wave/bin/cys" daemon status)"
+  processes="$(ps -axo comm=)" || exit 1
+  if [[ "$status" == *registered=false*loaded=false*socket_alive=false* && "$processes" != *"$app_bin"* ]]; then break; fi
+  sleep 0.2
+done
+[[ "$status" == *registered=false*loaded=false*socket_alive=false* && "$processes" != *"$app_bin"* ]] || {
+  echo 'Wave 프로세스가 아직 살아 있어 다음 설치를 시작하지 않습니다.' >&2
+  exit 1
+}
+rm -f "$HOME/.cys/.master-bootstrapped"
+rm -rf "$HOME/.wave/rc" "$HOME/.cys/state/boot-last.json"
+rm -f "$HOME/.wave/verify"/hook_*.out "$HOME/.wave/verify"/G3_inject.json

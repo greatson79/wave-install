@@ -45,11 +45,26 @@ cp -R "$HOME/.wave/rc" "$EV/rc-synthetic-logs" 2>/dev/null
 
 log "G6: ~/.claude 기준선 → 재설치(--reinstall) → 재측정"
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase before
-bash "$HERE/reset-fleet.sh"
+python3 - "$HOME/.wave/install-state.json" "$EV/G6/before-state.json" <<'PY'
+import pathlib, shutil, sys
+source = pathlib.Path(sys.argv[1])
+if source.is_file(): shutil.copy2(source, sys.argv[2])
+PY
+bash "$HERE/reset-fleet.sh" || { log "G6 재설치 전 정지 실패"; exit 1; }
 python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
+cp "$HOME/.wave/install-state.json" "$EV/G6/install-state.json" 2>/dev/null || log "G6 설치 상태 수집 실패"
+python3 - "$EV/G6/before-state.json" "$EV/G6/install-state.json" "$EV/G6/attempt.json" <<'PY'
+import json, pathlib, sys
+def stamp(path):
+    try:
+        doc = json.loads(pathlib.Path(path).read_text())
+        return {k: doc.get(k) for k in ("created_at", "updated_at", "status")}
+    except (OSError, ValueError): return None
+pathlib.Path(sys.argv[3]).write_text(json.dumps({"before": stamp(sys.argv[1]), "after": stamp(sys.argv[2])}))
+PY
 collect "$EV/G6"
 cp -R "$HOME/.wave/rc" "$EV/G6/rc-synthetic-logs" 2>/dev/null   # 19차: 재설치 ① 이 C43(uvx 없음)로 한 번 실패 — 그때의 좌석 PATH·프로세스 증거를 G6 에도 남긴다
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase after
 # 증거 없이 성공 처리 금지: 필수 증거가 하나라도 없으면 잡을 실패시킨다(판정은 gate.py 몫 — 여기선 존재만)
-miss=0; for f in G1_state.json G2_preflight.json G3_inject.json G4_boot.json G6/G6_claude_untouched.json G6/G2_preflight.json G6/G3_inject.json G6/G4_boot.json; do [ -s "$EV/$f" ] || { log "증거 없음: $f"; miss=1; }; done
+miss=0; for f in G1_state.json G2_preflight.json G3_inject.json G4_boot.json G6/exit G6/install-state.json G6/attempt.json G6/G6_claude_untouched.json G6/G2_preflight.json G6/G3_inject.json G6/G4_boot.json; do [ -s "$EV/$f" ] || { log "증거 없음: $f"; miss=1; }; done
 exit $miss

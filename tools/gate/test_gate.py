@@ -28,7 +28,7 @@ def os_set(b):
     put(b, "G2_preflight.json", {"checks": [{"id": "C20", "status": "WARN"}, {"id": "C01", "status": "PASS"}]}, raw=False)
     put(b, "G3_inject.json", {"new_file_count": 0, "roles": {r: {"injected_sha256": "a" * 64, "pack_sha256": "a" * 64, "injected_bytes": 30000, "pack_bytes": 30000} for r in ("master", "cso", "worker")}})
     put(b, "G4_boot.json", {"steps": [{"n": n, "exit": 0} for n in range(1, 6)], "seats": [{"role": r, "alive": True} for r in ("master", "cso", "worker")],
-                            "trust": {"config": "~/.cys/claude/.claude.json", "hasCompletedOnboarding": True, "cwds": {"/Users/u": {"/Users/u": True}}}})
+                            "trust": {"config": "~/.cys/claude/.claude.json", "hasCompletedOnboarding": True, "cwds": {"/Users/u": {"/Users/u": True}}, "remoteControlAtStartup": True}})
     g4_scan_targets(b)
     for g, extra in (("G5", ("G5_meta.json", {"from_version": "0.2.3"})), ("G6", ("G6_claude_untouched.json", {"before_sha256": "x", "after_sha256": "x"}))):
         s = b / g
@@ -118,7 +118,11 @@ class T(unittest.TestCase):
         v = run({"hasCompletedOnboarding": True, "cwds": {"C:\\Users\\u": {"C:\\Users\\u": True, "C:/Users/u": False}}})
         self.assertEqual(v[0], gate.FAIL); self.assertIn("C:/Users/u 신뢰", v[1])
         self.assertEqual(run({"hasCompletedOnboarding": True, "cwds": {}})[0], gate.FAIL)
-        self.assertEqual(run({"hasCompletedOnboarding": True, "cwds": {"/Users/u": {"/Users/u": True}}})[0], gate.PASS)
+        ok = {"hasCompletedOnboarding": True, "cwds": {"/Users/u": {"/Users/u": True}}, "remoteControlAtStartup": True}
+        self.assertEqual(run(ok)[0], gate.PASS)
+        for rc in (None, False):  # remoteControlAtStartup 누락·false = FAIL
+            v = run(dict(ok, remoteControlAtStartup=rc) if rc is not None else {k: v for k, v in ok.items() if k != "remoteControlAtStartup"})
+            self.assertEqual(v[0], gate.FAIL); self.assertIn("remoteControlAtStartup", v[1])
 
     def test_g4_unmeasured_without_scan_targets(self):
         b = self.d / "mac"; doc = json.loads((b / "G4_boot.json").read_text())

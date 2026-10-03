@@ -141,14 +141,16 @@ def g4(b, c=None):
     if hits: return FAIL, "사용자에게 설치·승인을 묻는 문구 검출: %s" % ", ".join(hits)
     # 첫기동 관문 사전 기록(설치기 S07 · 맥 미니 G9 CSO 좌석 사망 회귀): 좌석 설정 폴더 .claude.json 의
     #   hasCompletedOnboarding=true + 살아 있는 좌석 cwd 마다 projects.<cwd>.hasTrustDialogAccepted=true(윈 두 꼴)
+    #   + 같은 폴더 settings.json remoteControlAtStartup=true(주인님 지시 — 원격으로 master 에 명령)
     t = d.get("trust")
     if not isinstance(t, dict): return NA, "첫기동 관문 사전 기록(좌석 설정 폴더 키) 증거 없음"
     cw = t.get("cwds") if isinstance(t.get("cwds"), dict) else {}
     miss = [] if t.get("hasCompletedOnboarding") is True else ["hasCompletedOnboarding"]
     miss += ["%s 신뢰" % k for c in sorted(cw) for k, v in (cw[c] if isinstance(cw[c], dict) else {c: False}).items() if v is not True]
     if not cw: miss.append("좌석 cwd 0곳")
+    if t.get("remoteControlAtStartup") is not True: miss.append("settings.json remoteControlAtStartup")
     if miss: return FAIL, "첫기동 관문 키 누락(%s): %s" % (t.get("config"), ", ".join(miss))
-    return PASS, "①~⑤ exit 0 · 패인 master·cso·worker · 리뷰어 0 · 설치·승인 질문 문구 0(%d파일) · 온보딩·폴더 신뢰 키(cwd %d곳)" % (len(tg), len(cw))
+    return PASS, "①~⑤ exit 0 · 패인 master·cso·worker · 리뷰어 0 · 설치·승인 질문 문구 0(%d파일) · 온보딩·폴더 신뢰 키(cwd %d곳)·remoteControlAtStartup" % (len(tg), len(cw))
 
 
 def sub(b, name, extra):

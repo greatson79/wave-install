@@ -1,13 +1,14 @@
 {
   "schema": 1,
-  "installer": {"repo": "greatson79/wave-install", "tag": "v0.2.3"},
+  "installer": {"repo": "greatson79/wave-install", "tag": "v0.3.0"},
   "app": {"macos": "0.1.1", "windows": "0.1.0"},
-  "pack": {"name": "wave-install-0.2.3", "zip": "wave-install-0.2.3.zip"},
+  "pack": {"name": "wave-install-0.3.0", "zip": "wave-install-0.3.0.zip"},
   "fingerprints": {
     "macos_arm64_sha256": "c46aac889c1dfb84827a580f83cb2098eceba30c85b98c961dd74cff6fc0cadc",
     "macos_x64_sha256": "aaee7fb8745e16e02e64f95bb698e7695742e7db906fdf1a53c99d88134cbf48",
     "windows_x64_sha256": "733a595c1270d62e9ca83e82cda143d8ec223985b857f648939541d20ba12fc3"
   },
+  "reinstall": {"description": "설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일 전체 삭제는 하지 않습니다."},
   "origin": [
     {"role": "Wave Terminal", "name": "idoforgod/cys-terminal", "url": "https://github.com/idoforgod/cys-terminal", "license": "MIT"},
     {"role": "설치 도우미", "name": "oogisoogi/jarvis-install", "url": "https://github.com/oogisoogi/jarvis-install", "license": "MIT"}

@@ -14,6 +14,12 @@ class T(unittest.TestCase):
         parts["get"] = parts["get"].replace("install-wave.sh", "install-wave2.sh", 1)
         self.assertTrue(gen.check_cross(parts, M))
 
+    def test_reinstall_mutation_detected(self):
+        for kind in ("readme", "get", "screen"):
+            parts = gen.render(M)
+            parts[kind] = parts[kind].replace(" -Reinstall", " -ReInstall", 1)
+            self.assertTrue(gen.check_cross(parts, M), kind)
+
     def test_out_is_fresh(self):
         self.assertEqual(gen.check(M), [])
 

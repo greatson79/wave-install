@@ -15,12 +15,18 @@ def canon(m):
     """정본 문자열 — 세 곳이 모두 이 값을 그대로 담는다."""
     base = "https://github.com/%s/releases/download/%s" % (m["installer"]["repo"], m["installer"]["tag"])
     h = m["help"]
+    mac = 'curl -fsSL %s/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh"' % base
+    win = ("powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm %s/bootstrap.ps1 -OutFile "
+           "([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile "
+           "-ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1')\"") % base
     return {
         "tag": m["installer"]["tag"],
-        "mac": 'curl -fsSL %s/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh"' % base,
-        "win": ("powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm %s/bootstrap.ps1 -OutFile "
-                "([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile "
-                "-ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1')\"") % base,
+        "mac": mac,
+        "win": win,
+        # 재설치 = 같은 한 줄 + 플래그(설치기 steps.json reinstall.command 와 같은 규칙)
+        "mac_re": mac + " --reinstall",
+        "win_re": win[:-1] + ' -Reinstall"',
+        "re_desc": m["reinstall"]["description"],
         "origin": "Wave Terminal 은 {a}(MIT)을, 설치 도우미는 {b}(MIT)을 바탕으로 합니다".format(
             a=m["origin"][0]["name"], b=m["origin"][1]["name"]),
         "origin_urls": [o["url"] for o in m["origin"]],
@@ -34,19 +40,24 @@ def render(m):
     readme = (
         "## 설치 (macOS) — 명령 한 줄\n\n```bash\n%s\n```\n\n"
         "## 설치 (Windows) — 명령 한 줄\n\n```powershell\n%s\n```\n\n"
+        "## 다시 설치\n\n%s\n\n```bash\n%s\n```\n\n```powershell\n%s\n```\n\n"
         "## 막혔을 때\n\n%s\n\n"
         "## 출처\n\nWave Terminal 은 [%s](%s)(MIT)을, 설치 도우미는 [%s](%s)(MIT)을 바탕으로 합니다\n"
-    ) % (c["mac"], c["win"], c["help"], a["name"], a["url"], b["name"], b["url"])
+    ) % (c["mac"], c["win"], c["re_desc"], c["mac_re"], c["win_re"], c["help"], a["name"], a["url"], b["name"], b["url"])
     e = html.escape
     get = (
         '<code id="install-command-mac">%s</code>\n<code id="install-command-windows">%s</code>\n'
+        '<p class="reinstall-line">%s</p>\n'
+        '<code id="reinstall-command-mac">%s</code>\n<code id="reinstall-command-windows">%s</code>\n'
         '<p class="help-line">%s</p>\n'
         '<p class="origin-line">Wave Terminal 은 <a href="%s" target="_blank" rel="noreferrer">%s</a>(MIT)을, '
         '설치 도우미는 <a href="%s" target="_blank" rel="noreferrer">%s</a>(MIT)을 바탕으로 합니다</p>\n'
-    ) % (e(c["mac"], quote=False), e(c["win"], quote=False), e(c["help"], quote=False),
+    ) % (e(c["mac"], quote=False), e(c["win"], quote=False), e(c["re_desc"], quote=False),
+         e(c["mac_re"], quote=False), e(c["win_re"], quote=False), e(c["help"], quote=False),
          a["url"], a["name"], b["url"], b["name"])
-    screen = "Wave Terminal 설치 도우미 %s\n다시 실행: %s\n%s\n%s (%s · %s)\n" % (
-        c["tag"], c["mac"] + "  |  " + c["win"], c["help"], c["origin"], a["url"], b["url"])
+    screen = "Wave Terminal 설치 도우미 %s\n다시 실행: %s\n다시 설치(%s): %s\n%s\n%s (%s · %s)\n" % (
+        c["tag"], c["mac"] + "  |  " + c["win"], c["re_desc"], c["mac_re"] + "  |  " + c["win_re"],
+        c["help"], c["origin"], a["url"], b["url"])
     return {"readme": readme, "get": get, "screen": screen}
 
 
@@ -64,8 +75,11 @@ def check_cross(parts, m):
     bad = []
     for kind, text in parts.items():
         t = decode(kind, text)
-        for key in ("mac", "win", "origin", "help"):
-            if c[key] not in t:
+        keys = ("mac", "win", "mac_re", "win_re", "re_desc", "origin", "help")
+        for key in keys:
+            # mac 은 mac_re 의 앞부분이라 단순 포함은 재설치 줄만으로도 참이 된다 → 단독 출현을 센다
+            inner = sum(t.count(c[k]) for k in keys if k != key and c[key] in c[k])
+            if t.count(c[key]) - inner < 1:
                 bad.append("%s 조각에 정본 %s 없음" % (kind, key))
     return bad
 
@@ -91,6 +105,8 @@ def against(m, root):
     fp = m["fingerprints"]
     got = {"macos_arm64_sha256": rel["sha256"]["macos_arm64"], "macos_x64_sha256": rel["sha256"]["macos_x64"], "windows_x64_sha256": rel["sha256"]["windows_x64"]}
     rows.append(("steps.json", "지문 3개", "ok" if got == fp else "다름"))
+    re_cmd = steps.get("reinstall", {}).get("command", {})
+    rows.append(("steps.json", "재설치 mac/win", "ok" if (re_cmd.get("macos"), re_cmd.get("windows")) == (c["mac_re"], c["win_re"]) else "다름"))
     for f, text in (("README.md", read("README.md")), ("site/index.html", html.unescape(read("site/index.html"))), ("site/app.js", read("site/app.js").replace('\\\\', '\\').replace('\\"', '"').replace("\\'", "'"))):
         for key in ("mac", "win", "origin", "help"):
             if (f == "site/app.js" and key in ("origin", "help")) or (f == "site/index.html" and key == "win"):

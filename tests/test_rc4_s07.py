@@ -196,6 +196,24 @@ class WaitLoop(S07Base):
         self.assertLess(time.monotonic() - t0, 40)
 
 
+class HomeStart(S07Base):
+    def test_children_of_bounded_command_start_in_the_home_not_the_callers_folder(self):
+        # 2238(맥 대칭): 설치기가 부르는 cys(데몬 자동기동 포함)가 호출자 폴더를 물려받지 않는다.
+        elsewhere = self.home / 'project'
+        elsewhere.mkdir()
+        env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave))
+        r = subprocess.run(['bash', '-c', 'source "$1"; set +e; bounded_command /bin/pwd', 'x', str(self.lib)],
+                           env=env, cwd=str(elsewhere), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.path.realpath(r.stdout.strip()), os.path.realpath(str(self.home)))
+
+    def test_timeout_and_exit_code_behaviour_is_unchanged(self):
+        r = self.bash('WAVE_COMMAND_TIMEOUT=1 bounded_command sleep 5; echo RC=$?')
+        self.assertIn('RC=124', r.stdout)
+        r = self.bash('bounded_command sh -c "exit 7"; echo RC=$?')
+        self.assertIn('RC=7', r.stdout)
+
+
 class PermissionNotice(S07Base):
     TEXT = "이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요."
 

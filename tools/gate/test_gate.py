@@ -37,6 +37,11 @@ def os_set(b):
             shutil.copy(b / n, s / n)
             for f in b.glob(n + ".raw"): shutil.copy(f, s / f.name)
         put(s, extra[0], dict(extra[1]))
+    (b / "G6" / "exit").write_text("0\n")
+    reinstall = json.loads((b / "G1_state.json").read_text())
+    reinstall["exceptions"] = []
+    reinstall["steps"]["S09_COMPLETE"] = {"status": "passed", "exit_code": 0}
+    (b / "G6" / "install-state.json").write_text(json.dumps(reinstall))
     put(b / "G5", "G7b_schedule_freeze.json", {"baseline_sha256": "a" * 64, "current_sha256": "a" * 64})
     put(b, "H1_help_landing.json", {"landed_s": 42, "dashboard_listed": True})
     put(b, "H2_answer_shown.json", {"shown_s": 90})
@@ -75,6 +80,30 @@ class T(unittest.TestCase):
 
     def test_g6_equal_hash_pass(self):
         self.assertEqual(gate.g6(self.d / "mac")[0], gate.PASS)
+
+    def test_g6_requires_successful_completed_reinstall_on_both_os(self):
+        for os_name in ("mac", "win"):
+            s = self.d / os_name / "G6"
+            exit_file = s / "exit"
+            state_file = s / "install-state.json"
+            original = state_file.read_text()
+            with self.subTest(os=os_name, case="nonzero"):
+                exit_file.write_text("1\n")
+                self.assertEqual(gate.g6(self.d / os_name)[0], gate.FAIL)
+            with self.subTest(os=os_name, case="missing_exit"):
+                exit_file.unlink()
+                self.assertEqual(gate.g6(self.d / os_name)[0], gate.NA)
+            exit_file.write_text("0\n")
+            with self.subTest(os=os_name, case="missing_state"):
+                state_file.unlink()
+                self.assertEqual(gate.g6(self.d / os_name)[0], gate.NA)
+            state_file.write_text(original)
+            with self.subTest(os=os_name, case="incomplete_state"):
+                state = json.loads(original); state["status"] = "complete_with_exceptions"
+                state_file.write_text(json.dumps(state))
+                self.assertEqual(gate.g6(self.d / os_name)[0], gate.FAIL)
+            state_file.write_text(original)
+            self.assertEqual(gate.g6(self.d / os_name)[0], gate.PASS)
 
     def test_g6_different_hash_fail(self):
         p = self.d / "mac" / "G6" / "G6_claude_untouched.json"

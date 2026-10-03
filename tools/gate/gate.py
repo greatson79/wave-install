@@ -182,12 +182,29 @@ def g5(b, c=None):
 
 def g6(b, c=None):
     def extra(s):
+        exit_file = s / "exit"
+        if not exit_file.is_file(): return NA, "재설치 종료값 증거 없음: exit"
+        try:
+            exit_code = int(exit_file.read_text(encoding="utf-8").strip())
+        except (OSError, UnicodeError, ValueError):
+            return FAIL, "재설치 종료값 읽기 실패"
+        if exit_code != 0: return FAIL, "재설치 비0 종료 (%d)" % exit_code
+        state, bad = need(s, "install-state.json", raw=False)
+        if bad: return bad
+        if not isinstance(state, dict): return FAIL, "재설치 상태 형식 오류"
+        if not (state.get("status") == "complete" and state.get("required_steps_passed") is True
+                and state.get("exceptions") == []
+                and isinstance(state.get("steps"), dict)
+                and state["steps"].get("S09_COMPLETE", {}).get("status") == "passed"):
+            return FAIL, "재설치 완료 상태 불충족 (status=%s · required_steps_passed=%s · S09=%s)" % (
+                state.get("status"), state.get("required_steps_passed"),
+                state.get("steps", {}).get("S09_COMPLETE", {}).get("status") if isinstance(state.get("steps"), dict) else None)
         d, bad = need(s, "G6_claude_untouched.json")
         if bad: return bad
         if not d.get("before_sha256"): return NA, "before 증거 없음"
         if not d.get("after_sha256"): return NA, "after 증거 없음"
         same = d.get("before_sha256") == d.get("after_sha256")
-        return (PASS, "~/.claude 무접촉") if same else (FAIL, "~/.claude 해시가 바뀜")
+        return (PASS, "재설치 exit 0 · 완료 상태 · ~/.claude 무접촉") if same else (FAIL, "~/.claude 해시가 바뀜")
     return sub(b, "G6", extra)
 
 

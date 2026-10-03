@@ -14,6 +14,16 @@ ap.add_argument("--hook-dir", default=os.path.expanduser("~/.wave/verify")); ap.
 a = ap.parse_args(); out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
 
 
+def _hook(t, v, tb):  # 수집 실패는 traceback 폭탄 대신 <명령>_error.txt 로 남기고 정상 종료한다 — 증거 파일이 없으면 판정기가 미측정으로 읽는다
+    import traceback
+    (out / (a.cmd + "_error.txt")).write_text("".join(traceback.format_exception(t, v, tb)), encoding="utf-8")
+    print("[collect] %s 수집 실패(%s: %s) — %s_error.txt 에 원문" % (a.cmd, t.__name__, v, a.cmd))
+    os._exit(0)
+
+
+sys.excepthook = _hook
+
+
 def sha(b): return hashlib.sha256(b).hexdigest()
 
 

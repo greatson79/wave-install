@@ -298,11 +298,11 @@ jobs:
           mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
           python3 gateref/tools/gate/gate.py evidence | tee "$GITHUB_STEP_SUMMARY"
           python3 gateref/tools/gate/gate.py evidence --json > gate-result.json || true
-          if [ -d evidence/winkr ]; then
-            mkdir -p evidence-kr/common; cp -R evidence/winkr evidence-kr/win; cp -R evidence/common/. evidence-kr/common/
-            { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), one-off"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
-            python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
-          fi
+          # 한글·공백 계정 표는 매 RC 고정 항목(테오 1057) — 잡이 일찍 죽어 증거가 없어도 표를 항상 출력(미측정으로)한다
+          mkdir -p evidence-kr/common evidence-kr/win; cp -R evidence/common/. evidence-kr/common/ 2>/dev/null || true
+          [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
+          { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
+          python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

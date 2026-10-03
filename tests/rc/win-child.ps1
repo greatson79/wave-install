@@ -17,6 +17,15 @@ function OneLine([string]$line, [string]$log, [int]$sec = 1500) {
   if (-not $p.WaitForExit($sec * 1000)) { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null; Get-Process claude -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; return 124 }
   return $p.ExitCode
 }
+function Copy-FleetStatusEvidence([string]$out) {
+  $src = Join-Path $h '.wave\verify'; $dest = Join-Path $out 'fleet-status'
+  New-Item -ItemType Directory -Force $dest | Out-Null
+  foreach ($name in @('fleet-status.stdout.log', 'fleet-status.stderr.log')) {
+    Copy-Item -LiteralPath (Join-Path $src $name) -Destination (Join-Path $dest $name) -ErrorAction SilentlyContinue
+  }
+  Get-ChildItem -LiteralPath $src -Filter 'fleet-status-*.json' -File -ErrorAction SilentlyContinue |
+    Copy-Item -Destination $dest -ErrorAction SilentlyContinue
+}
 function Reset-Fleet {
   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'fake_claude\.py|cysd' } | ForEach-Object { & taskkill /PID $_.ProcessId /T /F 2>&1 | Out-Null }
   Remove-Item (Join-Path $h '.cys\.master-bootstrapped') -Force -ErrorAction SilentlyContinue
@@ -99,12 +108,12 @@ try {
     if ($from -ne '0.2.3') { Write-Host "v0.2.3 이 아님($from) — G5 측정 불가"; return }
     $sha = (Get-FileHash (Join-Path $g5 'from_v023_state.json') -Algorithm SHA256).Hash.ToLower()
     "{`"from_version`":`"$from`",`"raw`":[{`"path`":`"from_v023_state.json`",`"sha256`":`"$sha`"}]}" | Set-Content (Join-Path $g5 'G5_meta.json') -Encoding ASCII
-    Reset-Fleet; OneLine $one (Join-Path $g5 'run.log') | Out-Null; Collect $g5
+    Reset-Fleet; OneLine $one (Join-Path $g5 'run.log') | Out-Null; Copy-FleetStatusEvidence $g5; Collect $g5
     Copy-Item (Join-Path $h '.cys\pack\schedule.json') (Join-Path $g5 'installed_schedule_rc.json') -ErrorAction SilentlyContinue   # 증거만
     return
   }
   New-Item -ItemType Directory -Force (Join-Path $e 'phaseA'), (Join-Path $e 'G6') | Out-Null
-  $env:BROWSER = 'false'; OneLine $one (Join-Path $e 'phaseA\run.log') 300 | Out-Null; Remove-Item Env:BROWSER
+  $env:BROWSER = 'false'; OneLine $one (Join-Path $e 'phaseA\run.log') 300 | Out-Null; Copy-FleetStatusEvidence (Join-Path $e 'phaseA'); Remove-Item Env:BROWSER
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'phaseA\state.json') -ErrorAction SilentlyContinue
   # 설치기가 시작 직후 죽는 경우(10차: Get-JCode 미인식)를 가리기 위한 진단 — 설치팩 bootstrap.ps1 의 파싱 결과·인코딩·함수 목록·설치 로그
   $pk = Get-ChildItem (Join-Path $h '.wave\src') -Recurse -Filter bootstrap.ps1 -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -124,6 +133,7 @@ try {
   foreach ($lf in @('install.log', 'install-done.txt')) { Copy-Item (Join-Path $h ".wave\$lf") (Join-Path $e "phaseA\$lf") -ErrorAction SilentlyContinue }
   Install-Fake
   OneLine $one (Join-Path $e 'run.log') | Out-Null
+  Copy-FleetStatusEvidence $e
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'G1_state.json')
   Collect $e
   Copy-Item (Join-Path $h '.wave\rc') (Join-Path $e 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue

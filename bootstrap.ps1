@@ -1242,8 +1242,22 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
     if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
   } finally { $process.Dispose() }
   # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
-  $stdout = Read-SharedCheckLog $stdoutPath
-  $stderr = Read-SharedCheckLog $stderrPath
+  $stdout = $null; $stderr = $null; $readError = $null
+  try {
+    $stdout = Read-SharedCheckLog $stdoutPath
+    $stderr = Read-SharedCheckLog $stderrPath
+  } catch { $readError = $_.Exception.Message }
+  if ($Name -eq 'fleet-status') {
+    # S07 실패 뒤에도 마지막 조회의 응답·종료값·소요를 남긴다. 설치 판정은 바꾸지 않는다.
+    $trace = [ordered]@{ command = 'cys status --json'; timeout_ms = $TimeoutMs; elapsed_ms = $checkClock.ElapsedMilliseconds;
+      timed_out = (-not $finished); exit_code = $exitCode; kill_error = $killError;
+      stdout = $stdout; stderr = $stderr; read_error = $readError }
+    try {
+      $tracePath = Join-Path $verify ('fleet-status-' + [guid]::NewGuid().ToString('N') + '.json')
+      [IO.File]::WriteAllText($tracePath, (ConvertTo-Json -InputObject $trace -Depth 4), [Text.UTF8Encoding]::new($false))
+    } catch { }
+  }
+  if ($readError) { throw $readError }
   return [pscustomobject]@{ timed_out = (-not $finished); timeout_ms = $TimeoutMs; exit_code = $exitCode; stdout = $stdout; stderr = $stderr; kill_error = $killError }
 }
 

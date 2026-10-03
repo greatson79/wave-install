@@ -488,6 +488,31 @@ class MacResumeAndPackTests(unittest.TestCase):
         main = (ROOT / 'bootstrap.sh').read_text().split('\nmain() {', 1)[1]
         self.assertRegex(main, r'\n  init_state\n  attempt_start\n')
 
+    def test_seats_restored_before_s07_entry_count_when_after_the_attempt_start(self):
+        # G6 420초: 복원이 S07 진입(초 버림 date +%s) 직전에 만든 cso·worker 가 created_at < since 로 배제되어 대기했다.
+        # since 는 이번 시도 시작(RUN_STARTED) — 그 뒤·S07 진입 초 앞에 생긴 좌석은 수용, 시작 이전 좌석은 여전히 배제.
+        start = int(time.time()) - 5
+        (self.home / '.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref': 'surface:5', 'orchestra_check': 'exit 0'}))
+        def fleet(cso_created):
+            self.fleet.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', start + 4), self.seat('surface:20', 'cso', cso_created),
+                                                           self.seat('surface:21', 'worker-1', start + 2)]}))
+        cases = ((start, True), (start + 1, True), (start - 1, False))   # 시작과 같음·직후 = 수용 / 1초 전 = 배제
+        for cso_created, want in cases:
+            with self.subTest(cso_created - start):
+                fleet(cso_created)
+                (self.wave / 'fleet/status.json').write_text(self.fleet.read_text())
+                r = self.bash('RUN_STARTED=%d; verify_live_fleet surface:5 "$RUN_STARTED"; echo "VERIFY=$?"' % start)
+                self.assertEqual('VERIFY=0' in r.stdout, want, r.stdout + r.stderr)
+        # step 전체 흐름: 신규 master 경로에서도 started 가 RUN_STARTED 이므로 시작 뒤·진입 초 앞의 복원 좌석으로 완료된다
+        after = self.home / 'fleet-after.json'
+        after.write_text(json.dumps({'surfaces': [self.seat('surface:5', 'master', start + 4), self.seat('surface:20', 'cso', start + 1),
+                                                  self.seat('surface:21', 'worker-1', start + 2)]}))
+        self.env['FLEET_AFTER'] = str(after)
+        self.fleet.write_text(json.dumps({'surfaces': []}))
+        r = self.bash('RUN_STARTED=%d; step_s07; echo "RC=$?"; echo "$STEP_OBSERVED"' % start)
+        self.assertIn('RC=0', r.stdout, r.stdout + r.stderr)
+        self.assertEqual((self.wave / 'fleet/started-at').read_text().strip(), str(start))
+
     def test_foreign_duplicate_or_older_master_is_still_refused(self):
         cases = {'foreign': (['surface:5'], 'surface:4', None), 'no-ref': (['surface:5'], None, None),
                  'duplicate': (['surface:5', 'surface:6'], 'surface:5', None),

@@ -685,7 +685,9 @@ PY_VERIFY
 step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
   local ref started deadline remaining existing reused=false restored= master_source=created
-  started="$(date +%s)"
+  # 이번 시도의 시작 — S05 데몬 시작 직후 자동복원이 S07 진입 전(같은 초 경계 안팎)에 만든 cso·worker 도 이 시도의 좌석이다
+  # (진입 시각의 초 버림값을 쓰면 그 좌석이 created_at < since 로 영영 배제되어 420초 대기). 이전 실행의 좌석은 여전히 시작보다 앞이라 배제된다.
+  started="$RUN_STARTED"
   deadline=$((SECONDS + 420))
   awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
   wait_gui_onboarded "$deadline" || return 1

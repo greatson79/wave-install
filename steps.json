@@ -15,16 +15,16 @@
     "asset_url": {
       "macos_arm64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/wave-terminal-0.2.0-macos-arm64.dmg",
       "macos_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/wave-terminal-0.2.0-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/wave-terminal-0.2.0-windows-x64-setup.exe"
+      "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.3/wave-terminal-0.2.0-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 128718773},
+    "bytes": {"windows_x64": 128899424},
     "sha256": {
       "macos_arm64": "9219ad876eb02af89ba7edbbe2cc79751fdcf3c46febaa0c220c574bc2cd8cb5",
       "macos_x64": "9219ad876eb02af89ba7edbbe2cc79751fdcf3c46febaa0c220c574bc2cd8cb5",
-      "windows_x64": "0f107d409a69cb71318639762daee8e093ae92e334f8014f3e504fcc1d66c2ff"
+      "windows_x64": "8c13234b0c675f7d415ae0664f5e00174cfe6c2cba8838b3123afff72ca47d9c"
     },
     "sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.3/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,

@@ -3,10 +3,12 @@
 import json
 import os
 import re
+import signal
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -232,22 +234,32 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertNotIn("daemon uninstall", other)  # launchd 소유가 아니면 uninstall 은 아무것도 멈추지 못한다
         self.assertIn("pkill -f", other)
 
-    def test_s04_printed_stop_line_really_stops_a_daemon_it_names(self):
+    def test_s04_printed_stop_line_stops_only_this_installs_daemons(self):
         other = self.hold_message("registered=false loaded=false socket_alive=true")
-        cmd = re.search(r"pkill -f '[^']*'", other).group(0)
-        fake = self.home / "wave/apps/Wave Terminal.app/Contents/MacOS/cysd"
-        fake.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile("/bin/sleep", fake)
-        fake.chmod(0o755)
-        daemon = subprocess.Popen([str(fake), "60"])
-        self.addCleanup(lambda: daemon.poll() is None and daemon.kill())
-        try:
-            subprocess.run(["bash", "-c", cmd], env=self.env, timeout=10)
-            self.assertIsNotNone(daemon.wait(timeout=5), cmd)
-            self.assertNotEqual(daemon.returncode, 0)
-        finally:
-            if daemon.poll() is None:
-                daemon.kill()
+        cmd = "pkill -f '" + re.search(r"pkill -f '([^']*)'", other).group(1) + "'"
+        wave = self.home / "wave"
+        app_cysd = wave / "apps/Wave Terminal.app/Contents/MacOS/cysd"
+        link_cysd = wave / "bin/cysd"  # bin/cys 링크로 뜬 데몬은 명령줄이 링크 경로다(current_exe 가 링크를 안 푼다)
+        other_install = self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"
+        app_cysd.parent.mkdir(parents=True, exist_ok=True)
+        app_cysd.write_text("")  # 이 경로를 인자로만 가진 프로세스(tail) 대조군용 파일
+        # 서명 문제 없이 명령줄만 원하는 경로로 보이게 한다: argv[0]=가짜 경로, 실제 실행 파일=/bin/sleep
+        fake = lambda path: subprocess.Popen([str(path), "60"], executable="/bin/sleep")
+        targets = {"app": fake(app_cysd), "link": fake(link_cysd)}
+        controls = {"other-install": fake(other_install),
+                    "path-as-argument": subprocess.Popen(["tail", "-f", str(app_cysd)])}
+        everything = {**targets, **controls}
+        self.addCleanup(lambda: [(q.poll() is None and q.kill(), q.wait()) for q in everything.values()])
+        time.sleep(0.7)
+        for name, proc in everything.items():  # 안내 줄 실행 전에 모두 살아 있어야 시험이 공허하지 않다
+            self.assertIsNone(proc.poll(), "%s died before the stop line ran" % name)
+        subprocess.run(["bash", "-c", cmd], env=self.env, timeout=10)
+        for name, proc in targets.items():
+            proc.wait(timeout=5)
+            self.assertEqual(proc.returncode, -signal.SIGTERM, "%s not stopped by: %s" % (name, cmd))
+        time.sleep(0.5)
+        for name, proc in controls.items():
+            self.assertIsNone(proc.poll(), "%s must survive: %s" % (name, cmd))
 
     def test_s04_guard_detects_gui_without_daemon(self):
         wave = self.home / "wave"

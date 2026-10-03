@@ -496,7 +496,12 @@ step_s04() {
   if [[ "$in_use_rc" -ne 1 ]]; then
     STEP_OBSERVED='{"reinstall":"waiting_for_app_exit"}'
     if [[ "${WAVE_HOLD:-}" == unowned ]]; then
-      fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$app_dest/Contents/MacOS/cysd' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      # 앱이 직접 띄운 데몬(앱 경로)과 bin/cys 링크로 뜬 데몬(명령줄이 링크 경로)을 모두 덮되,
+      # 명령줄이 이 설치본의 cysd 로 시작하는 프로세스만 고른다(다른 설치본·그 경로를 인자로 가진 프로세스 제외).
+      local esc stop_pattern
+      esc="$(printf '%s' "$WAVE_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
+      stop_pattern="^$esc/(apps/Wave Terminal\\.app/Contents/MacOS|bin)/cysd( |\$)"
+      fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$stop_pattern' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     elif [[ -x "$WAVE_HOME/bin/cys" ]]; then
       fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     else

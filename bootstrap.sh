@@ -689,7 +689,7 @@ seed_claude_trust() {
 
 # S07 대기 중 좌석 화면에 첫 실행 확인 창(폴더 신뢰 · 권한 우회 경고)이 보이면 안내를 한 번 띄우고 계속 기다린다.
 # 설치기는 어떤 키도 보내지 않는다 — 사람이 Wave 창에서 고른다. 판별은 질문문으로만 한다: 선택지 「Yes, I trust this folder」·확인 에코는
-# 근거가 아니다(원작 idoforgod/cys-terminal src/first_run_gates.rs needles · 2026-07-29 사고 원인).
+# 근거가 아니다(첫 실행 관문 판별 기준 · 2026-07-29 사고 원인).
 GATE_NOTICED=0
 notice_first_run_gate() {
   [[ "$GATE_NOTICED" == 1 ]] && return 0

@@ -1,0 +1,48 @@
+{
+ "_approval": "승인 테오 잠정·주인님 확인 대기 (테오 0437)",
+ "_not_allowed": {
+  "C60.gate-wiring": "skillscan 미승인 8건 — 허용 아님, G2 FAIL 로 남기고 별도 릴리스 차단 항목"
+ },
+ "mac": [
+  "C13.claude-md",
+  "C20.nlm-sot",
+  "C21.harness-creator",
+  "C24.korean-law-mcp",
+  "C26.video-creator",
+  "C44.serena-eval",
+  "C48.content-channel-deps",
+  "C61.doc-code-sot",
+  "C64.directive-bench"
+ ],
+ "win": [
+  "C13.claude-md",
+  "C20.nlm-sot",
+  "C21.harness-creator",
+  "C24.korean-law-mcp",
+  "C26.video-creator",
+  "C44.serena-eval",
+  "C48.content-channel-deps",
+  "C61.doc-code-sot",
+  "C64.directive-bench"
+ ],
+ "upgrade_only": {
+  "mac": [
+   "C62.pack-heal-ledger"
+  ],
+  "win": [
+   "C62.pack-heal-ledger"
+  ]
+ },
+ "entries": {
+  "C13.claude-md": "프로젝트 CLAUDE.md 없음 — preflight 원문: hook 이 전역을 커버하므로 권장 수준",
+  "C20.nlm-sot": "nlm 로그인(Google 인증)은 사람 단계 — 제품 설치 필수 조건 아님 (D1 잠정)",
+  "C21.harness-creator": "harness-creator 별도 도구 — preflight 원문: 제품 설치 완료의 필수 조건에서 제외 (D1 잠정)",
+  "C24.korean-law-mcp": "법령 MCP 별도 설치 — preflight 원문: 필수 조건에서 잠정 제외 (D1 잠정)",
+  "C26.video-creator": "영상 스킬 전제 FFmpeg 미설치 — 영상 작업을 할 때만 필요(원문: 영상 작업 폴더에서 1회 설치)",
+  "C44.serena-eval": "eval 루브릭 부재 — preflight 원문: 사람단계(master STEP1 PREP)",
+  "C48.content-channel-deps": "콘텐츠 채널 의존성 일부 미흔적 — preflight 원문: 우회 graceful degrade·부트 비차단, 설치는 CSO 승인 게이트 경유(자동 설치 금지)",
+  "C61.doc-code-sot": "doc-code 드리프트 — 문서가 명명한 조직 파일(~/.cys/depts.json 등) 부재, 제품 기능 아님",
+  "C62.pack-heal-ledger": "업그레이드 경로 한정 — 구 팩의 라이브 수정이 배포 원본으로 되돌려짐(수정본은 .user 보존)",
+  "C64.directive-bench": "baseline 미핀 — preflight 원문: 오너/master 의례(재핀)이며 트립와이어만 비활성"
+ }
+}

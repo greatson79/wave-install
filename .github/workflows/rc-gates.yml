@@ -1,0 +1,362 @@
+name: RC gates (clean runner, one-line install, evidence for gate.py)
+# 릴리스 후보 관문 — 태그·릴리스·서명키·latest.json·홈페이지 무접촉. 시험 서버는 러너 안 자체서명 https(비밀값 없음).
+# 로그인이 필요한 S02·S07·S08·S09 는 G9(실기) 몫: 여기서는 합성 claude 로 결정론 단계만(「합성 · 관문 미산입」).
+on:
+  push:
+    branches: [feat/rc-e2e]
+    paths: ['tests/rc/**', '.github/workflows/rc-gates.yml']
+  workflow_dispatch:
+    inputs:
+      mac_run_id:
+        description: wave-terminal macOS 빌드 run id (artifact w3-macos-arm64-*)
+        required: false
+        type: string
+      win_run_id:
+        description: wave-terminal Windows 빌드 run id (artifact cys-windows-x64-nsis)
+        required: false
+        type: string
+      app_repo:
+        description: 앱 저장소
+        default: greatson79/wave-terminal
+        type: string
+      gate_ref:
+        description: 판정기(tools/gate) 가지
+        default: feat/p3-gate
+        type: string
+      text_ref:
+        description: 문구 생성기(tools/release-text) 가지
+        default: feat/w4-release-text
+        type: string
+permissions:
+  contents: read
+env:
+  WAVE_NO_PROGRESS: '1'
+  PYTHONUTF8: '1'
+  RC_BASE: https://127.0.0.1:8443/
+jobs:
+  cfg:
+    name: resolve inputs (dispatch input wins, else tests/rc/rc-inputs.json)
+    runs-on: ubuntu-latest
+    outputs:
+      mac_run_id: ${{ steps.r.outputs.mac_run_id }}
+      win_run_id: ${{ steps.r.outputs.win_run_id }}
+      app_repo: ${{ steps.r.outputs.app_repo }}
+      gate_ref: ${{ steps.r.outputs.gate_ref }}
+      text_ref: ${{ steps.r.outputs.text_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: r
+        env:
+          IN_MAC: ${{ inputs.mac_run_id }}
+          IN_WIN: ${{ inputs.win_run_id }}
+          IN_APP: ${{ inputs.app_repo }}
+          IN_GATE: ${{ inputs.gate_ref }}
+          IN_TEXT: ${{ inputs.text_ref }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          d = json.load(open("tests/rc/rc-inputs.json"))
+          for k, e in (("mac_run_id", "IN_MAC"), ("win_run_id", "IN_WIN"), ("app_repo", "IN_APP"), ("gate_ref", "IN_GATE"), ("text_ref", "IN_TEXT")):
+              v = os.environ.get(e) or d[k]
+              assert v and "\n" not in str(v), k
+              print("%s=%s" % (k, v))
+          PY
+  mac-gates:
+    needs: cfg
+    name: macOS G1-CI G2 G3 G4-CI G6 G7
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python3 tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+      - uses: actions/checkout@v4
+        with: { ref: '${{ needs.cfg.outputs.text_ref }}', path: textref }
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.mac_run_id }}
+          github-token: ${{ github.token }}
+          pattern: w3-macos-arm64-*
+          path: app
+      - name: Find DMG, ad-hoc re-sign for the test (not Developer ID), assemble test release
+        run: |
+          set -euo pipefail
+          DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
+          mkdir -p "$RUNNER_TEMP/resigned" "$RUNNER_TEMP/ev/common"
+          bash tests/rc/mac-resign.sh "$DMG" "$RUNNER_TEMP/resigned/$(basename "$DMG")" "$RUNNER_TEMP/ev/common/mac_resign.txt" || { cat "$RUNNER_TEMP/ev/common/mac_resign.txt"; exit 1; }
+          CDH="$(sed -n 's/^cdhash=//p' "$RUNNER_TEMP/ev/common/mac_resign.txt")"; test -n "$CDH"
+          echo "dmg=$DMG cdhash=$CDH"
+          python3 tests/rc/rc_release.py --os mac --asset "$RUNNER_TEMP/resigned/$(basename "$DMG")" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" --cdhash "$CDH"
+      - name: Self-signed https test server (runner-local, discarded)
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/tls"; mkdir -p "$D"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$D/k.pem" -out "$D/c.pem" -days 1 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
+          nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
+          sleep 2; CURL_CA_BUNDLE="$D/c.pem" curl -fsS "${RC_BASE}rc-release.json" >/dev/null
+      - name: One-line install and evidence (phase A boundary, phase B, G6 reinstall)
+        run: bash tests/rc/mac-run.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - name: G7 release text and package licenses
+        if: always()
+        run: python3 tests/rc/g7.py --gen textref/tools/release-text/gen.py --tar "$RUNNER_TEMP"/rcrel/wave-install-*.tar.gz --out "$RUNNER_TEMP/ev/common"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-mac-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  mac-upgrade:
+    needs: cfg
+    name: macOS G5 (public v0.2.3 then test release)
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python3 tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.mac_run_id }}
+          github-token: ${{ github.token }}
+          pattern: w3-macos-arm64-*
+          path: app
+      - name: Ad-hoc re-sign for the test (not Developer ID), assemble test release and https server
+        run: |
+          set -euo pipefail
+          DMG="$(find app -name '*.dmg' | head -1)"; test -n "$DMG"
+          mkdir -p "$RUNNER_TEMP/resigned" "$RUNNER_TEMP/ev/common"
+          bash tests/rc/mac-resign.sh "$DMG" "$RUNNER_TEMP/resigned/$(basename "$DMG")" "$RUNNER_TEMP/ev/common/mac_resign.txt" || { cat "$RUNNER_TEMP/ev/common/mac_resign.txt"; exit 1; }
+          CDH="$(sed -n 's/^cdhash=//p' "$RUNNER_TEMP/ev/common/mac_resign.txt")"; test -n "$CDH"
+          python3 tests/rc/rc_release.py --os mac --asset "$RUNNER_TEMP/resigned/$(basename "$DMG")" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel" --cdhash "$CDH"
+          D="$RUNNER_TEMP/tls"; mkdir -p "$D"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$D/k.pem" -out "$D/c.pem" -days 1 -subj /CN=127.0.0.1 -addext "subjectAltName=IP:127.0.0.1" 2>/dev/null
+          nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
+          sleep 2
+      - run: bash tests/rc/mac-upgrade.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-mac-g5-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  assemble-win:
+    name: Assemble Windows test release (ubuntu — POSIX tools live here)
+    needs: cfg
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          run-id: ${{ needs.cfg.outputs.win_run_id }}
+          github-token: ${{ github.token }}
+          name: cys-windows-x64-nsis
+          path: app
+      - name: Assemble (steps.json release pins swapped on a copy; asset bytes unchanged)
+        run: |
+          set -euo pipefail
+          EXE="$(find app -name '*-setup.exe' | head -1)"; test -n "$EXE"
+          python3 tests/rc/rc_release.py --os win --asset "$EXE" --base "$RC_BASE" --out "$RUNNER_TEMP/rcrel"
+          ls -l "$RUNNER_TEMP/rcrel"
+      - name: Cross-compile the Windows synthetic claude.exe (a native process named claude.exe)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq gcc-mingw-w64-x86-64
+          x86_64-w64-mingw32-gcc -O0 -municode -static -o "$RUNNER_TEMP/rcrel/claude-launcher.exe" tests/rc/claude_launcher_win.c
+          file "$RUNNER_TEMP/rcrel/claude-launcher.exe"; ls -l "$RUNNER_TEMP/rcrel/claude-launcher.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+          if-no-files-found: error
+          retention-days: 3
+  win-gates:
+    name: Windows G1-CI G2 G3 G4-CI G6 (standard user)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode main -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Fail the job when required evidence is missing
+        if: always()
+        shell: powershell
+        run: |
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-gates-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  win-gates-kr:
+    name: Windows one-off with a space+Hangul standard user (Kyle U+CD5C)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode main -UserName "Kyle U+CD5C" -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Fail the job when required evidence is missing
+        if: always()
+        shell: powershell
+        run: |
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
+      - name: Keep this run apart from the ASCII-user evidence
+        if: always()
+        shell: powershell
+        run: |
+          $ev = "$env:RUNNER_TEMP\ev"; if (Test-Path "$ev\win") { Move-Item "$ev\win" "$ev\winkr" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-kr-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  win-ctrlc:
+    # 측정 전용(관문 미산입): 윈도우에서 설치 중 도움 대기를 Ctrl+C 로 끝냈을 때의 종료값·상태 파일·남는 프로세스·도움 서버 close 호출 (노아 rc030-final major)
+    name: Windows Ctrl+C during the help wait (measurement only)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Fail the install on purpose, wait in help, send a real Ctrl+C
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode ctrlc -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Print the result
+        if: always()
+        shell: powershell
+        run: |
+          $f = "$env:RUNNER_TEMP\ev\win\ctrlc\ctrlc_result.json"; if (Test-Path $f) { Get-Content $f -Raw } else { Write-Host 'ctrlc_result.json 없음' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-ctrlc-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: warn
+  win-upgrade:
+    name: Windows G5 (public v0.2.3 then test release)
+    needs: [cfg, assemble-win]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Bind the measured installer version
+        shell: bash
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+      - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
+        uses: actions/download-artifact@v4
+        with:
+          name: rcrel-win-${{ github.run_id }}
+          path: ${{ runner.temp }}/rcrel
+      - name: Trust test cert, serve https, run as a fresh standard user
+        shell: powershell
+        run: |
+          $py = (Get-Command python).Source
+          ./tests/rc/win-driver.ps1 -Mode upgrade -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Fail the job when required evidence is missing
+        if: always()
+        shell: powershell
+        run: |
+          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G5\G5_meta.json','G5\G2_preflight.json','G5\G3_inject.json','G5\G4_boot.json'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          if ($miss.Count) { Write-Host "증거 없음: $($miss -join ', ')"; exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-win-upgrade-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  freeze:
+    name: G7b schedule.json freeze (previous public app source vs this app, raw bytes)
+    needs: cfg
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the git blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tests/rc/freeze.py --repo "${{ needs.cfg.outputs.app_repo }}" --mac-run "${{ needs.cfg.outputs.mac_run_id }}" --win-run "${{ needs.cfg.outputs.win_run_id }}" --out "$RUNNER_TEMP/ev"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-evidence-freeze-${{ github.run_id }}
+          path: ${{ runner.temp }}/ev
+          if-no-files-found: error
+  judge:
+    name: gate.py table
+    needs: [cfg, mac-gates, mac-upgrade, win-gates, win-gates-kr, win-upgrade, freeze]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { ref: '${{ needs.cfg.outputs.gate_ref }}', path: gateref }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'rc-evidence-*', path: evidence, merge-multiple: true }
+      - name: Judge (exit 1 = some gate is FAIL or unmeasured; Windows and G8/G9 stay unmeasured here)
+        run: |
+          set -u
+          mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
+          python3 gateref/tools/gate/gate.py evidence | tee "$GITHUB_STEP_SUMMARY"
+          python3 gateref/tools/gate/gate.py evidence --json > gate-result.json || true
+          # 한글·공백 계정 표는 매 RC 고정 항목(테오 1057) — 잡이 일찍 죽어 증거가 없어도 표를 항상 출력(미측정으로)한다
+          mkdir -p evidence-kr/common evidence-kr/win; cp -R evidence/common/. evidence-kr/common/ 2>/dev/null || true
+          [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
+          { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
+          python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-gate-table-${{ github.run_id }}
+          path: |
+            gate-result.json
+            gate-result-kr.json
+            evidence
+            evidence-kr

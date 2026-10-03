@@ -4,7 +4,7 @@
   collect.py g2 --out DIR --python PY --preflight PATH     → DIR/G2_preflight.json (preflight --json 원문, --fix 없음)
   collect.py claude-hash --out DIR/G6 --phase before|after → ~/.claude 트리 해시 (G6_claude_untouched.json 에 합산)
   collect.py g3 --out DIR --manifest pack-manifest.json    → G3_inject.json (+ 훅 stdout·매니페스트 원본 복사, 펄스 결정 B: 매니페스트 일치 · 훅 stdout 부분열 포함 · .new 0)
-  collect.py g4 --out DIR                                  → G4_boot.json (boot-last.json 의 ①~⑤ exit + cys status 좌석 생존) """
+  collect.py g4 --out DIR                                  → G4_boot.json (boot-last.json 의 ①~⑤ exit + cys status 좌석 생존 + 좌석 설정 폴더 온보딩·폴더 신뢰 키) """
 import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys
 
 ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["g1", "g2", "g3", "g4", "claude-hash"]); ap.add_argument("--out", required=True)
@@ -89,7 +89,21 @@ elif a.cmd == "g4":
     for src, nm in ((pathlib.Path(a.hook_dir).parent / "rc" / "bootstrap.out", "bootstrap.out"), (pathlib.Path(a.hook_dir).parent / "rc" / "bootstrap.err", "bootstrap.err"),
                     *((pathlib.Path(a.hook_dir) / ("hook_%s.out" % r), "hook_%s.out" % r) for r in ROLE_FILE)):
         if src.is_file(): raws.append(raw_entry(out, src, nm))
-    (out / "G4_boot.json").write_text(json.dumps({"steps": [{"n": n, "exit": st[n]} for n in sorted(st)], "seats": seats, "raw": raws}), encoding="utf-8")
+    # 첫기동 관문 사전 기록(설치기 S07): 좌석 설정 폴더(CLAUDE_CONFIG_DIR = CYS_ACCOUNT_DIR 또는 ~/.cys/claude)의 .claude.json 에
+    #   hasCompletedOnboarding=true · 살아 있는 좌석 cwd 마다 projects.<cwd>.hasTrustDialogAccepted=true(윈은 \ · / 두 꼴) — LLM 없이 키만 본다
+    cfg = pathlib.Path(os.environ.get("CYS_ACCOUNT_DIR") or os.path.expanduser("~/.cys/claude")) / ".claude.json"
+    try:
+        cj = json.loads(cfg.read_text(encoding="utf-8")); cfg_sha = sha(cfg.read_bytes()); cj = cj if isinstance(cj, dict) else {}
+    except (OSError, ValueError):
+        cj, cfg_sha = {}, None
+    proj = cj.get("projects") if isinstance(cj.get("projects"), dict) else {}
+    cwds = sorted({str(s.get("cwd")) for s in json.loads(r.stdout)["surfaces"] if s.get("cwd") and s.get("exited") is False
+                   and str(s.get("role") or "").startswith(("master", "cso", "worker"))})
+    forms = lambda c: dict.fromkeys([c, c.replace("\\", "/")] if os.name == "nt" else [c])
+    trusted = lambda k: isinstance(proj.get(k), dict) and proj[k].get("hasTrustDialogAccepted") is True
+    trust = {"config": str(cfg), "config_sha256": cfg_sha, "hasCompletedOnboarding": cj.get("hasCompletedOnboarding") is True,
+             "cwds": {c: {k: trusted(k) for k in forms(c)} for c in cwds}}
+    (out / "G4_boot.json").write_text(json.dumps({"steps": [{"n": n, "exit": st[n]} for n in sorted(st)], "seats": seats, "raw": raws, "trust": trust}), encoding="utf-8")
 else:
     root = pathlib.Path(os.path.expanduser("~/.claude")); h = hashlib.sha256(); rows = []
     for p in sorted(root.rglob("*")) if root.exists() else []:

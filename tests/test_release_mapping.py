@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = ROOT / "steps.json"
 BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.1"
-WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.2"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
+WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.3"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
 MAC = "wave-terminal-0.2.0-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
 WIN = "wave-terminal-0.2.0-windows-x64-setup.exe"
 MAC_SHA = "9219ad876eb02af89ba7edbbe2cc79751fdcf3c46febaa0c220c574bc2cd8cb5"

@@ -25,6 +25,10 @@ SRC="$1"; OUT="$2"; LOG="$3"; W="$(mktemp -d)"; MP="$W/mnt"; mkdir -p "$MP" "$W/
   APP2="$(find "$MP" -maxdepth 2 -type d -name '*.app' -print -quit)"
   codesign --verify --deep --strict "$APP2" && echo "dmg_verify=ok"
   echo "cdhash=$(codesign -dvvv "$APP2" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+  for f in "$APP2"/Contents/MacOS/*; do
+    [ -f "$f" ] || continue
+    printf 'exec_sha256=%s  Contents/MacOS/%s\n' "$(shasum -a 256 "$f" | awk '{print $1}')" "${f##*/}"
+  done
   hdiutil detach "$MP" >/dev/null
 } > "$LOG" 2>&1
 rm -rf "$W"; grep -q '^dmg_verify=ok' "$LOG"

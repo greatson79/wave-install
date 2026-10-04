@@ -37,6 +37,10 @@
   const copyStatus = document.querySelector("#copy-status");
   const stepsList = document.querySelector("#steps-list");
   const sourceStatus = document.querySelector("#steps-source-status");
+  const reinstallNode = document.querySelector("#reinstall-command");
+  // 재설치 명령의 정본은 steps.json 의 reinstall.command 이다(화면은 그대로 보여 준다). 연결 전 기본값은 맥 한 줄.
+  let reinstallCommands = { macos: reinstallNode.textContent };
+  let currentOS = "mac";
 
   function setOS(os) {
     const selected = commands[os] || commands.mac;
@@ -51,6 +55,13 @@
       panel.hidden = panel.dataset.osPanel !== os;
     });
     copyStatus.textContent = "복사한 뒤 아래 순서대로 하세요.";
+    currentOS = os;
+    showReinstall();
+  }
+
+  function showReinstall() {
+    const command = reinstallCommands[currentOS === "windows" ? "windows" : "macos"];
+    reinstallNode.textContent = command || "이 운영체제의 재설치 명령은 steps.json 연결 후 표시됩니다.";
   }
 
   async function copyCommand() {
@@ -141,8 +152,10 @@
       try {
         const response = await fetch(path, { cache: "no-store" });
         if (!response.ok) continue;
-        const payload = normalizeSteps(await response.json());
+        const raw = await response.json();
+        const payload = normalizeSteps(raw);
         if (!isValidSteps(payload)) continue;
+        if (raw && raw.reinstall && raw.reinstall.command) { reinstallCommands = raw.reinstall.command; showReinstall(); }
         renderSteps(payload);
         sourceStatus.textContent = `steps.json 연결됨 · ${payload.steps.length}/10 단계`;
         sourceStatus.dataset.source = "remote";

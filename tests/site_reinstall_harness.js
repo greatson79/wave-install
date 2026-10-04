@@ -14,8 +14,9 @@ global.fetch = async () => ({ ok: true, json: async () => JSON.parse(steps) });
 const run = new Function(fs.readFileSync(appPath, "utf8"));
 run();
 setTimeout(() => {
-  const out = { after_load: nodes["#reinstall-command"].textContent };
+  const out = { after_load: nodes["#reinstall-command"].textContent, install_mac: nodes["#install-command"].textContent };
   winTab.click();
   out.after_windows_tab = nodes["#reinstall-command"].textContent;
+  out.install_windows = nodes["#install-command"].textContent;
   console.log(JSON.stringify(out));
 }, 50);

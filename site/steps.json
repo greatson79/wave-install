@@ -37,6 +37,13 @@
       "macos_x64": "db580078edfb5ba83d801bfd539260ba374d08a9"
     }
   },
+  "install": {
+    "command": {
+      "macos": "curl -fsSL https://waveainetworks.com/mac | bash",
+      "windows": "irm https://waveainetworks.com/win | iex"
+    },
+    "description": "수강생이 처음 설치할 때 치는 한 줄입니다. scripts/ci/install-lines.json 과 같은 값이어야 합니다."
+  },
   "reinstall": {
     "command": {
       "macos": "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall",

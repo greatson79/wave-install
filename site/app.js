@@ -20,14 +20,16 @@
     ]
   };
 
+  // 설치 명령의 정본은 steps.json 의 install.command(= scripts/ci/install-lines.json 과 같은 값, 시험이 대조)다.
+  // 아래 값은 steps.json 에 연결되기 전(로컬 미리보기 등)에만 쓰는 같은 한 줄이다.
   const commands = {
     mac: {
       label: "Mac · 터미널에 붙여넣기",
-      command: 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"'
+      command: "curl -fsSL https://waveainetworks.com/mac | bash"
     },
     windows: {
       label: "Windows · PowerShell에 붙여넣기",
-      command: 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath(\'UserProfile\')+\'\\install-wave.ps1\'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath(\'UserProfile\')+\'\\install-wave.ps1\')"'
+      command: "irm https://waveainetworks.com/win | iex"
     }
   };
 
@@ -156,6 +158,11 @@
         const payload = normalizeSteps(raw);
         if (!isValidSteps(payload)) continue;
         if (raw && raw.reinstall && raw.reinstall.command) { reinstallCommands = raw.reinstall.command; showReinstall(); }
+        if (raw && raw.install && raw.install.command) {
+          if (raw.install.command.macos) commands.mac.command = raw.install.command.macos;
+          if (raw.install.command.windows) commands.windows.command = raw.install.command.windows;
+          setOS(currentOS);
+        }
         renderSteps(payload);
         sourceStatus.textContent = `steps.json 연결됨 · ${payload.steps.length}/10 단계`;
         sourceStatus.dataset.source = "remote";

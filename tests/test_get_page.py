@@ -28,11 +28,41 @@ class GetPageReinstall(unittest.TestCase):
         steps = json.loads((ROOT / "steps.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as td:
             steps["reinstall"]["command"] = {"macos": "MAC-CMD-FROM-STEPS", "windows": "WIN-CMD-FROM-STEPS"}
+            steps["install"]["command"] = {"macos": "MAC-INSTALL-FROM-STEPS", "windows": "WIN-INSTALL-FROM-STEPS"}
             path = Path(td) / "steps.json"
             path.write_text(json.dumps(steps), encoding="utf-8")
             out = subprocess.run(["node", str(ROOT / "tests/site_reinstall_harness.js"), str(SITE / "app.js"), str(path)],
                                  capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(out.stdout), {"after_load": "MAC-CMD-FROM-STEPS", "after_windows_tab": "WIN-CMD-FROM-STEPS"})
+        self.assertEqual(json.loads(out.stdout), {"after_load": "MAC-CMD-FROM-STEPS", "after_windows_tab": "WIN-CMD-FROM-STEPS",
+                                                  "install_mac": "MAC-INSTALL-FROM-STEPS", "install_windows": "WIN-INSTALL-FROM-STEPS"})
+
+
+class GetPageInstall(unittest.TestCase):
+    """설치 한 줄은 README·CI 와 같은 짧은 한 줄 — 정본 scripts/ci/install-lines.json, 화면은 steps.json install.command 를 따른다."""
+    def setUp(self):
+        self.contract = json.loads((ROOT / "scripts/ci/install-lines.json").read_text(encoding="utf-8"))
+        self.steps = json.loads((ROOT / "steps.json").read_text(encoding="utf-8"))
+
+    def test_steps_install_block_equals_the_contract(self):
+        self.assertEqual(self.steps["install"]["command"], {"macos": self.contract["mac"], "windows": self.contract["win"]})
+
+    def test_page_defaults_and_fallbacks_are_the_contract_lines_not_the_missing_tag(self):
+        index = (SITE / "index.html").read_text(encoding="utf-8")
+        app = (SITE / "app.js").read_text(encoding="utf-8")
+        self.assertIn(self.contract["mac"], index)
+        self.assertIn(self.contract["mac"], app); self.assertIn(self.contract["win"], app)
+        for text in (index, app):
+            self.assertNotIn("releases/download/v0.3.0/", text)
+            self.assertNotIn("refs/tags/v0.3.0.zip", text)
+
+    def test_zip_guidance_points_at_the_rc5_tag(self):
+        index = (SITE / "index.html").read_text(encoding="utf-8")
+        self.assertIn("archive/refs/tags/v0.3.0-rc.5.zip", index)
+        self.assertIn("cd ~/Downloads/wave-install-0.3.0-rc.5", index)
+
+    def test_readme_shows_the_same_lines(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(self.contract["mac"], readme); self.assertIn(self.contract["win"], readme)
 
 
 if __name__ == "__main__":

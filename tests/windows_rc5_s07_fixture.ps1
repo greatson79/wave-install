@@ -1,4 +1,4 @@
-param([string]$Mode='old')
+﻿param([string]$Mode='old')
 $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest
 $t=$null; $e=$null
 $a=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'),[ref]$t,[ref]$e)

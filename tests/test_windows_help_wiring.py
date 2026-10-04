@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get('PWSH') or shutil.which('pwsh')
 
 OVERRIDES = r'''
+# 5.1 의 Add-Content 기본 인코딩은 ANSI 라 '·' 같은 글자가 파이썬의 utf-8 읽기를 깨뜨린다 → 항상 UTF-8(무 BOM)로 덧붙인다
+function Add-RecLine([string]$Line) { [IO.File]::AppendAllText($env:REC, $Line + "`n", [Text.UTF8Encoding]::new($false)) }
 function Ensure-Pack { }
 function Run-S00 { Say 'ACTION-S00' }
 function Run-S01 { throw 'boom alice@example.com C:\Users\alice\x' }
@@ -23,11 +25,11 @@ if ($env:REAL_TRANSPORT -eq '1' -and $env:WAVE_HELP_BASE_URL -notmatch '^https:/
 if ($env:REAL_TRANSPORT -ne '1') {
 function Invoke-ProgressPost {
   param($Uri, $Body, $TimeoutMs)
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
+  Add-RecLine (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'network down' }
 }
 function Invoke-HelpHttp([string]$Method, [string]$Path, $Body, [string]$Token, [int]$TimeoutSec) {
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'help'; method = $Method; path = $Path; timeout = $TimeoutSec; body = ($Body | ConvertTo-Json -Compress -Depth 5) } | ConvertTo-Json -Compress)
+  Add-RecLine (@{ kind = 'help'; method = $Method; path = $Path; timeout = $TimeoutSec; body = ($Body | ConvertTo-Json -Compress -Depth 5) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'help down' }
   return @{ status = 201; body = @{ id = ('c' * 32); client_token = ('b' * 64) } }
 }

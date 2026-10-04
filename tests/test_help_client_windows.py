@@ -94,7 +94,8 @@ class WindowsHelpClientParity(unittest.TestCase):
 
     def test_notice_text_identical_on_both_oses(self):
         ps = self.run_ps()
-        self.assertEqual(ps['notice'].strip(), (ROOT / 'lib/help-notice.txt').read_text(encoding='utf-8').strip())
+        # Out-String 은 윈에서 줄바꿈이 CRLF 이다 — 글자 내용만 비교한다(5.1 확인은 다음 계약 잡)
+        self.assertEqual(ps['notice'].replace('\r\n', '\n').strip(), (ROOT / 'lib/help-notice.txt').read_text(encoding='utf-8').strip())
 
 
 if __name__ == '__main__':

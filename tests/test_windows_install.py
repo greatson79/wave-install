@@ -43,8 +43,13 @@ function Start-Process {
     New-Item -ItemType Directory -Force $dir | Out-Null
     foreach ($name in @('cys.exe', 'cys-app.exe')) {
       $file = Join-Path $dir $name
-      Set-Content $file -Value "#!/bin/sh`nprintf 'cys 0.1.1\n'`nexit 0"
-      & chmod +x $file
+      if ([Environment]::OSVersion.Platform -eq 'Win32NT') {
+        # 윈에서는 셸 스크립트가 실행 파일이 아니다 → 진짜 콘솔 exe 를 컴파일한다(5.1 확인은 다음 계약 잡)
+        Add-Type -OutputAssembly $file -OutputType ConsoleApplication -TypeDefinition ('public class F' + [guid]::NewGuid().ToString('N') + ' { public static int Main(string[] a) { System.Console.WriteLine("cys 0.1.1"); return 0; } }')
+      } else {
+        Set-Content $file -Value "#!/bin/sh`nprintf 'cys 0.1.1\n'`nexit 0"
+        & chmod +x $file
+      }
     }
     $data = [byte[]]::new(2048)
     $data[0] = 0x4D; $data[1] = 0x5A; $data[60] = 128

@@ -948,6 +948,20 @@ function Test-LiveSeat([object]$Seat) {
   return ($exited -is [bool] -and $alive -is [bool] -and -not $exited -and $alive)
 }
 
+function ConvertTo-ValidStartTime([object]$Value) {
+  if ($Value -is [string]) { $text = $Value.Trim() }
+  elseif ($Value -is [int] -or $Value -is [long]) { $text = $Value.ToString([Globalization.CultureInfo]::InvariantCulture) }
+  elseif ($Value -is [double] -and $Value -ge 1000000000 -and $Value -lt 10000000000 -and [Math]::Truncate($Value) -eq $Value) { $text = $Value.ToString('0', [Globalization.CultureInfo]::InvariantCulture) }
+  else { return $null }
+  [long]$parsed = 0
+  if ($text -cnotmatch '^[0-9]{10}$' -or -not [long]::TryParse($text, [Globalization.NumberStyles]::None, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) { return $null }
+  return $parsed
+}
+
+function Read-RecordedStartTime([string]$Path) {
+  try { return (ConvertTo-ValidStartTime ([IO.File]::ReadAllText($Path))) } catch { return $null }
+}
+
 function Test-SeatCreatedSince([object]$Seat, [double]$Since) {
   $created = Get-StateField $Seat 'created_at'
   return (($created -is [int] -or $created -is [long] -or $created -is [double]) -and $created -ge $Since)
@@ -956,13 +970,11 @@ function Test-SeatCreatedSince([object]$Seat, [double]$Since) {
 function Test-AwakenedFleet([object]$Status, [string]$MasterRef = '', [object]$Since = $null) {
   # S07이 기록한 시각·좌석을 S08도 사용한다. 기록이 없거나 손상되면 미확인이다.
   if (-not $MasterRef -or $null -eq $Since) {
-    try {
-      $MasterRef = [IO.File]::ReadAllText((Join-Path $WaveHome 'fleet/master-ref')).Trim()
-      $Since = [long]([IO.File]::ReadAllText((Join-Path $WaveHome 'fleet/started-at')).Trim())
-    } catch { return $false }
+    try { $MasterRef = [IO.File]::ReadAllText((Join-Path $WaveHome 'fleet/master-ref')).Trim() } catch { return $false }
+    $Since = Read-RecordedStartTime (Join-Path $WaveHome 'fleet/started-at')
   }
-  if ($MasterRef -notmatch '^surface:[0-9]+$' -or
-      -not ($Since -is [int] -or $Since -is [long] -or $Since -is [double])) { return $false }
+  $Since = ConvertTo-ValidStartTime $Since
+  if ($MasterRef -notmatch '^surface:[0-9]+$' -or $null -eq $Since) { return $false }
   $live = @((Get-StateField $Status 'surfaces') | Where-Object { (Test-LiveSeat $_) -and (Get-SeatLaunchComplete $_) -eq $true })
   $master = @($live | Where-Object { (Get-StateField $_ 'role') -ceq 'master' -and (Get-StateField $_ 'surface_ref') -ceq $MasterRef })
   $children = @($live | Where-Object { ([string](Get-StateField $_ 'role')) -cmatch '^worker(-[A-Za-z0-9_-]+)?$' -and (Test-SeatCreatedSince $_ $Since) })
@@ -1225,8 +1237,7 @@ function Run-S07 {
     [IO.File]::WriteAllText($refPath, $masterRef)
     Send-MasterDeclaration $clock $declaredPath
   } else {
-    $savedSince = $null; $savedRef = ''
-    try { $savedSince = [long]([IO.File]::ReadAllText($startedPath).Trim()) } catch { }
+    $savedSince = Read-RecordedStartTime $startedPath; $savedRef = ''
     try { $savedRef = [IO.File]::ReadAllText($refPath).Trim() } catch { }
     $masterRef = [string](Get-StateField $masters[0] 'surface_ref')
     if ($masters.Count -ne 1 -or $masterRef -notmatch '^surface:[0-9]+$') { throw '기존 master가 둘 이상이거나 좌석 번호를 확인하지 못했습니다' }

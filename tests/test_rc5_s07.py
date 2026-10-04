@@ -1,5 +1,5 @@
 """rc.5: 표지와 지침 완료 신호 분리, 실패 진단은 종료값을 바꾸지 않는다."""
-import json, os, subprocess, tempfile, unittest
+import json, os, shlex, subprocess, tempfile, unittest
 from pathlib import Path
 from test_rc4_s07 import S07Base, ROOT, real
 
@@ -59,15 +59,19 @@ class WindowsSignal(unittest.TestCase):
         r=self.run_mode('old'); self.assertEqual(r.returncode,0,r.stdout+r.stderr)
     def test_diagnostic_failure_does_not_change_result(self):
         r=self.run_mode('evidence'); self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    def test_invalid_started_at_is_rejected_in_s08_and_resume(self):
+        r=self.run_mode('since'); self.assertEqual(r.returncode,0,r.stdout+r.stderr)
 
 class RecordedSignal(S07Base):
     def load_recording(self,name):
         data=real(name)
         (self.wave/'fleet/status.json').write_text(json.dumps(data))
         self.ref=next(s['surface_ref'] for s in data['surfaces'] if s['role']=='master')
+        self.since=min(int(s['created_at']) for s in data['surfaces'])
         return data
-    def verify(self):
-        return self.bash('verify_live_fleet '+self.ref+' 0; echo RC=$?')
+    def verify(self, since=None):
+        since=self.since if since is None else since
+        return self.bash('verify_live_fleet '+shlex.quote(self.ref)+' '+shlex.quote(str(since))+'; echo RC=$?')
     def test_recorded_three_roles_pass_without_marker(self):
         self.load_recording('rc5_three_status.json')
         self.assertIn('RC=0',self.verify().stdout)
@@ -76,6 +80,11 @@ class RecordedSignal(S07Base):
     def test_real_partial_recording_does_not_pass(self):
         self.load_recording('rc5_partial_status.json')
         self.assertIn('RC=1',self.verify().stdout)
+    def test_invalid_start_times_do_not_verify_old_child_seats(self):
+        self.load_recording('rc5_three_status.json')
+        for since in ('', ' ', '0'):
+            with self.subTest(since=since):
+                self.assertIn('RC=1', self.verify(since).stdout)
     def test_each_role_needs_live_boolean_true_on_the_same_seat(self):
         for role in ('master','cso','worker'):
             for field,value in [('launch_complete',False),('launch_complete',None),('launch_complete','true'),('agent_alive',False),('exited',True)]:

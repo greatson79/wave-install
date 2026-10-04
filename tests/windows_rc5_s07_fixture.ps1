@@ -67,3 +67,24 @@ New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
   }
   Write-Host 'PASS recorded three roles / partial / missing / nonboolean / dead, StrictMode'
 }
+
+if($Mode -eq 'since'){
+  $ready=(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
+  foreach($seat in $ready.surfaces){$seat.created_at=1}
+  $ref=($ready.surfaces | Where-Object {$_.role -eq 'master'}).surface_ref
+  New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
+  [IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/master-ref'),$ref)
+  function Start-WaveApp {}
+  function Wait-GuiOnboarded($Clock) {}
+  function Seed-WaveClaudeTrust {}
+  function Get-LiveFleet([int]$TimeoutMs=5000){return $ready}
+  $script:RunStartedUnix=10000000000L
+  foreach($invalid in @('', ' ', '0')){
+    [IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/started-at'),$invalid)
+    if(Test-AwakenedFleet $ready){throw "invalid started-at accepted by S08: [$invalid]"}
+    $rejected=$false
+    try { Run-S07 } catch { $rejected=$true }
+    if(-not $rejected){throw "invalid started-at accepted by resume: [$invalid]"}
+  }
+  Write-Host 'PASS invalid started-at rejected by S08 and resume'
+}

@@ -916,9 +916,17 @@ if mode == 'count':
     print(len(roles), ','.join(roles) or '-', len(done), signal)
 elif mode == 'verify':
     ref, since = args
+    if not re.fullmatch(r'[0-9]{10}', since):
+        sys.exit(1)
+    try:
+        since = int(since)
+    except ValueError:
+        sys.exit(1)
+    if since < 1_000_000_000:
+        sys.exit(1)
     def current(s):
         created = s.get('created_at')
-        return type(created) in (int, float) and created >= float(since)
+        return type(created) in (int, float) and created >= since
     ready = [s for s in live if launch_complete(s) is True]
     ok = (any(role(s) == 'master' and s.get('surface_ref') == ref for s in ready)
           and any(role(s) == 'cso' and current(s) for s in ready)

@@ -279,7 +279,7 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Bind the measured installer version
         shell: bash
-        run: python tests/rc/bind.py --out "$RUNNER_TEMP/ev/common" || true
+        run: python tests/rc/bind.py --out "$RUNNER_TEMP/evkr/common" || true
       - name: Download the test release assembled on ubuntu (no bash/tar/shasum on this runner)
         uses: actions/download-artifact@v4
         with:
@@ -289,15 +289,15 @@ jobs:
         shell: powershell
         run: |
           $py = (Get-Command python).Source
-          ./tests/rc/win-driver.ps1 -Mode main -UserName "Kyle U+CD5C" -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+          ./tests/rc/win-driver.ps1 -Mode main -UserName "Kyle U+CD5C" -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\evkr" -Repo "$PWD" -Py $py
       - name: First install must not end as alive-but-unconfirmed (exit 2 / J-VER-04 never passes)
         shell: bash
-        run: python tests/rc/check_first_run.py "$RUNNER_TEMP/ev/win/run.exit" "$RUNNER_TEMP/ev/win/G1_state.json"
+        run: python tests/rc/check_first_run.py "$RUNNER_TEMP/evkr/win/run.exit" "$RUNNER_TEMP/evkr/win/G1_state.json"
       - name: Fail the job when required evidence is missing
         if: always()
         shell: powershell
         run: |
-          $e = "$env:RUNNER_TEMP\ev\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json','G6\exit','G6\install-state.json','G6\run.log','G6\bootstrap.out','G6\bootstrap.err','G6\utf8-probe.log','G6\utf8-probe.exit'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
+          $e = "$env:RUNNER_TEMP\evkr\win"; $need = @('G1_state.json','G2_preflight.json','G3_inject.json','G4_boot.json','G6\G6_claude_untouched.json','G6\exit','G6\install-state.json','G6\run.log','G6\bootstrap.out','G6\bootstrap.err','G6\utf8-probe.log','G6\utf8-probe.exit'); $miss = @($need | Where-Object { -not (Test-Path (Join-Path $e $_)) })
           if ($miss.Count) { Write-Host "Evidence missing: $($miss -join ', ')"; exit 1 }
           $rawExit = [IO.File]::ReadAllText((Join-Path $e 'G6\exit'), ([Text.UTF8Encoding]::new($false, $true)))
           if ($rawExit -cne "0`n") { Write-Host "G6 reinstall exit invalid: $rawExit"; exit 1 }
@@ -307,12 +307,15 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          $ev = "$env:RUNNER_TEMP\ev"; if (Test-Path "$ev\win") { Move-Item "$ev\win" "$ev\winkr" }
+          $ev = "$env:RUNNER_TEMP\evkr"; $publish = "$env:RUNNER_TEMP\evkr-upload"
+          New-Item -ItemType Directory -Force -Path $publish | Out-Null
+          if (-not (Test-Path "$ev\win")) { throw "Korean-user evidence missing" }
+          Move-Item -LiteralPath "$ev\win" -Destination "$publish\winkr" -ErrorAction Stop
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: rc-evidence-win-kr-${{ github.run_id }}
-          path: ${{ runner.temp }}/ev
+          path: ${{ runner.temp }}/evkr-upload
           if-no-files-found: error
   win-ctrlc:
     # 측정 전용(관문 미산입): 윈도우에서 설치 중 도움 대기를 Ctrl+C 로 끝냈을 때의 종료값·상태 파일·남는 프로세스·도움 서버 close 호출 (rc030-final 오류 재현)

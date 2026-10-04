@@ -1,0 +1,23 @@
+{
+  "provenance": {
+    "command": "python3: test_rc4_s07.S07Base.status(source=rc5_three_status.json); run_s07(WAVE_AWAKENING_SECONDS=5)",
+    "recorded_at": "2026-10-04T06:27:39Z",
+    "installer_commit": "f8aad8e474f15f7bd36a45501c152622f9797c05",
+    "source": "tests/fixtures/real_cys/rc5_three_status.json",
+    "scope": "실물 status 녹취 재생 → 실제 step_s07 출력. 전체 설치 실행 아님. created_at만 시험 시각으로 이동; 앱/선언 전달은 기존 시험 격리 경계."
+  },
+  "observed": {
+    "seats": 3,
+    "roles": [
+      "master",
+      "cso",
+      "worker"
+    ],
+    "fleet_started": true,
+    "master_marker_present": false,
+    "launch_complete": 3,
+    "master_reused": false,
+    "master_ref": "surface:1",
+    "master_source": "created"
+  }
+}

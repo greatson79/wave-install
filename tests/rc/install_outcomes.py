@@ -5,6 +5,7 @@
 import argparse
 import importlib.util
 import json
+import re
 from pathlib import Path
 import sys
 
@@ -19,7 +20,10 @@ def read_state(path):
         if len(matches) != 1 or not isinstance(matches[0], dict):
             raise ValueError('단계 누락·중복: ' + prefix)
         v = matches[0]
-        result[prefix] = [v['status'], v['exit_code']]
+        code = v['exit_code']
+        if code is not None and type(code) is not int:
+            raise ValueError('단계 exit_code 정수 형식 오류: ' + prefix)
+        result[prefix] = [v['status'], code]
     return d, result
 
 def check(root, osn, gate):
@@ -31,6 +35,8 @@ def check(root, osn, gate):
     note = ''
     try:
         raw = (base / exit_name).read_text(encoding='utf-8-sig').strip()
+        if not re.fullmatch(r'[0-9]+', raw):
+            raise ValueError('종료값은 ASCII 숫자만 허용')
         code = int(raw)
         note = '%s/%s exit=%s (기대 %s)' % (base, exit_name, raw, EXPECT[kind]['exit'])
         doc, stages = read_state(base / state_name)
@@ -41,9 +47,25 @@ def check(root, osn, gate):
     if code != want['exit'] or stages != want['stages']:
         return 'FAIL', note
     s07 = next(v for k, v in doc['steps'].items() if k[:3] == 'S07')
-    obs = s07.get('observed') or {}
-    if kind == 'normal' and isinstance(obs, dict) and obs.get('fleet_state') == 'alive_unconfirmed':
-        return 'FAIL', note + ' · 각성 확인 미완'
+    obs = s07.get('observed')
+    if not isinstance(obs, dict):
+        return 'FAIL', note + ' · S07 관측 객체 없음'
+    if kind == 'normal':
+        if doc.get('status') != 'complete' or doc.get('required_steps_passed') is not True:
+            return 'FAIL', note + ' · 최상위 설치 완료 확인 불일치'
+        if obs.get('fleet_started') is not True or type(obs.get('seats')) is not int or obs['seats'] != 3 or obs.get('roles') != ['master','cso','worker']:
+            return 'FAIL', note + ' · S07 세 역할 시작 확인 불일치'
+        # rc.5는 launch_complete 3이 근거, 표지는 관측만 한다.
+        if 'master_marker_present' in obs or 'launch_complete' in obs:
+            ready = type(obs.get('launch_complete')) is int and obs['launch_complete'] == 3 and type(obs.get('master_marker_present')) is bool
+        elif osn == 'mac':
+            ready = obs.get('master_marker_verified') is True
+        else:
+            ready = all(obs.get(k) is True for k in ('master_awakened','child_alive','cso_alive'))
+        if not ready:
+            return 'FAIL', note + ' · S07 완료 근거 불일치'
+    elif obs.get('fleet_started') is not False or obs.get('fleet_state') != 'alive_unconfirmed':
+        return 'FAIL', note + ' · 확인 미완 관측 불일치'
     return 'PASS', note + (' · 가짜 Claude 시험 기대 일치(설치 성공 아님)' if kind == 'noboot' else '')
 
 def strengthen(rows, root, platforms=('mac', 'win'), gates=('G1', 'G5')):

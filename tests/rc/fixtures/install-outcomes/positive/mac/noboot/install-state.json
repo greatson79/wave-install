@@ -1,0 +1,191 @@
+{
+  "schema": "wave-install.state.v1",
+  "product": "Wave Terminal",
+  "installer_version": "0.3.0",
+  "status": "running",
+  "created_at": null,
+  "updated_at": "2026-10-03T17:16:41Z",
+  "current_step": "S07_INITIAL_FLEET",
+  "required_steps_passed": false,
+  "exceptions": [],
+  "paths": {
+    "state": "/Users/runner/.wave/install-state.json",
+    "log": "/Users/runner/.wave/install.log",
+    "wave_home": "/Users/runner/.wave",
+    "pack": "/Users/runner/.cys/pack"
+  },
+  "options": {
+    "daemon": true,
+    "codex": false,
+    "antigravity": false
+  },
+  "release": {
+    "repository": "greatson79/wave-terminal",
+    "version": "0.1.0",
+    "asset": null,
+    "asset_sha256": null,
+    "minisig": null,
+    "verified_at": null,
+    "s2_release_resolved": false
+  },
+  "steps": {
+    "S00_PREFLIGHT": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:13Z",
+      "completed_at": "2026-10-03T17:09:14Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "os": "macos",
+        "shell": "zsh",
+        "free_kb": 98549760,
+        "user_path": true
+      },
+      "error_id": null
+    },
+    "S01_CLAUDE_INSTALL": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:14Z",
+      "completed_at": "2026-10-03T17:09:14Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "claude_version": "2.1.300 (Claude Code)",
+        "installed": false,
+        "updated": false
+      },
+      "error_id": null
+    },
+    "S02_CLAUDE_LOGIN": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:14Z",
+      "completed_at": "2026-10-03T17:09:14Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "authenticated": true,
+        "account_recorded": false
+      },
+      "error_id": null
+    },
+    "S03_DOWNLOAD_VERIFY": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:14Z",
+      "completed_at": "2026-10-03T17:09:32Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "platform": "macos_arm64",
+        "asset": "wave-terminal-0.2.0-macos-arm64.dmg",
+        "sha256": "3dcbf265950728201fa339b18a44f3e974537a78faddf9b3642737dc6970e77e",
+        "codesign_verified": true,
+        "cdhash": "24fc341cd7c075bcca0526912550519fbf0b50a4"
+      },
+      "error_id": null
+    },
+    "S04_INSTALL_LINK": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:32Z",
+      "completed_at": "2026-10-03T17:09:38Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "cys": true,
+        "cysd": true,
+        "cysd_check": "file+executable+symlink+copy-match",
+        "shell_link": true,
+        "admin_required": false
+      },
+      "error_id": null
+    },
+    "S05_DAEMON_REGISTER": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:40Z",
+      "completed_at": "2026-10-03T17:09:41Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "registered": true,
+        "daemon_ready": true,
+        "registration": "cys daemon install"
+      },
+      "error_id": null
+    },
+    "S06_PACK_INSTALL": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T17:09:38Z",
+      "completed_at": "2026-10-03T17:09:40Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "pack_installed": true,
+        "pack_provider": "cys init-pack",
+        "embedded_directives_verified": true,
+        "pending_new": 0,
+        "cys_dept": "linked"
+      },
+      "error_id": null
+    },
+    "S07_INITIAL_FLEET": {
+      "status": "failed",
+      "exit_code": 2,
+      "started_at": "2026-10-03T17:09:41Z",
+      "completed_at": "2026-10-03T17:16:41Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=2"
+      ],
+      "observed": {
+        "fleet_started": false,
+        "fleet_state": "alive_unconfirmed",
+        "seats_alive": 3,
+        "roles_alive": "cso,master,worker",
+        "launch_complete": null,
+        "j_code": "J-VER-04",
+        "reason": "[2026-10-03T17:09:44Z]      첫 실행 질문(테마·폴더 신뢰·큰 화면 권유)을 미리 넘겨 두었습니다.\n[launch-agent] surface:1 created (role=master)\n[launch-agent] claude starting… (polling readiness, max 60s)\n[launch-agent] directive injected & visible on screen (83838 bytes)\n[2026-10-03T17:10:42Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:11:12Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:11:43Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:12:15Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:12:47Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:13:16Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:13:48Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:14:20Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:14:51Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:15:21Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:15:51Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:16:23Z] 기다리는 것: 각성 표지 없음 · 좌석 3/3\n[2026-10-03T17:16:41Z] J-VER-04 — 세 칸이 살아 있습니다 · master 첫 답을 확인하세요. Wave 창에 확인 창이 남아 있으면 고르신 뒤 같은 설치 명령을 다시 실행해 주세요."
+      },
+      "error_id": "WT-S07-FLEET"
+    },
+    "S08_VERIFY": {
+      "status": "pending",
+      "exit_code": null,
+      "started_at": null,
+      "completed_at": null,
+      "version": null,
+      "checks": [],
+      "observed": {},
+      "error_id": null
+    },
+    "S09_COMPLETE": {
+      "status": "pending",
+      "exit_code": null,
+      "started_at": null,
+      "completed_at": null,
+      "version": null,
+      "checks": [],
+      "observed": {},
+      "error_id": null
+    }
+  }
+}

@@ -101,6 +101,20 @@
       "source": "evidence/rc4-official-37139219493/rc-evidence-win-noboot-37139219493/win/noboot/install-state.json",
       "file": "positive/win/noboot/install-state.json",
       "sha256": "8ff367c1f6e031df0f802470aaec12f35f3f17263c82380b4150d698b70875ce"
+    },
+    {
+      "source": "evidence/rc4-official-37139219493/rc-evidence-mac-noboot-37139219493/mac/noboot/exit",
+      "file": "positive/mac/noboot/exit",
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+      "copied_at": "2026-10-04T06:26:57.273767+00:00",
+      "command": "python3 pathlib read_bytes/write_bytes: rc4 artifact copied without edits"
+    },
+    {
+      "source": "evidence/rc4-official-37139219493/rc-evidence-mac-noboot-37139219493/mac/noboot/install-state.json",
+      "file": "positive/mac/noboot/install-state.json",
+      "sha256": "1c7107c341a6b6ae75c115e554842635d3d528e1bb7fa560255b559cb77bca09",
+      "copied_at": "2026-10-04T06:26:57.275725+00:00",
+      "command": "python3 pathlib read_bytes/write_bytes: rc4 artifact copied without edits"
     }
   ]
 }

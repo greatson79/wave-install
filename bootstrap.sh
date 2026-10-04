@@ -264,6 +264,7 @@ attempt_start() {
     fi
   fi
   if [[ "$keep" == 1 ]]; then
+    RESUME=1
     RUN_STARTED=$((10#$saved))
     log "이전 설치를 이어서 진행합니다."
     return 0
@@ -526,6 +527,34 @@ wave_bundle_in_use() {
     esac
   fi
   return 1
+}
+
+# 이전 단계 기록만으로 생략하지 않는다. 서명 전체와 공개 CDHash 핀, CLI 링크를 읽기 전용으로 대조한다.
+installed_app_matches_pin() {
+  set_release_context || return 1
+  local app="$WAVE_HOME/apps/Wave Terminal.app" want got name target
+  want="$(release_cdhash_pin)" || return 1
+  [[ "$(json_value "$STATE_FILE" steps.S04_INSTALL_LINK.exit_code)" == 0 &&
+     "$(json_value "$STATE_FILE" steps.S04_INSTALL_LINK.version)" == "$RELEASE_VERSION" &&
+     "$(json_value "$STATE_FILE" steps.S04_INSTALL_LINK.error_id)" == null ]] || return 1
+  codesign --verify --deep --strict "$app" >/dev/null 2>&1 || return 1
+  got="$(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)" || return 1
+  [[ "$got" == "$want" ]] || return 1
+  for name in cys cysd; do
+    target="$app/Contents/MacOS/$name"
+    [[ -f "$target" && -x "$target" && -L "$WAVE_HOME/bin/$name" &&
+       "$(readlink "$WAVE_HOME/bin/$name")" == "$target" ]] || return 1
+  done
+}
+
+can_resume_step() {
+  local id="$1" status="$2"
+  [[ "$RESUME" == 1 && "$REINSTALL" != 1 && ( "$status" == passed || "$status" == skipped ) ]] || return 1
+  case "$id" in
+    S09_COMPLETE|S05_DAEMON_REGISTER|S06_PACK_INSTALL|S07_INITIAL_FLEET|S08_VERIFY) return 1 ;;
+    S04_INSTALL_LINK) [[ "$status" == passed ]] && installed_app_matches_pin ;;
+    *) return 0 ;;
+  esac
 }
 
 step_s04() {
@@ -1199,7 +1228,7 @@ main() {
   while IFS=$'\t' read -r id idx title; do
     HELP_STEP="$((idx + 1))/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
-    if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
+    if can_resume_step "$id" "$status"; then
       log "[$HELP_STEP] $title — 이미 완료 — 건너뜀"
       help_progress end
       continue

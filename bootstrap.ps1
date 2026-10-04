@@ -260,7 +260,8 @@ function Test-StepComplete([string]$Id) {
       $cysd = Join-Path $WaveHome 'bin\cysd.exe'
       if ((Get-StateField $entry.observed 'verified_installer_sha256') -ne $WaveWinSha256 -or
           (Get-ArtifactHash $cys) -ne (Get-StateField $entry.observed 'cli_sha256') -or
-          (Get-ArtifactHash $cysd) -ne (Get-StateField $entry.observed 'daemon_sha256')) { return $false }
+          (Get-ArtifactHash $cysd) -ne (Get-StateField $entry.observed 'daemon_sha256') -or
+          (Get-ArtifactHash (Join-Path $WaveHome 'bin\cys-app.exe')) -ne (Get-StateField $entry.observed 'app_sha256')) { return $false }
       $env:PATH = (Join-Path $WaveHome 'bin') + [IO.Path]::PathSeparator + $env:PATH
       return $true
     } catch { return $false }
@@ -812,7 +813,7 @@ function Run-S04 {
   $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
   $resolved = Get-Command cys.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
   if ([IO.Path]::GetFullPath($resolved.Source) -ne [IO.Path]::GetFullPath($cys)) { throw "cys 셸 경로 불일치" }
-  $script:StepObserved = [ordered]@{ cys = $true; cys_version_observed = $cliVersion; cysd = $true; shell_link = $true; shell_scope = "process"; install_dir = $bin; installer_exit = $process.ExitCode; verified_installer_sha256 = $actual; web_mark = $webMark; cli_sha256 = (Get-ArtifactHash $cys); daemon_sha256 = $daemonSha; daemon_verification = "PE-x64-and-observed-SHA256"; daemon_started = $false; admin_required = $false }
+  $script:StepObserved = [ordered]@{ cys = $true; cys_version_observed = $cliVersion; cysd = $true; shell_link = $true; shell_scope = "process"; install_dir = $bin; installer_exit = $process.ExitCode; verified_installer_sha256 = $actual; web_mark = $webMark; cli_sha256 = (Get-ArtifactHash $cys); daemon_sha256 = $daemonSha; app_sha256 = (Get-ArtifactHash (Join-Path $bin 'cys-app.exe')); daemon_verification = "PE-x64-and-observed-SHA256"; daemon_started = $false; admin_required = $false }
 }
 
 # 앱 CLI 계약을 사용한다. 설치 흐름 기반: oogisoogi/jarvis-install (MIT).

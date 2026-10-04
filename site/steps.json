@@ -17,11 +17,11 @@
       "macos_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/wave-terminal-0.2.0-macos-arm64.dmg",
       "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/wave-terminal-0.2.0-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 128902050, "macos_arm64": 487041830, "macos_x64": 487041830},
+    "bytes": {"windows_x64": 128909317, "macos_arm64": 486075337, "macos_x64": 486075337},
     "sha256": {
-      "macos_arm64": "c12efa2b75a6b986c5b819ee350ea53323c210d7d4d7422a67152d8cf0ab104f",
-      "macos_x64": "c12efa2b75a6b986c5b819ee350ea53323c210d7d4d7422a67152d8cf0ab104f",
-      "windows_x64": "2ba2d9246f8cf2e375defbaf67cb31ba6d02b4a682597aaf58b2f32d0de83f2a"
+      "macos_arm64": "15bc0c5db95f8eafc7a54d18d6d4d44e3c07cb140ea236d58e4b75502bac61bb",
+      "macos_x64": "15bc0c5db95f8eafc7a54d18d6d4d44e3c07cb140ea236d58e4b75502bac61bb",
+      "windows_x64": "5a54f1622aaef90c30ba1c8f98351d872b15d5bd2ecbadf51a86fa45b2e852f2"
     },
     "sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/SHA256SUMS",
     "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/SHA256SUMS",
@@ -33,14 +33,21 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "db580078edfb5ba83d801bfd539260ba374d08a9",
-      "macos_x64": "db580078edfb5ba83d801bfd539260ba374d08a9"
+      "macos_arm64": "d527b35e621e91e7c0f3812717f48185e69b8434",
+      "macos_x64": "d527b35e621e91e7c0f3812717f48185e69b8434"
     }
+  },
+  "install": {
+    "command": {
+      "macos": "curl -fsSL https://waveainetworks.com/mac | bash",
+      "windows": "irm https://waveainetworks.com/win | iex"
+    },
+    "description": "수강생이 처음 설치할 때 치는 한 줄입니다. scripts/ci/install-lines.json 과 같은 값이어야 합니다."
   },
   "reinstall": {
     "command": {
-      "macos": "curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\" --reinstall",
-      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
+      "macos": "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall",
+      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
     },
     "description": "설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일 전체 삭제는 하지 않습니다."
   },

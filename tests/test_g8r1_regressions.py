@@ -52,6 +52,9 @@ def split_file(path, window, prefix, secret, cut, filler_unit):
     assert len(data.encode()) - window == len((prefix + secret[:cut]).encode())
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class RedactBeforeTruncateTests(unittest.TestCase):
     def setUp(self):
         import install_help_client
@@ -144,6 +147,7 @@ class MacBashTests(unittest.TestCase):
     def count_calls(self):
         return len(self.calls.read_text().splitlines()) if self.calls.exists() else 0
 
+    @mac_only()
     def test_failing_progress_is_disabled_after_install_budget(self):
         r = self.bash('show_help_notice >/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do help_progress start; done; echo DONE',
                       FAKE_HELP_RC='3')
@@ -152,11 +156,13 @@ class MacBashTests(unittest.TestCase):
         self.assertEqual(self.count_calls(), 5)
         self.assertEqual((r.stdout + r.stderr).count('progress send failed (fail-open)'), 1)
 
+    @mac_only()
     def test_fast_successful_progress_keeps_sending(self):
         r = self.bash('show_help_notice >/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do help_progress start; done; echo DONE')
         self.assertIn('DONE', r.stdout)
         self.assertEqual(self.count_calls(), 10)
 
+    @mac_only()
     def test_hanging_progress_child_is_cut_by_total_wall_clock(self):
         started = time.monotonic()
         r = self.bash('show_help_notice >/dev/null; HELP_PROGRESS_CALL_CAP=1; help_progress start; echo "RC=$?"',
@@ -164,6 +170,7 @@ class MacBashTests(unittest.TestCase):
         self.assertIn('RC=0', r.stdout)
         self.assertLess(time.monotonic() - started, 8)
 
+    @mac_only()
     def test_failed_step_reason_is_redacted_and_bounded(self):
         shutil.copyfile(ROOT / 'lib/install_help.py', self.pack / 'lib/install_help.py')
         r = self.bash('init_state; '
@@ -179,6 +186,7 @@ class MacBashTests(unittest.TestCase):
         self.assertNotIn(USER, reason)
         self.assertLess((self.home / '.wave/install-state.json').stat().st_size, 64 * 1024)
 
+    @mac_only()
     def test_failed_step_reason_without_help_lib_still_hides_home(self):
         r = self.bash('init_state; step_s02() { echo "denied at $HOME/log" >&2; return 7; }; '
                       'run_step S02_CLAUDE_LOGIN || echo "RC=$?" > "$HOME/rc"')
@@ -213,6 +221,7 @@ class StepsAndNoticeTextTests(unittest.TestCase):
         self.assertIn("'help-notice.txt'", (ROOT / 'lib/install-help.ps1').read_text(encoding='utf-8'))
 
 
+@mac_only()
 class MacResumeAndPackTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix='wave-g8r1-s07-')
@@ -266,6 +275,7 @@ class MacResumeAndPackTests(unittest.TestCase):
     def new_surface_called(self):
         return self.log.exists() and 'launch-agent' in self.log.read_text()
 
+    @mac_only()
     def test_resume_reuses_verified_master_of_this_install(self):
         self.prepare(['surface:5'])
         r = self.bash('step_s07; echo "RC=$?"; echo "$STEP_OBSERVED"')
@@ -278,6 +288,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertIn('"master_source":"reused"', r.stdout.replace(' ', ''))
         self.assertNotIn('send ', self.log.read_text())
 
+    @mac_only()
     def test_declared_reuse_sends_nothing(self):
         self.prepare(['surface:5'])
         (self.wave / 'fleet/declared').write_text('')
@@ -286,6 +297,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('send ', self.log.read_text())
         self.assertFalse(self.new_surface_called())
 
+    @mac_only()
     def test_declaration_failure_then_rerun_resends_once(self):
         future = int(time.time()) + 100
         self.prepare([], saved_ref=None)
@@ -317,6 +329,7 @@ class MacResumeAndPackTests(unittest.TestCase):
                 self.assertTrue((self.wave / 'fleet/declared').exists())
                 self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
 
+    @mac_only()
     def test_new_master_gets_queued_declaration_after_launch_agent(self):
         future = int(time.time()) + 100
         self.prepare([], saved_ref=None)
@@ -339,6 +352,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertIn('J-PATH-02', r.stderr)
 
+    @mac_only()
     def test_master_restored_during_this_run_is_accepted_over_stale_markers(self):
         # 재설치: 데몬이 올라오자 자동복원이 master 를 먼저 만든다. 이전 설치가 남긴 master-ref·started-at 은
         # 이번 실행의 증거가 아니므로, 이번 실행 시작 뒤에 생긴 단일 master 는 이 설치가 이어받는다.
@@ -393,6 +407,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return int(r.stdout.split('RUN=')[1].split()[0]), f.read_text().strip()
 
+    @mac_only()
     def test_attempt_start_is_read_on_resume_and_rewritten_otherwise(self):
         old = int(time.time()) - 500
         now = int(time.time())
@@ -432,6 +447,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         got = int(r.stdout.split('RUN=')[1].split()[0])
         return got, '이전 설치를 이어서 진행합니다' in (r.stdout + r.stderr), f.read_text().strip()
 
+    @mac_only()
     def test_plain_rerun_continues_an_unfinished_attempt_within_24h(self):
         base = 1700000000
         for status in ('running', 'waiting_for_user', 'not_started'):          # 끝나지 않은 시도
@@ -445,6 +461,7 @@ class MacResumeAndPackTests(unittest.TestCase):
             with self.subTest(label):
                 self.assertEqual(self.implicit('running', recorded), (base, False, str(base)))
 
+    @mac_only()
     def test_plain_rerun_after_a_finished_install_or_with_reinstall_starts_a_new_attempt(self):
         base = 1700000000
         for status in ('complete', 'complete_with_exceptions'):                # 끝난 설치
@@ -454,6 +471,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual(self.implicit('running', base - 100, flags='REINSTALL=1;'), (base, False, str(base)))
         self.assertEqual(self.implicit('complete', base - 100, flags='RESUME=1;'), (base - 100, True, str(base - 100)))
 
+    @mac_only()
     def test_missing_install_state_unit_view_versus_real_main_order(self):
         base = 1700000000
         # 단위 시험 보기: attempt_start 를 init_state 없이 부르면 설치 기록 파일이 없어 「끝나지 않았음」을 증명 못 함 → 새로 기록.
@@ -468,6 +486,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual(int(r.stdout.split('RUN=')[1].split()[0]), base - 100)
         self.assertIn('이전 설치를 이어서 진행합니다', r.stdout + r.stderr)
 
+    @mac_only()
     def test_resumed_attempt_still_takes_over_the_master_restored_in_the_first_attempt(self):
         # 첫 시도: 복원이 master 를 만든 뒤 S07 이 표식을 쓰기 전에 실패 → --resume. 새 RUN_STARTED 로는 그 master 가
         # 「시작 전부터 있던 것」으로 보여 막혔다. 기록된 시도 시작을 읽으면 같은 시도의 master 로 수용된다.
@@ -490,6 +509,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
 
+    @mac_only()
     def test_resumed_attempt_uses_the_recorded_start_as_the_s07_since(self):
         # 재개 시 기록된 시도 시작 시각을 S07 기준으로 재사용하고, 이후 복원된 cso·worker 와 started-at 값을 확인한다
         first = int(time.time()) - 100
@@ -505,6 +525,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         main = (ROOT / 'bootstrap.sh').read_text().split('\nmain() {', 1)[1]
         self.assertRegex(main, r'\n  init_state\n  attempt_start\n')
 
+    @mac_only()
     def test_seats_restored_before_s07_entry_count_when_after_the_attempt_start(self):
         # G6 420초: 복원이 S07 진입(초 버림 date +%s) 직전에 만든 cso·worker 가 created_at < since 로 배제되어 대기했다.
         # since 는 이번 시도 시작(RUN_STARTED) — 그 뒤·S07 진입 초 앞에 생긴 좌석은 수용, 시작 이전 좌석은 여전히 배제.
@@ -554,6 +575,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         (self.home / 'manifest.json').write_text(json.dumps({'files': files}))
         return pack
 
+    @mac_only()
     def test_seed_once_product_profile_new_does_not_halt_s06_or_s08(self):
         pack = self.directive_fixture()
         (pack / 'preflight-product-profile.json').write_text('{"warnings": {}}\n')
@@ -567,6 +589,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertNotIn('RC=0', r.stdout)
         self.assertNotIn('G3=0', r.stdout)
 
+    @mac_only()
     def test_s06_exposes_pack_cys_dept_next_to_cys_like_preflight_c11b(self):
         pack = self.directive_fixture()
         self.env['INIT_PACK_ACTION'] = ('mkdir -p "$HOME/.cys/pack/bin" && printf "#!/bin/sh\\necho dept\\n" '
@@ -608,6 +631,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertLess(body.index('release_cdhash_pin'), body.index('curl --fail'))
 
 
+@mac_only()
 class MacArchGateTests(unittest.TestCase):
     """S00 stops on Intel macs; arm64 and Rosetta (proc_translated=1) pass. uname/sysctl are faked."""
     def run_s00(self, machine, translated, arm64_flag):
@@ -626,6 +650,7 @@ class MacArchGateTests(unittest.TestCase):
             return subprocess.run(['bash', '-c', 'source "$1"; STEPS_FILE="$STEPS_FILE"; step_s00; echo "RC=$?"', 'arch',
                                    str(functions_sh(home))], env=env, text=True, capture_output=True, timeout=30)
 
+    @mac_only()
     def test_intel_mac_stops_at_s00_with_message(self):
         r = self.run_s00('x86_64', 'echo 0', 'echo 0')
         self.assertNotIn('RC=0', r.stdout)

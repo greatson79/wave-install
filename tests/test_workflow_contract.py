@@ -22,7 +22,7 @@ class WorkflowTests(unittest.TestCase):
         steps = self.workflow['jobs']['bootstrap-contract']['steps']
         native = next(s for s in steps if s.get('shell') == 'powershell' and s.get('if') == "runner.os == 'Windows'")
         self.assertIn('$env:PWSH = (Get-Command powershell).Source', native['run'])
-        self.assertIn('python -m unittest discover -s tests', native['run'])
+        self.assertIn('python tests/run_unit_suite.py', native['run'])
 
     def test_unsafe_workflow_mutants(self):
         def mutate(name, change, expected):
@@ -40,13 +40,19 @@ class WorkflowTests(unittest.TestCase):
         def omit_native_test_suite(w):
             for step in w['jobs']['bootstrap-contract']['steps']:
                 if step.get('shell') == 'powershell' and step.get('if') == "runner.os == 'Windows'":
-                    step['run'] = step['run'].replace('python -m unittest discover -s tests', '')
+                    step['run'] = step['run'].replace('python tests/run_unit_suite.py', '')
         mutate('omit native PowerShell suite', omit_native_test_suite, '5.1 unittest suite must run')
         def unpin_native_test_suite(w):
             for step in w['jobs']['bootstrap-contract']['steps']:
                 if step.get('shell') == 'powershell' and step.get('if') == "runner.os == 'Windows'":
                     step['run'] = step['run'].replace('$env:PWSH = (Get-Command powershell).Source\n', '')
         mutate('unpin native PowerShell suite', unpin_native_test_suite, '5.1 suite must pin PWSH')
+        def drop_mac_suite(w):
+            for step in w['jobs']['bootstrap-contract']['steps']:
+                if step.get('if') == "runner.os == 'macOS'":
+                    step['run'] = step['run'].replace('python tests/run_unit_suite.py', '')
+        mutate('mac suite dropped', drop_mac_suite, 'macOS step must run the full suite')
+        mutate('shallow checkout', lambda w: w['jobs']['bootstrap-contract']['steps'][0].pop('with'), 'full history and tags')
         mutate('write token', lambda w: w.update(permissions={'contents': 'write'}), 'read-only token')
         def one_line_step(w):
             return next(s for s in w['jobs']['bootstrap-contract']['steps'] if 'one-line command' in s.get('name', ''))

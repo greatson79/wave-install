@@ -51,6 +51,7 @@ def validate(workflow):
     need(set(strategy.get('matrix', {}).get('os', [])) == {'windows-latest', 'macos-latest'}, 'Windows/macOS runner matrix missing')
     steps = contract.get('steps', [])
     need(bool(steps) and steps[0].get('uses', '').startswith('actions/checkout@'), 'checkout must be first')
+    need(bool(steps) and str((steps[0].get('with') or {}).get('fetch-depth')) == '0', 'checkout must fetch full history and tags (sync-get test reads a tag)')
     for index, platform, shell in ((1, 'Windows', 'cmd'), (2, 'macOS', 'bash')):
         step = steps[index] if len(steps) > index else {}
         need(step.get('if') == f"runner.os == '{platform}'" and step.get('shell') == shell
@@ -61,7 +62,7 @@ def validate(workflow):
     if native_ps51 is not None:
         native_run = native_ps51.get('run', '')
         pin_at = native_run.find('$env:PWSH = (Get-Command powershell).Source')
-        suite_at = native_run.find('python -m unittest discover -s tests')
+        suite_at = native_run.find('python tests/run_unit_suite.py')
         need(pin_at >= 0, '5.1 suite must pin PWSH to Windows PowerShell')
         need(suite_at > pin_at, '5.1 unittest suite must run after pinning PWSH')
     need(any(s.get('shell') == 'pwsh' and not s.get('if') and 'ParseFile' in s.get('run', '') for s in steps), 'native PowerShell 7 parse missing')
@@ -69,6 +70,8 @@ def validate(workflow):
     for required in ('tests/help-rules-check.py', 'tests/test_windows_checks.py', 'tests/win-pin-mutate.py',
                      'tests/test_workflow_contract.py', 'tests/test_windows_bootstrap.py'):
         need(required in commands, f'missing contract check: {required}')
+    need(any(s.get('if') == "runner.os == 'macOS'" and 'tests/run_unit_suite.py' in s.get('run', '') for s in steps),
+         'macOS step must run the full suite (mac-only tests are skipped on Windows)')
     one_line = [s for s in steps if 'one-line command' in s.get('name', '')]
     need(len(one_line) == 1, 'exactly one user one-line step required')
     for step in one_line:

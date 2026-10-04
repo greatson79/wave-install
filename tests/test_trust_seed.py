@@ -23,6 +23,9 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class HelperTests(unittest.TestCase):
     """지인 jarvis-install seed_claude_prefs 규칙(lib/trust_seed.py 머리말) + Wave 고유 remoteControlAtStartup=true."""
     def setUp(self):
@@ -38,6 +41,7 @@ class HelperTests(unittest.TestCase):
     def seed(self):
         return trust_seed.seed(str(self.dir), str(self.journal), str(self.work), self.home)
 
+    @mac_only('POSIX 파일 권한 비트(0o600/0o644)를 단정한다 — 윈은 ACL')
     def test_fresh_writes_reference_keys_then_rerun_is_noop(self):
         rc, msgs = self.seed()
         self.assertEqual(rc, 0)
@@ -60,6 +64,7 @@ class HelperTests(unittest.TestCase):
         self.assertFalse(self.dir.exists())
         self.assertFalse(self.journal.exists())
 
+    @mac_only('POSIX 파일 권한 비트(0o600/0o644)를 단정한다 — 윈은 ACL')
     def test_existing_home_false_is_kept_onboarding_overwritten_other_keys_preserved(self):
         original = {'oauthAccount': {'emailAddress': 'x'}, 'numStartups': 9007199254740993, 'hasCompletedOnboarding': False,
                     'fullscreenUpsellSeenCount': 3,
@@ -176,6 +181,7 @@ class MacBootstrapTests(unittest.TestCase):
     def personal(self):
         return sha(self.home / '.claude.json'), sha(self.home / '.claude/settings.json')
 
+    @mac_only()
     def test_seed_writes_wave_profile_only_and_reruns_idempotent(self):
         before = self.personal()
         r = self.bash('seed_claude_trust && seed_claude_trust; echo RC=$?')
@@ -193,6 +199,7 @@ class MacBootstrapTests(unittest.TestCase):
         self.assertTrue((self.wave / 'trust-seed.tsv').is_file())
         self.assertNotIn('claude', self.calls.read_text() if self.calls.exists() else '')  # 로그인 확인 호출 없음(원작과 같다)
 
+    @mac_only()
     def test_cys_account_dir_is_honoured(self):
         acct = self.home / 'acct'
         acct.mkdir()
@@ -201,6 +208,7 @@ class MacBootstrapTests(unittest.TestCase):
         self.assertTrue((acct / 'settings.json').is_file())
         self.assertFalse((self.home / '.cys/claude/.claude.json').exists())
 
+    @mac_only()
     def test_journal_failure_stops_step_with_j_perm_01(self):
         (self.wave / 'trust-seed.tsv').mkdir()
         r = self.bash('if seed_claude_trust; then echo RC=0; else echo RC=1; fi')
@@ -214,6 +222,7 @@ class MacBootstrapTests(unittest.TestCase):
             {'surface_ref': 'surface:7', 'role': 'cso', 'exited': False}]}))
         return self.bash('notice_first_run_gate; notice_first_run_gate; echo RC=$?')
 
+    @mac_only()
     def test_gate_screen_prints_notice_once_and_sends_no_keys(self):
         for screen in (TRUST_SCREEN, BYPASS_SCREEN):
             with self.subTest(screen=screen[:30]):
@@ -229,6 +238,7 @@ class MacBootstrapTests(unittest.TestCase):
         r = self.gate(ECHO_ONLY_SCREEN)
         self.assertNotIn('골라 주세요', r.stderr)
 
+    @mac_only()
     def test_s07_waits_on_gate_with_notice_until_human_picks(self):
         # 관문 화면 고정본에서 S07 대기 루프가 실패로 끝나지 않고 안내 후 계속 돈다(cso 가 살아날 때 통과).
         (self.home / '.cys/.gui-onboarded').write_text('0.0.0\n')

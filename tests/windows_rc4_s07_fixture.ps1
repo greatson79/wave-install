@@ -1,4 +1,4 @@
-# rc.4 S07 (윈): 확인 창이 떠 있는 동안 예산 정지 · 상한 도달 시 좌석이 살아 있으면 종료값 2. 데몬·앱·실제 홈을 쓰지 않는다.
+﻿# rc.4 S07 (윈): 확인 창이 떠 있는 동안 예산 정지 · 상한 도달 시 좌석이 살아 있으면 종료값 2. 데몬·앱·실제 홈을 쓰지 않는다.
 param([string]$Mode = 'unit')
 $ErrorActionPreference = 'Stop'
 $t = $null; $errors = $null
@@ -97,8 +97,9 @@ if ($Mode -eq 'cwd') {
   Set-Location $elsewhere
   $r = Invoke-BoundedCheck (Get-Process -Id $PID).Path @('-NoProfile', '-Command', '(Get-Location).Path') 'cwd' 20000
   $got = ([string]$r.stdout).Trim()
-  # macOS 임시 폴더의 /private 별칭 차이만 흡수한다
-  if (($got -replace '^/private', '') -ne ($home1 -replace '^/private', '')) { throw "child cwd was '$got', expected the user home" }
+  # 경로 문자열은 별칭이 다르다(맥 /private · 윈 8.3 짧은 이름 RUNNER~1 ↔ runneradmin) — 같은 폴더인지 표지 파일로 확인한다
+  $marker = [guid]::NewGuid().ToString('N') + '.cwd'; [IO.File]::WriteAllText((Join-Path $home1 $marker), '')
+  if (-not $got -or -not (Test-Path -LiteralPath (Join-Path $got $marker))) { throw "child cwd was '$got', expected the user home" }
   Write-Host 'PASS bounded cys calls start in the user home'
   exit 0
 }

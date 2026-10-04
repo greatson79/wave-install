@@ -1,7 +1,11 @@
 import hashlib,json,os,subprocess,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+from platform_scope import mac_only  # noqa: E402
+
+
 class OriginalTests(unittest.TestCase):
+    @mac_only()
     def test_large_original_matches_and_mismatches_or_new_are_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             home=Path(td);pack=home/'.cys/pack';wave=home/'wave';(pack/'directives').mkdir(parents=True);(wave/'verify').mkdir(parents=True);(wave/'bin').mkdir()

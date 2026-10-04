@@ -1,4 +1,4 @@
-param([string]$Mode='old')
+﻿param([string]$Mode='old')
 $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest
 $t=$null; $e=$null
 $a=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'),[ref]$t,[ref]$e)
@@ -34,8 +34,9 @@ if($Mode -eq 'old'){
   if($script:LogLines -notcontains '이 폴더는 이 컴퓨터에만 저장됩니다.'){throw 'local evidence notice missing'}
   $dir=(Get-ChildItem (Join-Path $WaveHome 'fleet') -Directory)[0].FullName
   $r=Get-Content (Join-Path $dir 'result.json') -Raw | ConvertFrom-Json
-  $roles=@(Get-Content (Join-Path $dir 'roles.json') -Raw | ConvertFrom-Json)
-  if($r.installer_exit_code -ne 2 -or $r.list_exit_code -ne 0 -or $roles.Count -ne 3){throw 'snapshot evidence contract'}
+  # 5.1 의 ConvertFrom-Json 은 JSON 배열을 풀지 않고 한 덩어리로 내놓는다 → ForEach-Object 로 풀어 센다
+  $roles=@(Get-Content (Join-Path $dir 'roles.json') -Raw | ConvertFrom-Json | ForEach-Object { $_ })
+  if($r.installer_exit_code -ne 2 -or $r.list_exit_code -ne 0 -or $roles.Count -ne 3){throw ('snapshot evidence contract installer=' + $r.installer_exit_code + ' list=' + $r.list_exit_code + ' roles=' + $roles.Count)}
   $want=(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_three_list.json') -Raw | ConvertFrom-Json).response
   if([IO.File]::ReadAllText((Join-Path $dir 'list.txt')) -ne $want){throw 'list raw text not preserved'}
   function Invoke-BoundedCheck {throw 'both unavailable'}

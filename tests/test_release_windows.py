@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = 'https://github.com/greatson79/wave-install/releases/download/v0.3.0'
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class WindowsReleaseTests(unittest.TestCase):
+    @mac_only()
     def test_zip_and_powershell_bootstrap_are_pinned(self):
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder)

@@ -3,7 +3,11 @@ import json, os, shlex, subprocess, tempfile, unittest
 from pathlib import Path
 from test_rc4_s07 import S07Base, ROOT, real
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class SignalCompatibility(S07Base):
+    @mac_only()
     def test_old_app_with_marker_is_still_unconfirmed(self):
         self.status(['master','cso','worker'])
         (self.home/'.cys/.master-bootstrapped').write_text(json.dumps({'surface_ref':self.master_ref,'orchestra_check':'exit 0'}))
@@ -12,6 +16,7 @@ class SignalCompatibility(S07Base):
         r=self.run_s07({'WAVE_AWAKENING_SECONDS':'3'})
         self.assertIn('RC=2',r.stdout,r.stderr)
         self.assertIn('J-VER-04',r.stdout+r.stderr)
+    @mac_only()
     def test_failure_snapshot_keeps_raw_status_and_role_refs(self):
         self.status(['master','cso','worker'])
         recorded_list=real('rc5_three_list.json')
@@ -29,6 +34,7 @@ class SignalCompatibility(S07Base):
         self.assertEqual({s['role'] for s in seats},{'master','cso','worker'})
         self.assertTrue(all(s['surface_ref'] and s['agent_alive'] is True for s in seats))
         self.assertEqual(json.loads((dirs[0]/'result.json').read_text())['installer_exit_code'],2)
+    @mac_only()
     def test_snapshot_command_failure_is_nonfatal(self):
         r=self.bash('bounded_cys(){ return 9; }; capture_s07_evidence 1; echo RC=$?')
         self.assertIn('RC=0',r.stdout,r.stderr)
@@ -39,6 +45,7 @@ class SignalCompatibility(S07Base):
         self.assertEqual(report['list_exit_code'],9)
         self.assertEqual(report['installer_exit_code'],1)
 
+    @mac_only()
     def test_step_failure_keeps_exit_one_or_two_even_when_diagnostics_fail(self):
         for code in (1,2):
             with self.subTest(code=code):
@@ -76,19 +83,23 @@ class RecordedSignal(S07Base):
     def verify(self, since=None):
         since=self.since if since is None else since
         return self.bash('verify_live_fleet '+shlex.quote(self.ref)+' '+shlex.quote(str(since))+'; echo RC=$?')
+    @mac_only()
     def test_recorded_three_roles_pass_without_marker(self):
         self.load_recording('rc5_three_status.json')
         self.assertIn('RC=0',self.verify().stdout)
         (self.home/'.cys/.master-bootstrapped').write_text('malformed observational marker')
         self.assertIn('RC=0',self.verify().stdout)
+    @mac_only()
     def test_real_partial_recording_does_not_pass(self):
         self.load_recording('rc5_partial_status.json')
         self.assertIn('RC=1',self.verify().stdout)
+    @mac_only()
     def test_invalid_start_times_do_not_verify_old_child_seats(self):
         self.load_recording('rc5_three_status.json')
         for since in ('', ' ', '0'):
             with self.subTest(since=since):
                 self.assertIn('RC=1', self.verify(since).stdout)
+    @mac_only()
     def test_each_role_needs_live_boolean_true_on_the_same_seat(self):
         for role in ('master','cso','worker'):
             for field,value in [('launch_complete',False),('launch_complete',None),('launch_complete','true'),('agent_alive',False),('exited',True)]:

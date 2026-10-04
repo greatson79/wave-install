@@ -359,9 +359,11 @@ Init-State
 $bin = Join-Path $WaveHome 'bin'
 New-Item -ItemType Directory -Force $bin | Out-Null
 New-Item -ItemType Directory -Force $PackHome | Out-Null
-$live = [ordered]@{surfaces=@('master','cso','worker' | ForEach-Object {
-  [ordered]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true}
-})}
+# rc5 부터 S08 은 S07 이 기록한 시작 시각·master 좌석과 launch_complete·created_at 을 요구한다 — 실측 응답 fixture 로 맞춘다.
+$live=(Get-Content (Join-Path $env:TEST_ROOT 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
+New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/started-at'),[string][long][Math]::Floor(($live.surfaces | Measure-Object created_at -Minimum).Minimum))
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/master-ref'),[string](($live.surfaces | Where-Object {$_.role -eq 'master'}).surface_ref))
 $verify=Join-Path $WaveHome 'verify'
 New-Item -ItemType Directory -Force $verify,(Join-Path $PackHome 'directives')|Out-Null
 $env:WAVE_TEST_STATUS=Join-Path $verify 'live-fixture.json'

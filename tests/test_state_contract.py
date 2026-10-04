@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get("PWSH") or shutil.which("pwsh")
 
 
+from platform_scope import skip_bash_engine, write_fake_exe  # noqa: E402
+
 class StateContractTests(unittest.TestCase):
     def run_unit(self, engine, state, bash, powershell, doctor=None, producer=False):
         with tempfile.TemporaryDirectory(prefix="wave-state-unit-") as td:
@@ -28,9 +30,7 @@ class StateContractTests(unittest.TestCase):
                        TEST_STEPS=str(steps), TEST_DOCTOR=str(home / "doctor.json"))
             (home / "doctor.json").write_text(json.dumps(doctor or {}))
             for name in ("cys", "cys.exe"):
-                p = wave / "bin" / name
-                p.write_text('#!/bin/sh\nexit 0\n')
-                p.chmod(0o755)
+                write_fake_exe(wave / "bin" / name, PWSH)
             fake_wave = wave / "bin/wave"
             fake_wave.write_text('#!/bin/sh\ncat "$TEST_DOCTOR"\n')
             fake_wave.chmod(0o755)
@@ -80,6 +80,7 @@ try {
     def test_passed_with_error_is_rejected_before_write(self):
         for engine in ("bash", "powershell"):
             with self.subTest(engine=engine):
+                skip_bash_engine(self, engine)
                 proc, _, unchanged, _ = self.run_unit(engine, self.clean_state(),
                     'state_patch S02_CLAUDE_LOGIN passed 0 WT-S02-AUTH \'{}\'',
                     "Update-Step 'S02_CLAUDE_LOGIN' 'passed' 0 'WT-S02-AUTH' ([ordered]@{})")
@@ -89,6 +90,7 @@ try {
     def test_observed_json_roundtrips_without_raw_braces(self):
         for engine in ("bash", "powershell"):
             with self.subTest(engine=engine):
+                skip_bash_engine(self, engine)
                 proc, state, _, _ = self.run_unit(engine, self.clean_state(),
                     'state_patch S08_VERIFY passed 0 "" \'{"max_injected_bytes":null,"injection_measured":false}\'',
                     "Update-Step 'S08_VERIFY' 'passed' 0 '' ([ordered]@{max_injected_bytes=$null;injection_measured=$false})")
@@ -103,6 +105,7 @@ try {
         for engine in ("bash", "powershell"):
             for mutation in mutations:
                 with self.subTest(engine=engine, mutation=mutation):
+                    skip_bash_engine(self, engine)
                     state = self.clean_state()
                     if mutation == "original_mismatch": state["steps"]["S08_VERIFY"]["observed"]["original_match"] = False
                     if mutation == "pending_new": state["steps"]["S08_VERIFY"]["observed"]["new_file_count"] = 1
@@ -136,6 +139,7 @@ try {
     def test_doctor_producer_emits_null_not_fabricated_zero(self):
         for engine in ("bash", "powershell"):
             with self.subTest(engine=engine):
+                skip_bash_engine(self, engine)
                 proc, _, _, _ = self.run_unit(engine, self.clean_state(), "", "", producer=True)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 doctor = json.loads(proc.stdout)

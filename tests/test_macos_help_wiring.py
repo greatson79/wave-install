@@ -31,6 +31,9 @@ def port_is_free(port):
         return s.connect_ex(('127.0.0.1', port)) != 0
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class MacHelpWiringTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix='wave-r5-mac-')
@@ -63,6 +66,7 @@ class MacHelpWiringTests(unittest.TestCase):
             return []
         return [json.loads(line) for line in self.calls.read_text().splitlines()]
 
+    @mac_only()
     def test_nothing_is_sent_before_notice_or_with_no_progress(self):
         r = self.bash('HELP_STEP=1/10; help_progress start; help_request')
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -72,6 +76,7 @@ class MacHelpWiringTests(unittest.TestCase):
         self.assertNotIn('30일', r.stdout + r.stderr)
         self.assertEqual(self.recorded(), [])
 
+    @mac_only()
     def test_main_failure_sends_start_fail_help_and_keeps_exit_and_state(self):
         script = ('step_s00() { echo "boom /Users/alice" >&2; return 7; }; '
                   'set +e; (set -e; main); echo "MAIN_RC=$?"')
@@ -93,6 +98,7 @@ class MacHelpWiringTests(unittest.TestCase):
         self.assertEqual(state['steps']['S00_PREFLIGHT']['status'], 'failed')
         self.assertEqual(state['steps']['S00_PREFLIGHT']['exit_code'], 7)
 
+    @mac_only()
     def test_success_and_optional_failure_send_end_and_fail_without_help(self):
         r = self.bash('init_state; show_help_notice; HELP_VERSION=9.9.9; '
                       'HELP_STEP=3/10; step_s02() { return 0; }; run_step S02_CLAUDE_LOGIN; '
@@ -101,6 +107,7 @@ class MacHelpWiringTests(unittest.TestCase):
         events = [(c[c.index('--step') + 1], c[c.index('--event') + 1]) for c in self.recorded()]
         self.assertEqual(events, [('3/10', 'start'), ('3/10', 'end'), ('7/10', 'start'), ('7/10', 'fail')])
 
+    @mac_only()
     def test_real_client_against_dead_endpoint_is_fail_open(self):
         port = free_port()
         self.assertTrue(port_is_free(port))
@@ -125,6 +132,7 @@ class MacHelpWiringTests(unittest.TestCase):
         self.assertEqual(dead_state['status'], off_state['status'])
         self.assertTrue((self.home / '.wave/install-id.txt').exists() is False)  # off run never created an id
 
+    @mac_only()
     def test_release_pack_ships_help_libs(self):
         with tempfile.TemporaryDirectory() as out:
             r = subprocess.run(['bash', str(ROOT / 'scripts/make-release.sh'),

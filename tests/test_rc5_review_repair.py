@@ -4,6 +4,9 @@ from pathlib import Path
 import test_rc5_resume as resume
 ROOT=Path(__file__).resolve().parents[1]
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class Binding(unittest.TestCase):
     def run_case(self, mode):
         pwsh=os.environ.get('PWSH') or shutil.which('pwsh')
@@ -33,6 +36,7 @@ class ResumeReview(unittest.TestCase):
     def test_preflight_install_and_login_are_always_rechecked(self):
         for step in ('S00_PREFLIGHT','S01_CLAUDE_INSTALL','S02_CLAUDE_LOGIN'):
             with self.subTest(step=step):self.assertNotEqual(self.h.run_sh('RESUME=1; can_resume_step '+step+' passed').returncode,0)
+    @mac_only()
     def test_s03_rechecks_size_hash_and_requires_verified_record(self):
         file=self.artifact()
         code='RESUME=1; can_resume_step S03_DOWNLOAD_VERIFY passed'

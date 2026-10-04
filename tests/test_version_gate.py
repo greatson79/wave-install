@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get("PWSH") or shutil.which("pwsh")
 
 
+from platform_scope import skip_bash_engine  # noqa: E402
+
 class VersionGateTests(unittest.TestCase):
     def run_gate(self, engine, version, minimum="2.1.278", legacy="2.1.278", code=0):
         with tempfile.TemporaryDirectory(prefix="wave-s01-unit-") as temp:
@@ -68,6 +70,7 @@ try { Run-S01; exit 0 } catch { [Console]::Error.WriteLine($_.Exception.Message)
         for engine in ("bash", "powershell"):
             for version, accepted in cases:
                 with self.subTest(engine=engine, version=version):
+                    skip_bash_engine(self, engine)
                     rc, output, recorded = self.run_gate(engine, version)
                     self.assertEqual(rc == 0, accepted, output)
                     if accepted:
@@ -90,6 +93,7 @@ try { Run-S01; exit 0 } catch { [Console]::Error.WriteLine($_.Exception.Message)
         for engine in ("bash", "powershell"):
             for version, minimum, legacy, message in cases:
                 with self.subTest(engine=engine, version=version, minimum=minimum, legacy=legacy):
+                    skip_bash_engine(self, engine)
                     rc, output, _ = self.run_gate(engine, version, minimum, legacy)
                     self.assertNotEqual(rc, 0, output)
                     self.assertIn(message, output)
@@ -97,6 +101,7 @@ try { Run-S01; exit 0 } catch { [Console]::Error.WriteLine($_.Exception.Message)
     def test_command_failure_is_not_accepted(self):
         for engine in ("bash", "powershell"):
             with self.subTest(engine=engine):
+                skip_bash_engine(self, engine)
                 rc, output, _ = self.run_gate(engine, "2.1.278 (Claude Code)", code=9)
                 self.assertNotEqual(rc, 0, output)
 

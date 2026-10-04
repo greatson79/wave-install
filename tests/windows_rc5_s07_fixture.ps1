@@ -95,3 +95,22 @@ if($Mode -eq 'start-time-floor'){
   if((ConvertTo-ValidStartTime 1000000000) -ne 1000000000){throw 'minimum ten-digit epoch value rejected'}
   Write-Host 'PASS start-time lower bound'
 }
+
+if($Mode -eq 'recorded-decimal'){
+  $recordedRaw=[IO.File]::ReadAllText((Join-Path $PWD 'tests/fixtures/real_cys/rc5_signal1_fleet_status.stdout.log'))
+  $recorded=$recordedRaw | ConvertFrom-Json
+  foreach($seat in $recorded.surfaces){if($null -ne $seat.created_at){$seat.created_at=[decimal]$seat.created_at}}
+  $since=[long]1791102186
+  if(-not (Test-AwakenedFleet $recorded 'surface:1' $since)){throw 'recorded launch_complete fleet with decimal timestamps rejected'}
+  if((ConvertTo-ValidStartTime ([decimal]1791102186)) -ne 1791102186){throw 'decimal integer start time rejected'}
+  if($null -ne (ConvertTo-ValidStartTime ([decimal]1791102186.5))){throw 'fractional decimal start time accepted'}
+  if(-not (Test-ByteCount ([decimal]2147483648)) -or -not (Test-ByteCount ([decimal][long]::MaxValue))){throw 'in-range decimal JSON integer rejected as byte count'}
+  if((Test-ByteCount ([decimal]9223372036854775808)) -or (Test-ByteCount ([decimal]1.5)) -or (Test-ByteCount $true) -or (Test-ByteCount '1')){throw 'invalid decimal/bool/string byte count accepted'}
+  $stringCopy=$recorded | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+  ($stringCopy.surfaces | Where-Object {$_.role -eq 'cso'}).created_at='1791102238.3658855'
+  if(Test-AwakenedFleet $stringCopy 'surface:1' $since){throw 'string created_at accepted'}
+  $boolCopy=$recorded | ConvertTo-Json -Depth 30 | ConvertFrom-Json
+  ($boolCopy.surfaces | Where-Object {$_.role -eq 'cso'}).created_at=$true
+  if(Test-AwakenedFleet $boolCopy 'surface:1' $since){throw 'boolean created_at accepted'}
+  Write-Host 'PASS recorded decimal fleet / string and boolean rejected'
+}

@@ -63,6 +63,8 @@ class WindowsSignal(unittest.TestCase):
         r=self.run_mode('since'); self.assertEqual(r.returncode,0,r.stdout+r.stderr)
     def test_start_time_parser_enforces_epoch_floor(self):
         r=self.run_mode('start-time-floor'); self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    def test_recorded_signal_accepts_decimal_created_at_and_rejects_string_boolean(self):
+        r=self.run_mode('recorded-decimal'); self.assertEqual(r.returncode,0,r.stdout+r.stderr)
 
 class RecordedSignal(S07Base):
     def load_recording(self,name):

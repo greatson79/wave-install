@@ -1,5 +1,5 @@
 {
- "_approval": "승인 테오 잠정·주인님 확인 대기 (테오 0437)",
+ "_approval": "잠정 허용 목록 · 최종 승인 대기",
  "_not_allowed": {
   "C60.gate-wiring": "skillscan 미승인 8건 — 허용 아님, G2 FAIL 로 남기고 별도 릴리스 차단 항목"
  },
@@ -46,6 +46,6 @@
   "C61.doc-code-sot": "doc-code 드리프트 — 문서가 명명한 조직 파일(~/.cys/depts.json 등) 부재, 제품 기능 아님",
   "C62.pack-heal-ledger": "업그레이드 경로 한정 — 구 팩의 라이브 수정이 배포 원본으로 되돌려짐(수정본은 .user 보존)",
   "C64.directive-bench": "baseline 미핀 — preflight 원문: 오너/master 의례(재핀)이며 트립와이어만 비활성",
-  "C43.serena": "테오 1658 정식 등재 — preflight.py:2047–2110 설계 WARN; 설치·좌석 생존 영향 없는 정보성 검사"
+  "C43.serena": "설계 WARN 등재 — preflight.py:2047–2110 설계 WARN; 설치·좌석 생존 영향 없는 정보성 검사"
  }
 }

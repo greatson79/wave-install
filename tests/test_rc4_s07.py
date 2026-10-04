@@ -127,7 +127,7 @@ class LiveRoleSeats(S07Base):
 
 class UnfinishedOutcome(S07Base):
     def test_three_live_seats_in_the_real_status_are_exit_2_not_a_failure(self):
-        # rc.4 RC 37134620023 의 실물 모양(launch_complete 없음)에서도 세 칸 생존이면 종료값 2 — 결재 (가).
+        # rc.4 RC 37134620023 의 실물 모양(launch_complete 없음)에서도 세 칸 생존이면 종료값 2 — rc.4 계약.
         self.status(['master', 'cso', 'worker'])
         r = self.bash('s07_unfinished; echo RC=$?; echo "OBS=$STEP_OBSERVED"')
         self.assertIn('RC=2', r.stdout)

@@ -41,7 +41,7 @@ if ($Mode -eq 'unit') {
   Write-Host 'PASS live role seats = live master/cso/worker only'
 
   function Get-LiveFleet([int]$TimeoutMs = 5000) { return $script:Fleet }
-  # 실물 모양(launch_complete 없음)에서도 세 칸 생존이면 종료값 2 경로 — 결재 (가)
+  # 실물 모양(launch_complete 없음)에서도 세 칸 생존이면 종료값 2 경로 — rc.4 계약
   $script:Fleet = Real 'win_status_three_seats.json'
   $msg = ''; try { Complete-S07Unfinished } catch { $msg = $_.Exception.Message }
   if ($msg -ne 'W-FLEET-ALIVE-UNCONFIRMED' -or -not $script:AliveUnconfirmed) { throw "alive fleet not flagged ($msg)" }
@@ -90,7 +90,7 @@ if ($Mode -eq 'exit2') {
 }
 
 if ($Mode -eq 'cwd') {
-  # 2238 결재: 설치기가 띄우는 모든 cys 호출(데몬 자동기동 포함)은 홈에서 시작한다 — 호출자 cwd(예: 프로젝트 폴더)를 상속시키지 않는다.
+  # 실행 폴더 계약: 설치기가 띄우는 모든 cys 호출(데몬 자동기동 포함)은 홈에서 시작한다 — 호출자 cwd(예: 프로젝트 폴더)를 상속시키지 않는다.
   $home1 = Join-Path $env:RC4_FIXTURE_DIR 'userhome'; New-Item -ItemType Directory -Force $home1 | Out-Null
   $elsewhere = Join-Path $env:RC4_FIXTURE_DIR 'project'; New-Item -ItemType Directory -Force $elsewhere | Out-Null
   $env:USERPROFILE = $home1; $WaveHome = Join-Path $home1 '.wave'

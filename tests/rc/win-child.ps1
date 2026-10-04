@@ -6,7 +6,7 @@ $env:WAVE_NO_PROGRESS = '1'   # 실서버(waveainetworks.com) 진행 신호 전�
 $env:PYTHONUTF8 = '1'   # 한글 프로필 경로가 콘솔 코드페이지(cp1252)에서 파이썬을 깨지 않게
 Start-Transcript -Path (Join-Path $Evidence 'child.log') -Force | Out-Null
 $rc = Join-Path $Repo 'tests\rc'; $h = $env:USERPROFILE
-$wd = if ($Cwd -eq 'evidence') { $Evidence } else { $h }   # rc4(테오 2238): 설치기 실행 폴더 기본 = 홈 · evidence = 홈 아닌 폴더 잡(앱 수리 v0.3.1 전 알려진 FAIL)
+$wd = if ($Cwd -eq 'evidence') { $Evidence } else { $h }   # rc4: 설치기 실행 폴더 기본 = 홈 · evidence = 홈 아닌 폴더 잡(앱 수리 v0.3.1 전 알려진 FAIL)
 $id = [Security.Principal.WindowsIdentity]::GetCurrent(); $admin = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 @{ user = $id.Name; administrator = $admin; profile = $h; ps = $PSVersionTable.PSVersion.ToString() } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'identity.json') -Encoding UTF8
 if ($admin) { throw 'administrator token is prohibited' }
@@ -46,7 +46,7 @@ function Reset-Fleet {
 }
 function Install-Fake {
   $bin = Join-Path $h '.local\bin'; New-Item -ItemType Directory -Force (Join-Path $bin 'claude') | Out-Null
-  # 12차: S01 이 설치한 진짜 claude.exe 가 같은 폴더의 claude.cmd 보다 PATHEXT 순서(.EXE 가 .CMD 앞)로 먼저 잡혀 합성이 쓰이지 않고 실제 로그인으로 멈췄다 → 진짜는 이름을 바꿔 치운다(맥의 claude.real 과 같은 취급)
+  # 회귀 관측: S01 이 설치한 진짜 claude.exe 가 같은 폴더의 claude.cmd 보다 PATHEXT 순서(.EXE 가 .CMD 앞)로 먼저 잡혀 합성이 쓰이지 않고 실제 로그인으로 멈췄다 → 진짜는 이름을 바꿔 치운다(맥의 claude.real 과 같은 취급)
   foreach ($n in @('claude.exe')) { $real = Join-Path $bin $n; if (Test-Path $real) { Move-Item $real ($real + '.real') -Force } }
   Copy-Item (Join-Path $rc 'fake_claude.py') (Join-Path $bin 'claude\fake_claude.py') -Force
   "@echo off`r`n`"$Py`" `"%~dp0claude\fake_claude.py`" %*`r`n" | Set-Content (Join-Path $bin 'claude.cmd') -Encoding ASCII
@@ -63,9 +63,9 @@ function Collect([string]$d) {
   New-Item -ItemType Directory -Force $d | Out-Null
   $wb = Join-Path $h '.wave\bin'; $env:PATH = "$wb;$env:PATH"
   $bp = Join-Path $wb 'runtime\python\python3.exe'; if (-not (Test-Path $bp)) { $bp = $Py }
-  $log = Join-Path $d 'collect.log'   # 14차: g2 수집기가 조용히 실패(G2_preflight.json 없음, 원인 로그 0) → 모든 수집기 stdout/stderr 를 파일로
+  $log = Join-Path $d 'collect.log'   # 회귀 관측: g2 수집기가 조용히 실패(G2_preflight.json 없음, 원인 로그 0) → 모든 수집기 stdout/stderr 를 파일로
   & $Py (Join-Path $rc 'collect.py') g2 --out $d --python $bp --preflight (Join-Path $h '.cys\pack\bin\javis_preflight.py') *>> $log
-  cmd /c "`"$wb\cys.exe`" pack-manifest > `"$d\pack-manifest.src.json`""   # 14차에서 동작한 형태 — 8e37480 편집이 따옴표를 망가뜨려 17차 윈 G3 가 빠졌다
+  cmd /c "`"$wb\cys.exe`" pack-manifest > `"$d\pack-manifest.src.json`""   # 실물에서 동작한 형태 — 8e37480 편집이 따옴표를 망가뜨려 윈 G3 증거가 빠졌다
   & $Py (Join-Path $rc 'collect.py') g3 --out $d --manifest "$d\pack-manifest.src.json" *>> $log
   & $Py (Join-Path $rc 'collect.py') g4 --out $d --cys "$wb\cys.exe" *>> $log
   Copy-Item (Join-Path $h '.wave\verify\G3_inject.json') (Join-Path $d 'installer_G3_inject.json') -ErrorAction SilentlyContinue
@@ -128,7 +128,7 @@ try {
     OneLine $old (Join-Path $g5 'from_v023.log') | Out-Null
     Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $g5 'from_v023_state.json') -ErrorAction SilentlyContinue
     Copy-Item (Join-Path $h '.cys\pack\schedule.json') (Join-Path $g5 'installed_schedule_v023.json') -ErrorAction SilentlyContinue   # 증거만(G7b 기준 아님)
-    # 윈 설치 로그에는 설치팩 주소가 안 찍힌다(13차) → 한 줄이 받아 실행한 ~\install-wave.ps1(릴리스가 주입한 zip 주소 보유)에서 판독
+    # 윈 설치 로그에는 설치팩 주소가 안 찍힌다(회귀 관측) → 한 줄이 받아 실행한 ~\install-wave.ps1(릴리스가 주입한 zip 주소 보유)에서 판독
     $m = [regex]::Match((Get-Content (Join-Path $h 'install-wave.ps1') -Raw -Encoding UTF8), 'wave-install-(\d+\.\d+\.\d+)\.zip'); $from = if ($m.Success) { $m.Groups[1].Value } else { 'unknown' }
     if ($from -ne '0.2.3') { Write-Host "v0.2.3 이 아님($from) — G5 측정 불가"; return }
     $sha = (Get-FileHash (Join-Path $g5 'from_v023_state.json') -Algorithm SHA256).Hash.ToLower()
@@ -147,7 +147,7 @@ try {
   if ($probeExit -ne 0 -or [BitConverter]::ToString([IO.File]::ReadAllBytes($probe)) -cne [BitConverter]::ToString($want)) { throw "PS 5.1 UTF-8 바이트 왕복 실패 (exit=$probeExit)" }
   $env:BROWSER = 'false'; OneLine $one (Join-Path $e 'phaseA\run.log') 300 | Out-Null; Copy-FleetStatusEvidence (Join-Path $e 'phaseA'); Remove-Item Env:BROWSER
   Copy-Item (Join-Path $h '.wave\install-state.json') (Join-Path $e 'phaseA\state.json') -ErrorAction SilentlyContinue
-  # 설치기가 시작 직후 죽는 경우(10차: Get-JCode 미인식)를 가리기 위한 진단 — 설치팩 bootstrap.ps1 의 파싱 결과·인코딩·함수 목록·설치 로그
+  # 설치기가 시작 직후 죽는 경우(회귀 관측: Get-JCode 미인식)를 가리기 위한 진단 — 설치팩 bootstrap.ps1 의 파싱 결과·인코딩·함수 목록·설치 로그
   $pk = Get-ChildItem (Join-Path $h '.wave\src') -Recurse -Filter bootstrap.ps1 -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($pk) {
     $lines = @()

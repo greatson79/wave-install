@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""G7b 증거 — 배포본 schedule.json 동결(테오 1107 · 펄스 1130 정의):
+"""G7b 증거 — 배포본 schedule.json 동결(소스 바이트 비교 계약):
  기준 = 직전 공개 앱 판 소스의 cysjavis-pack/schedule.json git blob(맥 v0.1.1 · 윈 fa4c12b8) / 현재 = 시험 중인 앱 커밋의 같은 경로 blob. 원값(바이트) 비교 — 설치본은 증거만(데몬이 부트마다 써 넣어 변함).
   freeze.py --repo OWNER/REPO --mac-run ID --win-run ID --out DIR   (rc-inputs.json 의 freeze_baseline_ref 사용)"""
 import argparse, hashlib, json, pathlib, subprocess, sys

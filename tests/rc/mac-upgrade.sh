@@ -8,7 +8,7 @@ OLD='curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.
 export WAVE_NO_PROGRESS=1
 mkdir -p "$HOME/.local/bin"; mkdir -p "$HOME/.local/share/rc-fake"; cp "$HERE/fake_claude.py" "$HOME/.local/share/rc-fake/logic.py"
 cc -O0 -DLOGIC="\"$HOME/.local/share/rc-fake/logic.py\"" -o "$HOME/.local/bin/claude" "$HERE/claude_launcher.c"  # 네이티브 런처 — 프로세스 이름이 처음부터 claude
-for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(4차 run: cys boot 가 claude 를 못 찾아 60초 미확인)
+for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(회귀 관측 run: cys boot 가 claude 를 못 찾아 60초 미확인)
 python3 "$HERE/run_to.py" 1500 "$EV/from_v023.log" -- bash -c "cd \"\$HOME\" && $OLD"; echo $? > "$EV/from_v023.exit"
 cp "$HOME/.wave/install-state.json" "$EV/from_v023_state.json"
 cp "$HOME/.cys/pack/schedule.json" "$EV/installed_schedule_v023.json" 2>/dev/null   # 증거만(G7b 기준 아님): v0.2.3 설치본 — 데몬이 부트마다 기본 잡을 써 넣어 변한다

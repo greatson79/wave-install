@@ -94,7 +94,7 @@ class HelperTests(unittest.TestCase):
         self.assertFalse(self.journal.exists())
 
     def test_skip_prompt_prior_value_is_recorded_and_restored(self):
-        # 주인님 결정 2026-10-03 23:05: skipDangerousModePermissionPrompt — 지인과 같은 키·값 · 바꾸기 전 값을 기록 · rollback 이 되돌림
+        # 제품 설정 계약: skipDangerousModePermissionPrompt — 키·값 유지 · 바꾸기 전 값을 기록 · rollback 이 되돌림
         for prior, row in ((False, 'false'), ('absent', 'absent')):
             with self.subTest(prior=prior):
                 self.journal.unlink(missing_ok=True)

@@ -3,102 +3,102 @@
   "command": "python3 pathlib read_bytes: rc4 artifact files copied without edits",
   "sources": [
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-mac-37134620023/mac/exit",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-mac-37134620023/mac/exit",
       "file": "negative/mac/exit",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-mac-37134620023/mac/G1_state.json",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-mac-37134620023/mac/G1_state.json",
       "file": "negative/mac/G1_state.json",
       "sha256": "e3106fff23074b8ef1a402cdfc758a867af88edb8c9f43ac2b4b8ad62d261671"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-mac-g5-37134620023/mac/G5/exit",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-mac-g5-37134620023/mac/G5/exit",
       "file": "negative/mac/G5/exit",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-mac-g5-37134620023/mac/G5/state.json",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-mac-g5-37134620023/mac/G5/state.json",
       "file": "negative/mac/G5/state.json",
       "sha256": "6259b0019fad773b7b4fac239451d4ad661a392cdb7381a7f798bef9e6c48fbf"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-gates-37134620023/win/run.exit",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-win-gates-37134620023/win/run.exit",
       "file": "negative/win/run.exit",
       "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-gates-37134620023/win/G1_state.json",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-win-gates-37134620023/win/G1_state.json",
       "file": "negative/win/G1_state.json",
       "sha256": "c382595d20d08c4df33e3cfb978b3d2edaceccadab32e95a9cd3b3dc5c3e09fc"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-upgrade-37134620023/win/G5/run.exit",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-win-upgrade-37134620023/win/G5/run.exit",
       "file": "negative/win/G5/run.exit",
       "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-upgrade-37134620023/win/G5/state.json",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-win-upgrade-37134620023/win/G5/state.json",
       "file": "negative/win/G5/state.json",
       "sha256": "60aa441025124d0f0a7a6d031a04ffdbed328e92b56e7a3cd71c14b169ebea51"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-noboot-37134620023/win/noboot/exit",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-win-noboot-37134620023/win/noboot/exit",
       "file": "negative/win/noboot/exit",
       "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-noboot-37134620023/win/noboot/install-state.json",
+      "source": "evidence/rc4-signal-37134620023-all/rc-evidence-win-noboot-37134620023/win/noboot/install-state.json",
       "file": "negative/win/noboot/install-state.json",
       "sha256": "7320bc2c4eed5629958dd63f1f25403738c537a295141aede0e2a369cedd9a79"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-mac-37139219493/mac/exit",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-mac-37139219493/mac/exit",
       "file": "positive/mac/exit",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-mac-37139219493/mac/G1_state.json",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-mac-37139219493/mac/G1_state.json",
       "file": "positive/mac/G1_state.json",
       "sha256": "601887a93f664002ae73beee5da6fa534cea52b097b6d442951a73f72ee2cfe7"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-mac-g5-37139219493/mac/G5/exit",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-mac-g5-37139219493/mac/G5/exit",
       "file": "positive/mac/G5/exit",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-mac-g5-37139219493/mac/G5/state.json",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-mac-g5-37139219493/mac/G5/state.json",
       "file": "positive/mac/G5/state.json",
       "sha256": "d6dd8a47b80d758ff0c52ea36afc5d88ea52e3f0f979ef4008ff20e8ae71e2b9"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-win-gates-37139219493/win/run.exit",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-win-gates-37139219493/win/run.exit",
       "file": "positive/win/run.exit",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-win-gates-37139219493/win/G1_state.json",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-win-gates-37139219493/win/G1_state.json",
       "file": "positive/win/G1_state.json",
       "sha256": "9c269a396b5269a125e72224f539db6199df7746328614e80e75b5fb4e81764a"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-win-upgrade-37139219493/win/G5/run.exit",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-win-upgrade-37139219493/win/G5/run.exit",
       "file": "positive/win/G5/run.exit",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-win-upgrade-37139219493/win/G5/state.json",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-win-upgrade-37139219493/win/G5/state.json",
       "file": "positive/win/G5/state.json",
       "sha256": "4fd4469acf6aadc9f0782c1992549cc8c6339f6fa2f3084e96f99af0447fca83"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-win-noboot-37139219493/win/noboot/exit",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-win-noboot-37139219493/win/noboot/exit",
       "file": "positive/win/noboot/exit",
       "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
     },
     {
-      "source": "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official-37139219493/rc-evidence-win-noboot-37139219493/win/noboot/install-state.json",
+      "source": "evidence/rc4-official-37139219493/rc-evidence-win-noboot-37139219493/win/noboot/install-state.json",
       "file": "positive/win/noboot/install-state.json",
       "sha256": "8ff367c1f6e031df0f802470aaec12f35f3f17263c82380b4150d698b70875ce"
     }

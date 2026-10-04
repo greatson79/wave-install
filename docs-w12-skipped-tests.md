@@ -1,6 +1,6 @@
 # W12 macOS 회귀에서 건너뛴 Windows 검증 6개
 
-실측: `PWSH=/tmp/wave-v024-pwsh/pwsh python3 -m unittest discover -v -s tests`, 79 tests / 실패0 / skipped6 / 96.239초. 로그: 펄스 inbox의 워커_W12_회귀_fixture.log. 이름 변경 전 실행 로그의 S07/S08 구 이름은 아래 새 이름과 같은 테스트다.
+실측: `PWSH=/tmp/wave-v024-pwsh/pwsh python3 -m unittest discover -v -s tests`, 79 tests / 실패0 / skipped6 / 96.239초. 로그: `<작업 폴더>/W12_회귀_fixture.log`. 이름 변경 전 실행 로그의 S07/S08 구 이름은 아래 새 이름과 같은 테스트다.
 
 | 테스트 | 건너뛴 사유 |
 |---|---|

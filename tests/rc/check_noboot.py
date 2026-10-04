@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """「부트 점검을 건너뛰는 가짜 Claude」 잡 판정 — check_noboot.py <증거 폴더> [기대값.json]
-증거 폴더에 exit(설치기 종료값)·run.log·marker_absent(표지 없음 확인)·install-state.json 이 있어야 한다. 기대값은 rc4-expect.json 한 곳(s960 이 정함).
+증거 폴더에 exit(설치기 종료값)·run.log·marker_absent(표지 없음 확인)·install-state.json 이 있어야 한다. 기대값은 rc4-expect.json 한 곳(잡 기대값 정본).
 종료값: 0 통과 · 1 실패(기대와 다름·exit 1·증거 없음) · 3 기대값 미정(통과로 치지 않는다)."""
 import json, os, sys
 STEP = "S07_INITIAL_FLEET"

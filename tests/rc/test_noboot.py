@@ -55,9 +55,9 @@ class FirstRunLeak(unittest.TestCase):
         for i in range(3): self.assertEqual(self.run_case("0\n", {}, tuple("failed" if j == i else "passed" for j in range(3))), 1)
     def test_alive_unconfirmed_even_if_exit_0(self): self.assertEqual(self.run_case("0\n", {"fleet_state": "alive_unconfirmed"}), 1)
     def test_missing_evidence_fails(self): self.assertEqual(self.run_case(None, {}), 1)
-    def test_signal_evidence_win_gates_is_caught(self):   # 신호용 RC 증거(첫 설치 exit 1 · S07 failed)가 새 단정에서 잡힌다 — 있을 때만
-        e = "/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-signal-37134620023-all/rc-evidence-win-gates-37134620023/win"
-        if os.path.isdir(e): self.assertEqual(check_first_run.judge(e + "/run.exit", e + "/G1_state.json")[0], 1)
+    def test_signal_evidence_win_gates_is_caught(self):   # 신호용 RC 증거(첫 설치 exit 1 · S07 failed)가 새 단정에서 잡힌다 — 동봉 실물 녹취 사용
+        e = os.path.join(HERE, "fixtures", "install-outcomes", "negative", "win")
+        self.assertEqual(check_first_run.judge(e + "/run.exit", e + "/G1_state.json")[0], 1)
 
 class FakeClaudeSwitch(unittest.TestCase):
     def boot(self, skip):

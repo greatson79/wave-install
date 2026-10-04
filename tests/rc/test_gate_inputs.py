@@ -2,7 +2,7 @@
 import hashlib, json, os, pathlib, sys, tempfile, unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_gate_table, check_evidence_mix
-OFFICIAL1 = pathlib.Path("/Users/kylechoi/Desktop/Ai_works/개발본부/_round/evidence/rc4-official1-37138057562")
+OFFICIAL1 = pathlib.Path(os.environ.get("RC_EVIDENCE_ROOT", pathlib.Path(__file__).resolve().parents[2] / "evidence")) / "rc4-official1-37138057562"
 
 class GateTable(unittest.TestCase):
     def table(self, rows):
@@ -10,7 +10,7 @@ class GateTable(unittest.TestCase):
     def test_fail_anywhere_fails(self): self.assertEqual(check_gate_table.judge(self.table([{"id": "G3", "mac": ["PASS", "x"], "win": ["FAIL", "해시"]}]))[0], 1)
     def test_unmeasured_is_not_a_failure(self): self.assertEqual(check_gate_table.judge(self.table([{"id": "G9", "common": ["미측정", "x"]}, {"id": "G1", "win": ["PASS", "x"]}]))[0], 0)
     def test_unreadable_table_fails(self): self.assertEqual(check_gate_table.judge("/nonexistent/t.json")[0], 1)
-    def test_official1_table_is_caught(self):   # 정식 1회차 실제 표(윈 G3·G4 FAIL)가 실패로 잡힌다 — 증거가 있을 때만
+    def test_official1_table_is_caught(self):   # 정식 실행 실제 표(윈 G3·G4 FAIL)가 실패로 잡힌다 — 증거가 있을 때만
         f = OFFICIAL1 / "rc-gate-table-37138057562/gate-result.json"
         if f.is_file(): rc, msg = check_gate_table.judge(str(f)); self.assertEqual(rc, 1); self.assertIn("G3 win", msg); self.assertIn("G4 win", msg)
 
@@ -20,7 +20,7 @@ class EvidenceMix(unittest.TestCase):
     def test_consistent_passes(self):
         with tempfile.TemporaryDirectory() as d:
             self.write(d, "win/hook_master.out", b"A"); self.doc(d, "win/G3_inject.json", [("hook_master.out", b"A")]); self.assertEqual(check_evidence_mix.judge(d)[0], 0)
-    def test_mixed_hash_fails(self):   # win-gates 의 hook 파일 + 다른 잡의 문서 = 정식 1회차 증상
+    def test_mixed_hash_fails(self):   # win-gates 의 hook 파일 + 다른 잡의 문서 = 정식 실행 증상
         with tempfile.TemporaryDirectory() as d:
             self.write(d, "win/hook_master.out", b"gates"); self.doc(d, "win/G3_inject.json", [("hook_master.out", b"nonhome")])
             rc, msg = check_evidence_mix.judge(d); self.assertEqual(rc, 1); self.assertIn("해시 불일치", msg)

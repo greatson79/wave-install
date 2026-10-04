@@ -3,7 +3,7 @@
   collect.py g1 --out DIR [--wave-home ~/.wave]            → DIR/G1_state.json (설치기 상태 파일 원문)
   collect.py g2 --out DIR --python PY --preflight PATH     → DIR/G2_preflight.json (preflight --json 원문, --fix 없음)
   collect.py claude-hash --out DIR/G6 --phase before|after → ~/.claude 트리 해시 (G6_claude_untouched.json 에 합산)
-  collect.py g3 --out DIR --manifest pack-manifest.json    → G3_inject.json (+ 훅 stdout·매니페스트 원본 복사, 펄스 결정 B: 매니페스트 일치 · 훅 stdout 부분열 포함 · .new 0)
+  collect.py g3 --out DIR --manifest pack-manifest.json    → G3_inject.json (+ 훅 stdout·매니페스트 원본 복사, 수집 계약: 매니페스트 일치 · 훅 stdout 부분열 포함 · .new 0)
   collect.py g4 --out DIR                                  → G4_boot.json (boot-last.json 의 ①~⑤ exit + cys status 좌석 생존 + 좌석 설정 폴더 온보딩·폴더 신뢰 키) """
 import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys
 
@@ -45,7 +45,7 @@ elif a.cmd == "g2":
         rt = home / ".wave/bin/runtime"
         dirs = [rt / "python", rt / "git/cmd", rt / "git/usr/bin", rt / "node"]
     dirs = [str(d) for d in dirs if d.is_dir()]
-    env = dict(os.environ, PATH=os.pathsep.join(dirs + [os.environ.get("PATH", "")]), PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # 윈 기본 cp1252 에서는 한글 출력이 UnicodeEncodeError → stdout 빈 값(16차 G2 공백 근인 추정)
+    env = dict(os.environ, PATH=os.pathsep.join(dirs + [os.environ.get("PATH", "")]), PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # 윈 기본 cp1252 에서는 한글 출력이 UnicodeEncodeError → stdout 빈 값(회귀 관측 G2 공백 근인 추정)
     (out / "G2_path.txt").write_text("runtime_dirs_prepended=%s\nPATH=%s\nuvx=%s\n" % (dirs, env["PATH"], shutil.which("uvx", path=env["PATH"])), encoding="utf-8")
     if os.name != "nt":
         (out / "G2_todo_files.txt").write_text(subprocess.run("ls -la ~/.cys/pack/round/*_TODO.md ~/.cys/pack/round 2>&1 | head -30; echo '--- pack.prev/round (init-pack 통째 교체에 밀린 곳):'; ls -la ~/.cys/pack.prev/round 2>&1 | head -30; echo '--- onboarding marker / mtimes:'; ls -la ~/.cys/.gui-onboarded 2>&1; cat ~/.cys/.gui-onboarded 2>&1 | head -3; stat -f '%Sm %N' -t '%H:%M:%S' ~/.cys/pack ~/.cys/pack.prev ~/.cys/pack/round ~/.cys/.pack-version 2>&1", shell=True, capture_output=True, text=True).stdout, encoding="utf-8")
@@ -104,7 +104,7 @@ elif a.cmd == "g4":
                    and str(s.get("role") or "").startswith(("master", "cso", "worker"))})
     forms = lambda c: dict.fromkeys([c, c.replace("\\", "/")] if os.name == "nt" else [c])
     trusted = lambda k: isinstance(proj.get(k), dict) and proj[k].get("hasTrustDialogAccepted") is True
-    #   + 같은 폴더 settings.json remoteControlAtStartup=true(주인님 지시 — 지인 원작은 false · Wave 만 true)
+    #   + 같은 폴더 settings.json remoteControlAtStartup=true(Wave 설정은 true)
     try:
         sj = json.loads((cfg.parent / "settings.json").read_text(encoding="utf-8")); sj = sj if isinstance(sj, dict) else {}
     except (OSError, ValueError):

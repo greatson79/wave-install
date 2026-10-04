@@ -6,7 +6,7 @@
 - [x] 설계 §7의 loopback fixture·PS5.1 runner·워크플로 추가.
 - [x] 정상·SHA 변조·bootstrap 404·전송 중단·자식 exit 7 fixture 검산.
 - [x] 로컬 서버 종료·포트 닫힘 검사.
-- [ ] 펄스가 가지 push 후 Windows CI 실측 PASS 확인.
+- [ ] 릴리스 담당자가 가지 push 후 Windows CI 실측 PASS 확인.
 
 적용 스킬: `using-git-worktrees`, `verification-before-completion`.
 원천: `output/WaveAI/프로젝트/WaveInstall/설계_짧은한줄_설치명령.md` §4·§7.
@@ -41,7 +41,7 @@ SHA 기대값은 고정 리터럴이며 `/corrupt`는 제공 payload만 변조�
   `Windows required; pwsh is not a PS5.1 substitute`로 차단됨.
 
 위 결과는 fixture 자체 검산이며 **Windows PS5.1 PASS 증거가 아니다**.
-Windows run URL·결과는 펄스 push 이후 별도 기록한다. 운영 HTTPS·실제 설치 인증도 이 fixture CI 범위 밖이다.
+Windows run URL·결과는 릴리스 담당자 push 이후 별도 기록한다. 운영 HTTPS·실제 설치 인증도 이 fixture CI 범위 밖이다.
 
 CI 원시 관찰과 판정은 `shortline-ps51-results.json` artifact에 남긴다.
 실패 시에도 이미 수집한 case별 종료값·명령·출력·서버 요청 이력을 보존한다.
@@ -63,7 +63,7 @@ fixture도 이 renderer를 사용하며, 완전한 원본 SHA를 고정한 다�
 ## 실제 릴리스 반영 책임과 순서
 
 - 담당: 릴리스 조립 담당자가 bootstrap을 최종 생성한 직후 renderer를 실행하고,
-  펄스가 두 자산의 URL·SHA 결속을 검수한 뒤 함께 발행한다.
+  릴리스 담당자가 두 자산의 URL·SHA 결속을 검수한 뒤 함께 발행한다.
 - 생성 위치: 기존 `scripts/make-release.sh`가 만든 출력 폴더의 **최종 `bootstrap.ps1` 바이트**.
   소스 bootstrap이나 SHA 자리표시자가 남은 파일로 stub을 생성하지 않는다.
 - 명령: `python3 scripts/render_win_start.py --bootstrap <출력폴더>/bootstrap.ps1 --url https://github.com/greatson79/wave-install/releases/download/<승인태그>/bootstrap.ps1 --output <출력폴더>/win-start.ps1`

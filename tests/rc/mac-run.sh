@@ -25,7 +25,7 @@ log "합성 claude 투입(S02 이하 결정론 단계용)"
 mkdir -p "$HOME/.local/bin"; [ -e "$HOME/.local/bin/claude" ] && mv "$HOME/.local/bin/claude" "$HOME/.local/bin/claude.real"
 mkdir -p "$HOME/.local/share/rc-fake"; cp "$HERE/fake_claude.py" "$HOME/.local/share/rc-fake/logic.py"
 cc -O0 -DLOGIC="\"$HOME/.local/share/rc-fake/logic.py\"" -o "$HOME/.local/bin/claude" "$HERE/claude_launcher.c"  # 네이티브 런처 — 프로세스 이름이 처음부터 claude
-for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(4차 run: cys boot 가 claude 를 못 찾아 60초 미확인)
+for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do grep -q 'local/bin' "$rcf" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rcf"; done  # 러너 계정 로그인 셸이 bash 라 좌석 셸이 .zshenv 를 읽지 않는다(회귀 관측 run: cys boot 가 claude 를 못 찾아 60초 미확인)
 
 log "B: 같은 한 줄 재실행"
 oneline "$EV/run.log"; echo $? > "$EV/exit"
@@ -64,7 +64,7 @@ def stamp(path):
 pathlib.Path(sys.argv[3]).write_text(json.dumps({"before": stamp(sys.argv[1]), "after": stamp(sys.argv[2])}))
 PY
 collect "$EV/G6"
-cp -R "$HOME/.wave/rc" "$EV/G6/rc-synthetic-logs" 2>/dev/null   # 19차: 재설치 ① 이 C43(uvx 없음)로 한 번 실패 — 그때의 좌석 PATH·프로세스 증거를 G6 에도 남긴다
+cp -R "$HOME/.wave/rc" "$EV/G6/rc-synthetic-logs" 2>/dev/null   # 회귀 관측: 재설치 ① 이 C43(uvx 없음)로 한 번 실패 — 그때의 좌석 PATH·프로세스 증거를 G6 에도 남긴다
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase after
 # 증거 없이 성공 처리 금지: 필수 증거가 하나라도 없으면 잡을 실패시킨다(판정은 gate.py 몫 — 여기선 존재만)
 miss=0; for f in G1_state.json G2_preflight.json G3_inject.json G4_boot.json G6/exit G6/install-state.json G6/attempt.json G6/G6_claude_untouched.json G6/G2_preflight.json G6/G3_inject.json G6/G4_boot.json; do [ -s "$EV/$f" ] || { log "증거 없음: $f"; miss=1; }; done

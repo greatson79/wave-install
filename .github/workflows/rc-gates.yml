@@ -315,7 +315,7 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   win-ctrlc:
-    # 측정 전용(관문 미산입): 윈도우에서 설치 중 도움 대기를 Ctrl+C 로 끝냈을 때의 종료값·상태 파일·남는 프로세스·도움 서버 close 호출 (노아 rc030-final major)
+    # 측정 전용(관문 미산입): 윈도우에서 설치 중 도움 대기를 Ctrl+C 로 끝냈을 때의 종료값·상태 파일·남는 프로세스·도움 서버 close 호출 (rc030-final 오류 재현)
     name: Windows Ctrl+C during the help wait (measurement only)
     needs: [cfg, assemble-win]
     runs-on: windows-latest
@@ -419,7 +419,7 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   win-noboot:
-    # rc4 상시 잡(테오 2303): 좌석 셋은 뜨지만 부트 점검(javis_bootstrap.py)을 건너뛰어 표지가 안 써지는 합성 Claude. 기대 = 설치기의 「세 칸 생존 · 확인 미완」 별도 종료값 + 진단 코드(tests/rc/rc4-expect.json 한 곳) · exit 1 이면 FAIL · 기대값 미정이면 FAIL(판정 보류를 통과로 치지 않는다)
+    # rc4 상시 잡: 좌석 셋은 뜨지만 부트 점검(javis_bootstrap.py)을 건너뛰어 표지가 안 써지는 합성 Claude. 기대 = 설치기의 「세 칸 생존 · 확인 미완」 별도 종료값 + 진단 코드(tests/rc/rc4-expect.json 한 곳) · exit 1 이면 FAIL · 기대값 미정이면 FAIL(판정 보류를 통과로 치지 않는다)
     name: Windows fake Claude that skips the boot check (expects the unconfirmed exit, never exit 1)
     needs: [cfg, assemble-win]
     runs-on: windows-latest
@@ -447,7 +447,7 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   win-nonhome-cwd:
-    # 회귀 감시(테오 2238 · 펄스 0105 안①): 설치기를 홈 아닌 폴더에서 시작해 재설치까지 해도 세 좌석(master·cso·worker)의 cwd 는 사용자 홈이어야 한다.
+    # 회귀 감시: 설치기를 홈 아닌 폴더에서 시작해 재설치까지 해도 세 좌석(master·cso·worker)의 cwd 는 사용자 홈이어야 한다.
     # 설치기 af6630a(앱·데몬·모든 cys 호출을 사용자 홈에서 시작)가 고친 것을 지킨다. 앱 쪽 근본수리(v0.3.1 복원 폴백)와 별개. 판정기·gate.py 입력 아님 · 이 잡의 실패는 진짜 실패.
     name: Windows install started from a non-home folder keeps the three seats in the user home
     needs: [cfg, assemble-win]
@@ -501,7 +501,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.cfg.outputs.gate_ref }}', path: gateref }
-      # 판정 입력은 이 여섯 잡의 증거뿐이다 — 같은 win/ 경로로 올리는 noboot·nonhome·ctrlc 증거를 pattern 으로 합치면 파일이 섞여 G3·G4 해시가 깨진다(정식 1회차 37138057562). 그 잡들의 증거는 각자 아티팩트로 남는다.
+      # 판정 입력은 이 여섯 잡의 증거뿐이다 — 같은 win/ 경로로 올리는 noboot·nonhome·ctrlc 증거를 pattern 으로 합치면 파일이 섞여 G3·G4 해시가 깨진다(정식 실행 37138057562). 그 잡들의 증거는 각자 아티팩트로 남는다.
       - name: Evidence of mac-gates (judge input)
         uses: actions/download-artifact@v4
         continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
@@ -546,7 +546,7 @@ jobs:
           mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
           python3 tests/rc/install_outcomes.py evidence --gate gateref/tools/gate/gate.py | tee "$GITHUB_STEP_SUMMARY"
           python3 tests/rc/install_outcomes.py evidence --gate gateref/tools/gate/gate.py --json > gate-result.json || true
-          # 한글·공백 계정 표는 매 RC 고정 항목(테오 1057) — 잡이 일찍 죽어 증거가 없어도 표를 항상 출력(미측정으로)한다
+          # 한글·공백 계정 표는 매 RC 고정 항목 — 잡이 일찍 죽어 증거가 없어도 표를 항상 출력(미측정으로)한다
           mkdir -p evidence-kr/common evidence-kr/win; cp -R evidence/common/. evidence-kr/common/ 2>/dev/null || true
           [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
           { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 tests/rc/install_outcomes.py evidence-kr --gate gateref/tools/gate/gate.py --platforms win --gates G1; } | tee -a "$GITHUB_STEP_SUMMARY" || true

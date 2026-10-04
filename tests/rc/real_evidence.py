@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""G9 실기 증거(real/*.json) — 설치기 종료값·fleet_state 를 반드시 담는다(테오 2337 승인). 판정기(gate.py)는 이 두 칸을 읽지 않으므로 이 도구가 만들 때·검사할 때 막는다.
+"""G9 실기 증거(real/*.json) — 설치기 종료값·fleet_state 를 반드시 담는다(실기 증거 계약). 판정기(gate.py)는 이 두 칸을 읽지 않으므로 이 도구가 만들 때·검사할 때 막는다.
   real_evidence.py make --os mac|win --exit N --seats master,cso,worker --login-approve N [--other N] --wave-home ~/.wave --out <real 폴더>
       → <real>/<os>.json + <real>/raw/<os>_install-state.json(원본 사본 · sha256 raw 로 묶음). 기록은 있는 그대로(종료값 2 면 2 로 남는다).
   real_evidence.py check <real 폴더>      → 실기 문서(os 필드)가 1개 이상 있고 모두 installer_exit(정수)==0 ∧ fleet_state 가 있고 alive_unconfirmed·unknown 이 아닐 때만 0 (아니면 1)"""

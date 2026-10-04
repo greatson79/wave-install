@@ -15,14 +15,14 @@
 ## 남은 출시 관문
 
 - 양 OS 깨끗한 러너와 실제 로그인 기기에서 자동 각성 검증.
-- 0217 정정: 설치기=팩 원본 SHA·.new0, 실제 hook stdout 판정=RC 러너.
+- 검증 책임 구분: 설치기=팩 원본 SHA·.new0, 실제 hook stdout 판정=RC 러너.
 - 재설치 소유 manifest 도입, 앱·pack 설치기 소유 파일만 제거하는 전체 왕복 검증.
 - 설치기는 injected_bytes=null과 RC 판정 사유를 기록한다. RC 런의 실제 주입 성공은 이 검증 범위 밖이다.
-- 독립 리뷰어 검수 전이며 배포 가능 판정 아님.
+- 독립 검토 전이며 배포 가능 판정 아님.
 
 출처(confidence: High): 로컬 bootstrap.sh/bootstrap.ps1·앱 src/pack.rs의 PACK_ALL 및 cys pack-manifest, cysjavis-pack/bin/javis_bootstrap.py의 .master-bootstrapped 계약.
 이식 참고: https://github.com/oogisoogi/jarvis-install/blob/main/bootstrap.sh (MIT, LICENSES/jarvis-install-MIT.txt 보존).
 
-## 0119 추가 발주 반영
+## 필수 역할 및 대기 시간
 
 확인 필수 역할은 master·cso·worker 3석이며 리뷰어는 기다리지 않는다. 각성 후 대기는 실제 경과시간 420초로 제한하고 명령 timeout도 남은 시간 안으로 제한한다. 구 2석 역할 메타데이터를 갱신했다.

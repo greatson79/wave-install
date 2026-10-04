@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""홈 아닌 폴더에서 설치기를 시작해도 세 좌석(master·cso·worker)의 cwd 가 사용자 홈인지 단정한다(rc4 회귀 감시 · 테오 2238 / 펄스 0105).
+"""홈 아닌 폴더에서 설치기를 시작해도 세 좌석(master·cso·worker)의 cwd 가 사용자 홈인지 단정한다(rc4 회귀 감시).
   check_seat_cwd.py <홈 경로 | identity.json(profile)> <cys status --json 증거> [더 많은 증거 …]
 종료값 0 = 모든 증거에서 살아 있는 세 역할 좌석 cwd == 홈 · 1 = 하나라도 다르거나 좌석이 없거나 증거 없음."""
 import json, os, sys

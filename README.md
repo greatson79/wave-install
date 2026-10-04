@@ -24,7 +24,7 @@ Wave Terminal은 원개발자 idoforgod의 [`cys-terminal`](https://github.com/i
 
 ## 운영체제 안내
 
-현재 최신 공개 설치기 릴리스는 `v0.3.0-rc.4`입니다. Wave Terminal 앱 0.2.0 설치 자산(macOS arm64 DMG · Windows setup.exe)은 다음 시험판 `v0.3.0-rc.5` 릴리스에 함께 올리며 그 주소에 연결합니다. macOS DMG는 CI 빌드 앱(3af28f2)을 ad-hoc 서명으로 다시 봉인한 재패키징이고(공증 없음), 별도 x64 빌드가 없어 `macos_x64` 항목도 같은 arm64 DMG를 가리킵니다.
+현재 최신 공개 설치기 릴리스는 `v0.3.0-rc.4`입니다. Wave Terminal 앱 0.2.0 설치 자산(macOS arm64 DMG · Windows setup.exe)은 다음 시험판 `v0.3.0-rc.5` 릴리스에 함께 올리며 그 주소에 연결합니다. macOS DMG는 CI 빌드 앱(f82eb81)을 ad-hoc 서명으로 다시 봉인한 재패키징이고(공증 없음), 별도 x64 빌드가 없어 `macos_x64` 항목도 같은 arm64 DMG를 가리킵니다.
 
 ## 설치
 
@@ -129,7 +129,7 @@ PowerShell 테스트는 호스트의 PowerShell 실행체로 수행하며 Window
 
 Windows 설치기는 핀 3값, `[1/10]`~`[10/10]` 출력, 검증 뒤 웹 표식 제거,
 12범주 J-코드, fail-open `/api/progress` 보고, 600초 완료 표지와 자동 이어하기를 사용합니다.
-Windows 핀은 앱 0.2.0 CI 빌드(87d206b)로 확정했으며, 바이트 수와 SHA256 은 `steps.json` 의 핀이 정본입니다.
+Windows 핀은 앱 0.2.0 CI 빌드(f82eb81)로 확정했으며, 바이트 수와 SHA256 은 `steps.json` 의 핀이 정본입니다.
 공개 릴리스 대조와 실제 러너 결과는 아래 검증 기록에 구분해 남깁니다.
 [핀 갱신·재실행·검증 절차](docs/windows-bootstrap.md)와 [진단 코드](docs/help-codes.md)를 참고하세요.
 

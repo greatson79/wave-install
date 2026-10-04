@@ -1,0 +1,8 @@
+{
+  "release": "v0.3.0-rc.4",
+  "installer": "7eef0d20a52504e774fed28b05c6b91938b7b1cb",
+  "runner": "d529d35359d3d73b20bef992299b5f86881d4506",
+  "mac": "3af28f20d6573b376a388f34af0e5992a0bf41fc",
+  "win": "87d206bc982301eac8142a6d1f4ceb5fe891c95a",
+  "source": "rc4-official-37139219493: installer_binding.json, G7b_schedule_freeze.json; runner d529d35 (rc.4 정식 러너). 각 입력의 기준 커밋 및 조상 제외; 기준점..입력 전체 이력 검사."
+}

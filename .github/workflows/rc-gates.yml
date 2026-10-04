@@ -61,6 +61,54 @@ jobs:
               assert v and "\n" not in str(v), k
               print("%s=%s" % (k, v))
           PY
+  commit-emails:
+    name: New input commits must use the release author and committer email
+    needs: cfg
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Record the actual source commits of both app build runs
+        id: heads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_REPO: ${{ needs.cfg.outputs.app_repo }}
+          MAC_RUN: ${{ needs.cfg.outputs.mac_run_id }}
+          WIN_RUN: ${{ needs.cfg.outputs.win_run_id }}
+        run: |
+          gh run view "$MAC_RUN" --repo "$APP_REPO" --json headSha > mac-run.json
+          gh run view "$WIN_RUN" --repo "$APP_REPO" --json headSha > win-run.json
+          python3 - <<'PYHEAD' >> "$GITHUB_OUTPUT"
+          import json, re
+          for osn in ('mac', 'win'):
+              head = json.load(open(osn + '-run.json'))['headSha']
+              assert re.fullmatch('[0-9a-f]{40}', head), head
+              print(osn + '=' + head)
+          PYHEAD
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.cfg.outputs.app_repo }}
+          ref: ${{ steps.heads.outputs.mac }}
+          path: app-source
+          fetch-depth: 0
+      - name: Fetch the exact Windows build commit into the same full history
+        env:
+          WIN_HEAD: ${{ steps.heads.outputs.win }}
+        run: git -C app-source fetch origin "$WIN_HEAD"
+      - name: Check installer, runner and both app input histories since rc.4
+        env:
+          MAC_HEAD: ${{ steps.heads.outputs.mac }}
+          WIN_HEAD: ${{ steps.heads.outputs.win }}
+        run: python3 tests/rc/check_commit_emails.py --repo . --app-repo app-source --mac-head "$MAC_HEAD" --win-head "$WIN_HEAD" --out commit-emails.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rc-commit-emails-${{ github.run_id }}
+          path: |
+            commit-emails.txt
+            mac-run.json
+            win-run.json
+          if-no-files-found: error
   mac-gates:
     needs: cfg
     name: macOS G1-CI G2 G3 G4-CI G6 G7
@@ -446,7 +494,7 @@ jobs:
           if-no-files-found: error
   judge:
     name: gate.py table
-    needs: [cfg, mac-gates, mac-upgrade, mac-noboot, win-gates, win-gates-kr, win-upgrade, win-noboot, win-nonhome-cwd, freeze]   # win-ctrlc 는 측정 전용이라 제외
+    needs: [cfg, commit-emails, mac-gates, mac-upgrade, mac-noboot, win-gates, win-gates-kr, win-upgrade, win-noboot, win-nonhome-cwd, freeze]   # win-ctrlc 는 측정 전용이라 제외
     if: always()
     runs-on: ubuntu-latest
     steps:

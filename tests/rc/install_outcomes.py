@@ -67,7 +67,8 @@ def _check_rc5_noboot(base, doc, note):
             return 'FAIL', note + ' · 원문 cys status 역할 수 불일치: ' + role
         seat = matches[0]
         if seat.get('exited') is not False or seat.get('agent_alive') is not True or type(seat.get('launch_complete')) is not bool or seat['launch_complete'] is not True:
-            return 'FAIL', note + ' · 원문 cys status 역할 신호 불일치: ' + role + ' ' + repr(seat)
+            signal = {key: seat.get(key) for key in ('role','exited','agent_alive','launch_complete')}
+            return 'FAIL', note + ' · 원문 cys status 역할 신호 불일치: ' + repr(signal)
     try:
         install_log = (base / 'install.log').read_text(encoding='utf-8-sig')
     except (OSError, UnicodeError) as e:

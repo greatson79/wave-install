@@ -81,7 +81,10 @@ class Outcomes(unittest.TestCase):
             (base/'install.log').write_text('prefix '+RC5_BOOT_NOTICE+' suffix')
             self.assertIsNone(_check_rc5_noboot(base,doc,'test'))
             (base/'cys-status.json').write_text(json.dumps(dict(status,surfaces=[dict(x,launch_complete=False) if x['role']=='worker' else x for x in status['surfaces']])))
-            self.assertIn('원문 cys status 역할 신호 불일치',_check_rc5_noboot(base,doc,'test')[1])
+            reason=_check_rc5_noboot(base,doc,'test')[1]
+            self.assertIn('원문 cys status 역할 신호 불일치',reason)
+            self.assertIn("'role': 'worker'",reason);self.assertIn("'launch_complete': False",reason)
+            self.assertNotIn('cwd',reason)
             (base/'cys-status.json').write_bytes(raw.read_bytes());doc['steps']['S08_VERIFY']['observed']['master_awake']='confirmed'
             self.assertIn('S08_VERIFY',_check_rc5_noboot(base,doc,'test')[1])
     def test_real_mac_noboot(self):

@@ -56,7 +56,13 @@ if a.os == "win":
                     "--url", a.base + "bootstrap.ps1", "--output", str(stub)], check=True)
     with open(out / "SHA256SUMS", "a", encoding="utf-8") as f:
         f.write("%s  %s\n" % (hashlib.sha256(stub.read_bytes()).hexdigest(), stub.name))
+# 수강생 재설치 명령 = 게시된 steps.json reinstall.command(기계 계약) — 릴리스 주소만 시험 서버로. 맥 G6 가 이 줄을 그대로 친다.
+_cmd = steps["reinstall"]["command"]["macos" if a.os == "mac" else "windows"]
+_pub = re.findall(r"https://github\.com/" + re.escape(steps["release"]["repository"]) + r"/releases/download/[^/\"' ]+/", _cmd)
+if not _pub: sys.exit("steps.json reinstall.command 에서 릴리스 주소를 찾지 못함")
+reinstall = _cmd
+for _p in set(_pub): reinstall = reinstall.replace(_p, a.base)
 (out / "rc-release.json").write_text(json.dumps({"os": a.os, "installer_version": ver, "asset": name, "asset_sha256": sha, "cdhash": a.cdhash,
-                                                 "one_line": one, "contract_line": line}, ensure_ascii=False, indent=1), encoding="utf-8")
+                                                 "one_line": one, "contract_line": line, "reinstall_line": reinstall}, ensure_ascii=False, indent=1), encoding="utf-8")
 shutil.rmtree(stage)
 print(one)

@@ -4,6 +4,7 @@
 set -u
 RCJ="$1"; CA="$2"; EV="$3/mac"; HERE="$(cd "$(dirname "$0")" && pwd)"; mkdir -p "$EV/G6" "$EV/phaseA"
 ONE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["one_line"])' "$RCJ")"
+REINSTALL="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["reinstall_line"])' "$RCJ")"  # 수강생이 재설치 때 치는 게시 명령(steps.json reinstall.command · 주소만 시험 서버)
 export CURL_CA_BUNDLE="$CA" WAVE_NO_PROGRESS=1
 log() { echo "[rc-mac] $*"; }
 # 고정 한 줄 그대로 실행 — 서브셸에서 bash -c (주소만 시험 서버로 치환된 README 줄)
@@ -43,7 +44,7 @@ python3 "$HERE/collect.py" g1 --out "$EV"
 collect "$EV"
 cp -R "$HOME/.wave/rc" "$EV/rc-synthetic-logs" 2>/dev/null
 
-log "G6: ~/.claude 기준선 → 재설치(--reinstall) → 재측정"
+log "G6: ~/.claude 기준선 → 재설치(게시된 재설치 명령) → 재측정"
 python3 "$HERE/collect.py" claude-hash --out "$EV/G6" --phase before
 python3 - "$HOME/.wave/install-state.json" "$EV/G6/before-state.json" <<'PY'
 import pathlib, shutil, sys
@@ -51,7 +52,7 @@ source = pathlib.Path(sys.argv[1])
 if source.is_file(): shutil.copy2(source, sys.argv[2])
 PY
 bash "$HERE/reset-fleet.sh" "$EV/G6/reset-fail.txt" || { log "G6 재설치 전 정지 실패"; exit 1; }
-python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && bash \"\$HOME/install-wave.sh\" --reinstall"; echo $? > "$EV/G6/exit"
+python3 "$HERE/run_to.py" 1500 "$EV/G6/run.log" -- bash -c "cd \"\$HOME\" && $REINSTALL"; echo $? > "$EV/G6/exit"
 cp "$HOME/.wave/install-state.json" "$EV/G6/install-state.json" 2>/dev/null || log "G6 설치 상태 수집 실패"
 bash "$HERE/collect-fleet.sh" "$EV/G6"   # 설치기가 쓴 시도·좌석 기록(실패한 재설치의 마지막 상태 포함)
 python3 - "$EV/G6/before-state.json" "$EV/G6/install-state.json" "$EV/G6/attempt.json" <<'PY'

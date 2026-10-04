@@ -60,6 +60,12 @@ class GetPageInstall(unittest.TestCase):
         self.assertIn("archive/refs/tags/v0.3.0-rc.5.zip", index)
         self.assertIn("cd ~/Downloads/wave-install-0.3.0-rc.5", index)
 
+    def test_windows_reinstall_is_the_rc5_tag_long_line_with_reinstall_flag(self):
+        win = self.steps["reinstall"]["command"]["windows"]
+        self.assertIn("releases/download/v0.3.0-rc.5/bootstrap.ps1", win)
+        self.assertIn("-Reinstall", win)
+        self.assertNotIn("download/v0.3.0/", win)
+
     def test_readme_shows_the_same_lines(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(self.contract["mac"], readme); self.assertIn(self.contract["win"], readme)

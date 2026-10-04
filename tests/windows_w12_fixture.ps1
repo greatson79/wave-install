@@ -21,6 +21,11 @@ if($env:CYS_PACK_DIR -ne 'sentinel-parent-pack'){throw 'pack environment leaked'
 if(Test-Path ($target+'.new')){throw 'legacy sidecar left behind'}
 if(-not $StepObserved.directive_bytes_match -or $StepObserved.legacy_backed_up.Count -ne 1){throw 'S06 migration assertion'}
 $recorded=(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
+$script:RunStartedUnix=[long][Math]::Floor(($recorded.surfaces | Measure-Object created_at -Minimum).Minimum)
+New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/started-at'),[string]$script:RunStartedUnix)
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/master-ref'),[string](($recorded.surfaces | Where-Object {$_.role -eq 'master'}).surface_ref))
+
 $live=[pscustomobject]@{surfaces=@(($recorded.surfaces | Where-Object {$_.role -eq 'master'}),($recorded.surfaces | Where-Object {$_.role -eq 'worker'}))}
 $marker=Join-Path $env:USERPROFILE '.cys/.master-bootstrapped'
 '{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker
@@ -59,7 +64,7 @@ Write-Host 'PASS CSO required/alive; reviewer excluded; 420-second remaining bud
 function Start-WaveApp { }
 function Seed-WaveClaudeTrust { }  # 신뢰 사전 기록은 windows_trust_seed_fixture.ps1 이 따로 본다(여기서 좌석 설정 파일을 쓰지 않게)
 $HelpRules=[object[]]([regex]::Match((Get-Content (Join-Path $PWD 'bootstrap.ps1') -Raw),"(?s)\`$HelpRulesJson = @'\r?\n(.*?)\r?\n'@").Groups[1].Value|ConvertFrom-Json)
-function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){ return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout="cys 9.9.9`n"} }
+function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){ return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout=$(if($Arguments[0] -eq 'launch-agent'){(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_master_launch.json') -Raw | ConvertFrom-Json).response}else{"cys 9.9.9`n"})} }
 $onboarded=Join-Path $env:USERPROFILE '.cys/.gui-onboarded'
 $clock=[Diagnostics.Stopwatch]::StartNew()
 $blocked=$false; try {Wait-GuiOnboarded $clock 300} catch {$blocked=($_.Exception.Message -match 'W-ONBOARD' -and (Get-JCode $_.Exception.Message) -eq 'J-VER-02')}
@@ -95,7 +100,7 @@ function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:launched){return $live
 function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
  $script:calls += ($Arguments -join ' ')
  if($Arguments[0] -eq 'launch-agent'){$script:launched=$true;'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker}
- return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout="cys 9.9.9`n"}
+ return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout=$(if($Arguments[0] -eq 'launch-agent'){(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_master_launch.json') -Raw | ConvertFrom-Json).response}else{"cys 9.9.9`n"})}
 }
 Run-S07
 $li=[array]::FindIndex([string[]]$script:calls,[Predicate[string]]{param($c) $c -like 'launch-agent --role master*'})
@@ -116,7 +121,7 @@ function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:declSent){return $live
 function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
  $script:calls += ($Arguments -join ' ')
  if($Arguments[0] -eq 'send' -and $script:sendExit -eq 0){$script:declSent=$true;'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker}
- return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout="cys 9.9.9`n"}
+ return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout=$(if($Arguments[0] -eq 'launch-agent'){(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_master_launch.json') -Raw | ConvertFrom-Json).response}else{"cys 9.9.9`n"})}
 }
 $script:calls=@(); $script:sendExit=0
 Run-S07

@@ -415,6 +415,11 @@ Load-Config
 Init-State
 New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.cys')|Out-Null
 $script:fixtureStatus=(Get-Content (Join-Path $env:TEST_ROOT 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
+$script:RunStartedUnix=[long][Math]::Floor(($fixtureStatus.surfaces | Measure-Object created_at -Minimum).Minimum)
+New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/started-at'),[string]$script:RunStartedUnix)
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/master-ref'),[string](($fixtureStatus.surfaces | Where-Object {$_.role -eq 'master'}).surface_ref))
+
 $script:appCalls=0
 function Start-WaveApp { $script:appCalls++ }
 function Invoke-BoundedCheck {

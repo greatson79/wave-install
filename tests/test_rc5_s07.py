@@ -20,6 +20,7 @@ class SignalCompatibility(S07Base):
         cli.write_text(cli.read_text().replace('case "$1" in', 'case "$1" in\n  list) cat "$D/list.txt" ;;'))
         r=self.bash('capture_s07_evidence 2; echo RC=$?')
         self.assertIn('RC=0',r.stdout,r.stderr)
+        self.assertIn('이 폴더는 이 컴퓨터에만 저장됩니다.',r.stderr)
         dirs=list((self.wave/'fleet').glob('failure-*'))
         self.assertEqual(len(dirs),1)
         self.assertEqual((dirs[0]/'list.txt').read_text(),recorded_list)

@@ -1,9 +1,9 @@
 {
   "provenance": {
-    "command": "<HOME>/cys-workspace/runtime/.cys/wave-terminal-rc5-app/target/debug/cys status --json",
+    "command": "wave-terminal-rc5-app/target/debug/cys status --json",
     "recorded_at": "2026-10-04T05:54:31.215826+00:00",
     "binary": "c1c4969f969ea32c7cf4c74db30311943232611e (build before commit; base build_id 87d206bc9823)",
-    "source": "<HOME>/Desktop/Ai_works/개발본부/_round/rc5/녹취_status_launch_complete/before.json",
+    "source": "rc5/녹취_status_launch_complete/before.json",
     "stdout_sha256": "e3c2fbff071722c89113fcfc74c0b8f27a980227386c9fde693335bf23108e3d",
     "exit_code": 0
   },

@@ -1,9 +1,9 @@
 {
   "provenance": {
-    "command": "<HOME>/cys-workspace/runtime/.cys/wave-terminal-rc5-app/target/debug/cys status --json",
+    "command": "wave-terminal-rc5-app/target/debug/cys status --json",
     "recorded_at": "2026-10-04T06:05:46.131824+00:00",
     "binary": "c1c4969f969ea32c7cf4c74db30311943232611e (existing built binary; build_id 87d206bc9823)",
-    "source": "<HOME>/Desktop/Ai_works/개발본부/_round/rc5/녹취_status_three_roles/partial-status.json",
+    "source": "rc5/녹취_status_three_roles/partial-status.json",
     "stdout_sha256": "ded724656cd283f6e4de1e426597a43d97f29a5eac51d1041031213d440acdf9",
     "exit_code": 0,
     "isolation": "new /tmp HOME and socket; actual launch-agent with fake Claude; no real model call"

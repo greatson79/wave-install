@@ -9,7 +9,8 @@ New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.cys') | Out-Nu
 $raw=[IO.File]::ReadAllText((Join-Path $PWD 'tests/fixtures/real_cys/win_status_three_seats.json'))
 $old=($raw | ConvertFrom-Json).response
 $script:AwakeningStartedAt=$null
-function Write-Log {}
+$script:LogLines=@()
+function Write-Log([string]$Message){$script:LogLines += $Message}
 if($Mode -eq 'old'){
   $ref=($old.surfaces | Where-Object {$_.role -eq 'master'} | Select-Object -First 1).surface_ref
   @{surface_ref=$ref;orchestra_check='exit 0'} | ConvertTo-Json | Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped')
@@ -30,6 +31,7 @@ if($Mode -eq 'old'){
     return [pscustomobject]@{stdout=($old | ConvertTo-Json -Depth 30);stderr='';exit_code=0;timed_out=$false}
   }
   Save-S07Evidence 2
+  if($script:LogLines -notcontains '이 폴더는 이 컴퓨터에만 저장됩니다.'){throw 'local evidence notice missing'}
   $dir=(Get-ChildItem (Join-Path $WaveHome 'fleet') -Directory)[0].FullName
   $r=Get-Content (Join-Path $dir 'result.json') -Raw | ConvertFrom-Json
   $roles=@(Get-Content (Join-Path $dir 'roles.json') -Raw | ConvertFrom-Json)
@@ -42,6 +44,11 @@ if($Mode -eq 'old'){
 }
 if($Mode -eq 'signals'){
   $ready=(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
+$script:RunStartedUnix=[long][Math]::Floor(($ready.surfaces | Measure-Object created_at -Minimum).Minimum)
+New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/started-at'),[string]$script:RunStartedUnix)
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/master-ref'),[string](($ready.surfaces | Where-Object {$_.role -eq 'master'}).surface_ref))
+
   $partial=(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_partial_status.json') -Raw | ConvertFrom-Json).response
   if(-not(Test-AwakenedFleet $ready)){throw 'ready three-role recording rejected without marker'}
   if(Test-AwakenedFleet $partial){throw 'partial recording accepted'}

@@ -1155,6 +1155,7 @@ except (OSError, ValueError, KeyError, TypeError):
 (folder/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
 PY_EVIDENCE
   log "S07 비통과 시점 증거: $dir (설치 종료값 $original_rc)"
+  log "이 폴더는 이 컴퓨터에만 저장됩니다."
   return 0
 )
 

@@ -45,6 +45,7 @@ $ProgressWarned = $false
 $CurrentStep = '1/10'
 $DiagnosticWritten = $false
 $AwakeningStartedAt = $null
+$RunStartedUnix = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $GatePausedMs = 0         # 사람이 고르는 첫 실행 확인 창이 떠 있던 시간 — 각성 대기 예산(420초)에서 뺀다
 $GateVisible = $false     # 이번 확인 때 확인 창이 보였는가(status 에는 관문 표시가 없어 화면을 읽는다)
 $AliveUnconfirmed = $false  # 상한 도달 시 좌석이 살아 있음 — 실패가 아니라 종료값 2
@@ -930,16 +931,32 @@ function Get-LiveFleet([int]$TimeoutMs = 5000) {
   return ($result.stdout | ConvertFrom-Json)
 }
 
-function Test-AwakenedFleet([object]$Status) {
-  $live = @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true })
-  $master = @($live | Where-Object { $_.role -eq 'master' })
-  $children = @($live | Where-Object { ([string]$_.role) -match '^worker(-[A-Za-z0-9_-]+)?$' })
-  $cso = @($live | Where-Object { $_.role -eq 'cso' })
-  if ($master.Count -lt 1 -or $children.Count -lt 1 -or $cso.Count -lt 1) { return $false }
-  # 표지는 관측값일 뿐이다. 같은 살아 있는 좌석의 명시적 bool true 만 인정한다.
-  return (@($master | Where-Object { (Get-SeatLaunchComplete $_) -eq $true }).Count -gt 0 -and
-          @($children | Where-Object { (Get-SeatLaunchComplete $_) -eq $true }).Count -gt 0 -and
-          @($cso | Where-Object { (Get-SeatLaunchComplete $_) -eq $true }).Count -gt 0)
+function Test-LiveSeat([object]$Seat) {
+  $exited = Get-StateField $Seat 'exited'
+  $alive = Get-StateField $Seat 'agent_alive'
+  return ($exited -is [bool] -and $alive -is [bool] -and -not $exited -and $alive)
+}
+
+function Test-SeatCreatedSince([object]$Seat, [double]$Since) {
+  $created = Get-StateField $Seat 'created_at'
+  return (($created -is [int] -or $created -is [long] -or $created -is [double]) -and $created -ge $Since)
+}
+
+function Test-AwakenedFleet([object]$Status, [string]$MasterRef = '', [object]$Since = $null) {
+  # S07이 기록한 시각·좌석을 S08도 사용한다. 기록이 없거나 손상되면 미확인이다.
+  if (-not $MasterRef -or $null -eq $Since) {
+    try {
+      $MasterRef = [IO.File]::ReadAllText((Join-Path $WaveHome 'fleet/master-ref')).Trim()
+      $Since = [long]([IO.File]::ReadAllText((Join-Path $WaveHome 'fleet/started-at')).Trim())
+    } catch { return $false }
+  }
+  if ($MasterRef -notmatch '^surface:[0-9]+$' -or
+      -not ($Since -is [int] -or $Since -is [long] -or $Since -is [double])) { return $false }
+  $live = @((Get-StateField $Status 'surfaces') | Where-Object { (Test-LiveSeat $_) -and (Get-SeatLaunchComplete $_) -eq $true })
+  $master = @($live | Where-Object { (Get-StateField $_ 'role') -ceq 'master' -and (Get-StateField $_ 'surface_ref') -ceq $MasterRef })
+  $children = @($live | Where-Object { ([string](Get-StateField $_ 'role')) -cmatch '^worker(-[A-Za-z0-9_-]+)?$' -and (Test-SeatCreatedSince $_ $Since) })
+  $cso = @($live | Where-Object { (Get-StateField $_ 'role') -ceq 'cso' -and (Test-SeatCreatedSince $_ $Since) })
+  return ($master.Count -gt 0 -and $children.Count -gt 0 -and $cso.Count -gt 0)
 }
 
 function Get-AwakeningBudgetMs([long]$ElapsedMs, [int]$LimitMs = 5000) {
@@ -1176,31 +1193,43 @@ function Run-S07 {
   Wait-GuiOnboarded $clock
   Seed-WaveClaudeTrust
   $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)
-  if (-not (Test-AwakenedFleet $status)) {
-    $masters = @($status.surfaces | Where-Object { $_.role -eq 'master' -and $_.exited -eq $false })
-    $fleetDir = Join-Path $WaveHome 'fleet'
-    $startedPath = Join-Path $fleetDir 'started-at'
-    $declaredPath = Join-Path $fleetDir 'declared'
-    if ($masters.Count -eq 0) {
-      $script:AwakeningStartedAt = [DateTime]::UtcNow
-      # 시작 시각은 launch-agent 전에 기록한다 — 상한에 걸려도 재실행이 그 좌석에 선언을 다시 보내 복구한다.
-      New-Item -ItemType Directory -Force -Path $fleetDir | Out-Null
+  $masters = @((Get-StateField $status 'surfaces') | Where-Object { (Get-StateField $_ 'role') -ceq 'master' -and (Get-StateField $_ 'exited') -is [bool] -and (Get-StateField $_ 'exited') -eq $false })
+  $fleetDir = Join-Path $WaveHome 'fleet'
+  $startedPath = Join-Path $fleetDir 'started-at'
+  $refPath = Join-Path $fleetDir 'master-ref'
+  $declaredPath = Join-Path $fleetDir 'declared'
+  New-Item -ItemType Directory -Force -Path $fleetDir | Out-Null
+  $runStart = Get-Variable RunStartedUnix -ValueOnly -ErrorAction SilentlyContinue
+  if ($null -eq $runStart) { $runStart = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
+  $since = $runStart
+  if ($masters.Count -eq 0) {
+    Remove-Item -LiteralPath $declaredPath, $refPath -Force -ErrorAction SilentlyContinue
+    [IO.File]::WriteAllText($startedPath, [string]$since)
+    $script:AwakeningStartedAt = [DateTimeOffset]::FromUnixTimeSeconds($since).UtcDateTime
+    $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
+    if (-not $created.timed_out -and $created.exit_code -eq 2) { throw '좌석은 열려 있습니다 — Wave 창에서 입력을 멈추고 같은 설치 명령을 다시 실행해 주세요' }
+    if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
+    $masterRef = $created.stdout.Trim()
+    if ($masterRef -notmatch '^surface:[0-9]+$') { throw 'master 좌석 번호 확인 실패' }
+    [IO.File]::WriteAllText($refPath, $masterRef)
+    Send-MasterDeclaration $clock $declaredPath
+  } else {
+    $savedSince = $null; $savedRef = ''
+    try { $savedSince = [long]([IO.File]::ReadAllText($startedPath).Trim()) } catch { }
+    try { $savedRef = [IO.File]::ReadAllText($refPath).Trim() } catch { }
+    $masterRef = [string](Get-StateField $masters[0] 'surface_ref')
+    if ($masters.Count -ne 1 -or $masterRef -notmatch '^surface:[0-9]+$') { throw '기존 master가 둘 이상이거나 좌석 번호를 확인하지 못했습니다' }
+    if ($null -ne $savedSince -and ($savedRef -eq '' -or $savedRef -ceq $masterRef) -and (Test-SeatCreatedSince $masters[0] $savedSince)) {
+      $since = $savedSince
+    } elseif (Test-SeatCreatedSince $masters[0] $runStart) {
       Remove-Item -LiteralPath $declaredPath -Force -ErrorAction SilentlyContinue
-      [IO.File]::WriteAllText($startedPath, [string]([DateTimeOffset]$script:AwakeningStartedAt).ToUnixTimeSeconds())
-      # 앱 계약: launch-agent 가 agent 정보를 기록하고 MASTER 지침을 주입한다. 준비 표지·주입까지 기다리므로 상한 120초.
-      $created = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('launch-agent', '--role', 'master', '--agent', 'claude', '--cwd', ('"' + $env:USERPROFILE + '"')) 'master-create' (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds 120000)
-      if (-not $created.timed_out -and $created.exit_code -eq 2) { throw '좌석은 열려 있습니다 — Wave 창에서 입력을 멈추고 같은 설치 명령을 다시 실행해 주세요' }
-      if ($created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패' }
+    } else { throw '기존 master가 살아 있습니다(이 설치가 만든 좌석이 아님). 중복 생성 없이 설치를 중단합니다.' }
+    [IO.File]::WriteAllText($startedPath, [string]$since)
+    [IO.File]::WriteAllText($refPath, $masterRef)
+    $script:AwakeningStartedAt = [DateTimeOffset]::FromUnixTimeSeconds($since).UtcDateTime
+    if (-not (Test-AwakenedFleet $status $masterRef $since)) {
+      Write-Log '세 좌석의 지침 완료가 아직 확인되지 않아 master 에 선언을 한 번 다시 보냅니다.'
       Send-MasterDeclaration $clock $declaredPath
-    } elseif ($masters.Count -eq 1 -and (Test-Path -LiteralPath $startedPath -PathType Leaf)) {
-      # 재실행 복구(W-DECLARE·launch-agent 상한·부트 스크립트를 건너뛴 master): 이 설치가 시작한 뒤 생긴 master 인데
-      # 세 역할의 지침 완료가 아직 미확인이면(선언 전달 기록이 있어도) 한 번 다시 보낸다.
-      $since = [long]([IO.File]::ReadAllText($startedPath).Trim())
-      if ($masters[0].created_at -ge $since) {
-        $script:AwakeningStartedAt = [DateTimeOffset]::FromUnixTimeSeconds($since).UtcDateTime
-        Write-Log '세 좌석의 지침 완료가 아직 확인되지 않아 master 에 선언을 한 번 다시 보냅니다.'
-        Send-MasterDeclaration $clock $declaredPath
-      }
     }
   }
   $lastReportMs = $clock.ElapsedMilliseconds
@@ -1227,7 +1256,7 @@ function Run-S07 {
 # 좌석 부족·사망은 실패(1). 옛 앱의 launch_complete 누락은 미확인(2)이며 표지가 대신 통과시키지 않는다.
 function Get-LiveRoleSeats([object]$Status) {
   if ($null -eq $Status) { return @() }
-  return @($Status.surfaces | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and ([string]$_.role) -match '^(master|cso|worker)' } |
+  return @((Get-StateField $Status 'surfaces') | Where-Object { (Test-LiveSeat $_) -and ([string](Get-StateField $_ 'role')) -cmatch '^(master|cso|worker(-[A-Za-z0-9_-]+)?)$' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique)
 }
 
@@ -1240,9 +1269,9 @@ function Get-SeatLaunchComplete([object]$Seat) {
 
 function Get-LaunchCompleteObserved([object]$Status) {
   if ($null -eq $Status) { return $null }
-  $with = @($Status.surfaces | Where-Object { $null -ne (Get-SeatLaunchComplete $_) })
+  $with = @((Get-StateField $Status 'surfaces') | Where-Object { $null -ne (Get-SeatLaunchComplete $_) })
   if ($with.Count -eq 0) { return $null }
-  return @($with | Where-Object { $_.exited -eq $false -and $_.agent_alive -eq $true -and (Get-SeatLaunchComplete $_) -eq $true -and ([string]$_.role) -match '^(master|cso|worker)(-|$)' } |
+  return @($with | Where-Object { (Test-LiveSeat $_) -and (Get-SeatLaunchComplete $_) -eq $true -and ([string](Get-StateField $_ 'role')) -cmatch '^(master|cso|worker(-[A-Za-z0-9_-]+)?)$' } |
     ForEach-Object { ([string]$_.role) -replace '-.*$', '' } | Sort-Object -Unique).Count
 }
 
@@ -1534,6 +1563,7 @@ function Save-S07Evidence([int]$InstallerExitCode) {
     [IO.File]::WriteAllText((Join-Path $dir 'roles.json'), (ConvertTo-Json -InputObject $roles -Depth 8))
     [IO.File]::WriteAllText((Join-Path $dir 'result.json'), ($result | ConvertTo-Json -Depth 8))
     Write-Log "S07 비통과 시점 증거: $dir (설치 종료값 $InstallerExitCode)"
+    Write-Log '이 폴더는 이 컴퓨터에만 저장됩니다.'
   } catch { }  # 원래 예외·종료값 보존
 }
 

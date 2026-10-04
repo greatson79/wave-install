@@ -48,11 +48,22 @@ class WorkflowTests(unittest.TestCase):
                     step['run'] = step['run'].replace('$env:PWSH = (Get-Command powershell).Source\n', '')
         mutate('unpin native PowerShell suite', unpin_native_test_suite, '5.1 suite must pin PWSH')
         mutate('write token', lambda w: w.update(permissions={'contents': 'write'}), 'read-only token')
+        def one_line_step(w):
+            return next(s for s in w['jobs']['bootstrap-contract']['steps'] if 'one-line command' in s.get('name', ''))
+        mutate('one line from README', lambda w: one_line_step(w).update(run=one_line_step(w)['run'].replace('scripts/ci/install-lines.json', 'README.md')), 'machine contract')
+        mutate('README prose lookup', lambda w: one_line_step(w).update(run=one_line_step(w)['run'] + '\nGet-Content README.md'), 'README prose')
         def unguard_pin(w):
             for s in w['jobs']['bootstrap-contract']['steps']:
                 if checker.is_live_pin(s.get('run', '')):
                     s.pop('if')
         mutate('live download in default run', unguard_pin, 'pin check must be opt-in')
+
+    def test_install_lines_contract_is_self_consistent(self):
+        import json
+        c = json.loads((ROOT/'scripts/ci/install-lines.json').read_text(encoding='utf-8'))
+        self.assertTrue(c['public_base'].endswith('/'))
+        for k in ('mac', 'win'):
+            self.assertIn(c['public_base'], c[k])
 
     def test_duplicate_yaml_keys_are_rejected(self):
         with tempfile.TemporaryDirectory(dir=ROOT, prefix='.yaml-test-') as td:

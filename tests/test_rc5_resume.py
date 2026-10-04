@@ -48,10 +48,28 @@ class MacResume(unittest.TestCase):
     @unittest.skipUnless(shutil.which('codesign'),'macOS codesign required')
     def test_tampered_bundle_and_wrong_link_do_not_skip(self):
         app = self.signed_app()
+        link=self.wave/'bin/cysd'; link.unlink(); link.symlink_to('/bin/echo')
+        self.assertNotEqual(self.run_sh('RESUME=1; can_resume_step S04_INSTALL_LINK passed').returncode,0)
+        link.unlink(); link.symlink_to(app/'Contents/MacOS/cysd')
         (app/'Contents/Info.plist').write_bytes(b'changed')
         self.assertNotEqual(self.run_sh('RESUME=1; can_resume_step S04_INSTALL_LINK passed').returncode,0)
-    def test_main_uses_verified_skip(self):
-        self.assertTrue('if can_resume_step "$id" "$status"; then' in (ROOT/'bootstrap.sh').read_text(), 'main must verify resume fingerprint')
+    @unittest.skipUnless(shutil.which('codesign'),'macOS codesign required')
+    def test_main_skips_s04_only_after_real_fingerprint_matches(self):
+        self.signed_app()
+        harness = ('ensure_pack(){ :; }; load_config(){ :; }; show_help_notice(){ :; }; '
+                   'show_permission_notice(){ :; }; init_state(){ :; }; help_progress(){ :; }; '
+                   'mark_required_complete(){ :; }; mark_install_complete(){ :; }; '
+                   'run_step(){ echo "RAN=$1"; }; main')
+        r=self.run_sh(harness)
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertNotIn('RAN=S04_INSTALL_LINK',r.stdout)
+        self.assertIn('RAN=S07_INITIAL_FLEET',r.stdout)
+        for platform in ('macos_arm64','macos_x64'): self.config['release']['cdhash'][platform]='0'*40
+        self.steps.write_text(json.dumps(self.config))
+        r=self.run_sh(harness)
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('RAN=S04_INSTALL_LINK',r.stdout)
+
 
 class WindowsResume(unittest.TestCase):
     def test_app_hash_is_part_of_resume_fingerprint(self):

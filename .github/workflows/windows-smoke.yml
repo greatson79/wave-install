@@ -68,7 +68,8 @@ jobs:
             if ($errors.Count) { throw ($errors | Out-String) }
           }
           $env:PWSH = (Get-Command powershell).Source
-          python -m unittest discover -s tests
+          # 맥 bash 설치기를 도는 시험은 맥 단계에서 돈다 — 여기서는 건너뛴 개수(「맥 전용 N개 건너뜀」)를 출력한다
+          python tests/run_unit_suite.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 installer test suite failed' }
       - name: User one-line command exactly as documented (Windows PowerShell 5.1)
         if: runner.os == 'Windows'
@@ -115,10 +116,8 @@ jobs:
         run: |
           export PWSH="$(command -v pwsh)"
           bash -n bootstrap.sh reinstall.sh reset.sh tests/win-pin-release.sh tests/win-pin-mutate.sh
-          python tests/test_state_contract.py
-          python tests/test_version_gate.py
-          python tests/test_failure_and_daemon_gate.py
-          python tests/test_windows_install.py
+          # 전체 시험(맥 전용 포함) — 윈 단계가 건너뛴 맥 bash 시험이 여기서 실제로 돈다
+          python tests/run_unit_suite.py
       - name: Published release pin (only on explicit release smoke)
         if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
         shell: bash

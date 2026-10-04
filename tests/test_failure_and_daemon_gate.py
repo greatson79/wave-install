@@ -14,6 +14,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class FailureAndDaemonGateTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wave-d1-d2-unit-")
@@ -35,6 +38,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
                               env=dict(self.env, TEST_MODE=mode), text=True,
                               capture_output=True, timeout=10)
 
+    @mac_only()
     def test_error_id_matches_id_not_list_position(self):
         config = json.loads(self.steps.read_text())
         config["steps"].reverse()
@@ -45,6 +49,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), step["on_fail"]["error_id"])
 
+    @mac_only()
     def test_missing_or_malformed_error_config_fails_without_traceback(self):
         for config in [{"steps": []}, {"steps": {}},
                        {"steps": [{"id": "S02_CLAUDE_LOGIN", "on_fail": None}]},
@@ -56,6 +61,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
                 self.assertNotIn("Traceback", result.stderr)
                 self.assertEqual(result.stdout, "")
 
+    @mac_only()
     def test_original_failure_and_error_id_reach_state(self):
         wave = self.home / "wave"
         wave.mkdir()
@@ -69,6 +75,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
         self.assertEqual((state["status"], state["exit_code"], state["error_id"]),
                          ("failed", 7, "WT-S02-AUTH"))
 
+    @mac_only()
     def test_optional_failure_records_reason_and_continues(self):
         wave = self.home / "wave"
         wave.mkdir()
@@ -83,6 +90,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
         self.assertIn("Access is denied", state["observed"]["reason"])
         self.assertIn("Access is denied", (wave / "install.log").read_text())
 
+    @mac_only()
     def test_s07_invalid_seat_count_is_required_failure(self):
         wave = self.home / "wave"
         (wave / "bin").mkdir(parents=True)
@@ -131,6 +139,7 @@ printf '%s\n' "$STEP_OBSERVED"
 '''
         return self.bash(script, mode)
 
+    @mac_only()
     def test_s04_valid_copy_passes_without_starting_daemon(self):
         result = self.s04()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -160,6 +169,7 @@ printf '%s\n' "$STEP_OBSERVED"
                 self.assertEqual(marker.read_text(), "keep")
                 self.assertFalse((self.home / "mounted").exists())
 
+    @mac_only()
     def test_s04_hold_has_distinct_install_state(self):
         wave = self.home / "wave"
         app = wave / "apps/Wave Terminal.app"
@@ -183,6 +193,7 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertEqual(step["observed"]["reinstall"], "waiting_for_app_exit")
         self.assertFalse((self.home / "mounted").exists())
 
+    @mac_only()
     def test_s04_guard_distinguishes_daemon_and_missing_bundle(self):
         wave = self.home / "wave"
         (wave / "bin").mkdir(parents=True)
@@ -227,6 +238,7 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertNotEqual(result.returncode, 0)
         return result.stdout + result.stderr
 
+    @mac_only()
     def test_s04_hold_names_the_stop_that_matches_who_owns_the_daemon(self):
         launchd = self.hold_message("registered=true loaded=true socket_alive=true")
         self.assertIn("daemon uninstall", launchd)
@@ -234,6 +246,7 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertNotIn("daemon uninstall", other)  # launchd 소유가 아니면 uninstall 은 아무것도 멈추지 못한다
         self.assertIn("pkill -f", other)
 
+    @mac_only()
     def test_s04_printed_stop_line_stops_only_this_installs_daemons(self):
         other = self.hold_message("registered=false loaded=false socket_alive=true")
         cmd = "pkill -f '" + re.search(r"pkill -f '([^']*)'", other).group(1) + "'"
@@ -271,6 +284,7 @@ printf '%s\n' "$STEP_OBSERVED"
         for name, proc in controls.items():
             self.assertIsNone(proc.poll(), "%s must survive: %s" % (name, cmd))
 
+    @mac_only()
     def test_s04_stop_line_is_printed_when_only_children_remain(self):
         # 데몬은 이미 없는데(상태 전부 false) 앱 번들을 연 자식(events 클라이언트 등)만 남아 lsof 가 막는 경우:
         # 소용없는 daemon uninstall 을 반복하지 말고 같은 정지 한 줄을 안내한다.
@@ -295,6 +309,7 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertIn("pkill -f", msg)
         self.assertNotIn("daemon uninstall", msg)
 
+    @mac_only()
     def test_s04_guard_detects_gui_without_daemon(self):
         wave = self.home / "wave"
         app = wave / "apps/Wave Terminal.app"
@@ -314,18 +329,21 @@ printf '%s\n' "$STEP_OBSERVED"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "0")
 
+    @mac_only()
     def test_s04_nonexecutable_daemon_is_rejected_without_start(self):
         result = self.s04("nonexec")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("실행 파일", result.stderr)
         self.assertFalse((self.home / "cysd-executed").exists())
 
+    @mac_only()
     def test_s04_corrupted_copy_is_rejected_without_start(self):
         result = self.s04("corrupt")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("무결성", result.stderr)
         self.assertFalse((self.home / "cysd-executed").exists())
 
+    @mac_only()
     def test_s04_wrong_symlink_is_rejected_without_start(self):
         result = self.s04("wronglink")
         self.assertNotEqual(result.returncode, 0)

@@ -3,6 +3,9 @@ import json, os, plistlib, shutil, subprocess, tempfile, time, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class MacResume(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='rc5-resume-')
@@ -21,6 +24,7 @@ class MacResume(unittest.TestCase):
     def run_sh(self, code):
         return subprocess.run(['bash','-c','source "$1"; STEPS_FILE="$2"; '+code,'test',str(self.lib),str(self.steps)],
                               env=dict(os.environ,HOME=str(self.home),WAVE_HOME=str(self.wave)),capture_output=True,text=True)
+    @mac_only()
     def test_no_argument_resume_enables_step_skipping(self):
         r = self.run_sh('attempt_start; echo RESUME=$RESUME')
         self.assertEqual(r.returncode,0,r.stderr); self.assertIn('RESUME=1',r.stdout)

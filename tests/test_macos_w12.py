@@ -1,7 +1,11 @@
 import hashlib, json, os, subprocess, tempfile, unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+from platform_scope import mac_only  # noqa: E402
+
+
 class W12Tests(unittest.TestCase):
+    @mac_only()
     def test_pack_replaces_only_exact_stub_and_checks_embedded_hash(self):
         with tempfile.TemporaryDirectory() as td:
             home=Path(td); wave=home/'wave'; pack=home/'.cys/pack'; (wave/'bin').mkdir(parents=True); (pack/'directives').mkdir(parents=True)
@@ -20,6 +24,7 @@ class W12Tests(unittest.TestCase):
             result=subprocess.run(['bash','-c','source "$1"; SCRIPT_DIR="$2"; step_s06','test',str(lib),str(ROOT)],env=env,capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
             self.assertEqual((pack/'directives/MASTER_DIRECTIVE.md').read_text(),'custom')
+    @mac_only()
     def test_three_live_injected_roles_without_reviewer(self):
         import time
         with tempfile.TemporaryDirectory() as td:
@@ -46,6 +51,7 @@ class W12Tests(unittest.TestCase):
             self.assertNotEqual(check([seats[0],reviewer,seats[2]]),0,'다른 역할로 필수 역할을 대체할 수 없어야 한다')
             marker.write_text(json.dumps({'surface_ref':'surface:99','orchestra_check':'exit 0'}))
             self.assertEqual(check(seats),0,'marker is observational, not a gate')
+    @mac_only()
     def test_awakening_commands_obey_remaining_deadline(self):
         import time
         with tempfile.TemporaryDirectory() as td:
@@ -57,6 +63,7 @@ class W12Tests(unittest.TestCase):
             result=subprocess.run(['bash','-c','source "$1"; SECONDS=420; awakening_command 420 echo SHOULD_NOT_RUN','fixture',str(lib)],capture_output=True,timeout=4)
             self.assertEqual(result.returncode,124)
             self.assertEqual(result.stdout,b'')
+    @mac_only()
     def test_onboarding_marker_wait_matches_app_version(self):
         with tempfile.TemporaryDirectory() as td:
             home=Path(td); wave=home/'wave'; (wave/'bin').mkdir(parents=True); (home/'.cys').mkdir()
@@ -67,6 +74,7 @@ class W12Tests(unittest.TestCase):
             r=wait(); self.assertNotEqual(r.returncode,0); self.assertIn('J-VER-02',r.stderr)
             (home/'.cys/.gui-onboarded').write_text('9.9.8\n'); self.assertNotEqual(wait().returncode,0,'other app version accepted')
             (home/'.cys/.gui-onboarded').write_text('9.9.9\n'); self.assertEqual(wait().returncode,0)
+    @mac_only()
     def test_master_awake_needs_assistant_record_after_start(self):
         import time
         with tempfile.TemporaryDirectory() as td:
@@ -82,6 +90,7 @@ class W12Tests(unittest.TestCase):
             (proj/'s.jsonl').write_text('{"type":"user"}\n'); self.assertEqual(state(now),'unconfirmed')
             (proj/'s.jsonl').write_text('{"type":"user"}\n{"type":"assistant"}\n'); self.assertEqual(state(now),'confirmed')
             self.assertEqual(state(now+3600),'unconfirmed','stale transcript must not count')
+    @mac_only()
     def test_progress_lines_match_windows_say_step(self):
         # 화면 진행 표시 = Windows Say-Step 과 같은 꼴 [n/10] title — 시작, 10개 (steps.json index·title)
         import re

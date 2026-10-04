@@ -15,6 +15,9 @@ sys.path.insert(0, str(ROOT / 'lib'))
 import trust_seed
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class SeedResetTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix='wave-reset-')
@@ -55,6 +58,7 @@ class SeedResetTests(unittest.TestCase):
         self.assertEqual(data, dict(theme='dark', autoUpdatesChannel='stable', other=42, remoteControlAtStartup=True, skipDangerousModePermissionPrompt=True))   # 기준 설정값 적용 결과
         self.assertEqual(self.personal.read_text(), '{"theme":"light","personal":true}')
 
+    @mac_only()
     def test_reset_wave_and_all_restore_before_deleting_journal(self):
         for windows in (False, True):
             for target in ('wave', 'all'):
@@ -72,6 +76,7 @@ class SeedResetTests(unittest.TestCase):
                     self.assertEqual(self.pack.exists(), target == 'wave')
                     self.assertEqual(self.personal.read_text(), '{"theme":"light","personal":true}')
 
+    @mac_only()
     def test_list_and_pack_leave_seed_unchanged(self):
         self.seed()
         before = [f.read_bytes() for f in (self.cfg, self.settings, self.journal)]
@@ -147,6 +152,7 @@ class SeedResetTests(unittest.TestCase):
             self.assertEqual(self.cfg.read_bytes(), before)
             self.assertTrue(self.journal.exists())
 
+    @mac_only()
     def test_journal_dotdot_link_cannot_redirect_settings_write(self):
         child = self.personal.parent / 'child'
         child.mkdir()
@@ -164,6 +170,7 @@ class SeedResetTests(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
                 self.assertNotIn('remoteControlAtStartup', json.loads(self.settings.read_text()))
 
+    @mac_only()
     def test_packaging_includes_reset_and_rollback_dependencies(self):
         out = self.home / 'release'
         r = subprocess.run(['bash', str(ROOT / 'scripts/make-release.sh'), '0.3.0', 'https://example.invalid/v0.3.0', str(out)],

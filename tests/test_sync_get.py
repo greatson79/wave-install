@@ -10,6 +10,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/sync-get.sh"
 FILES = {"index.html", "app.js", "styles.css", "steps.json", "steps.schema.json"}
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class SyncGetTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -35,6 +38,7 @@ class SyncGetTests(unittest.TestCase):
     def run_sync(self, targets=None):
         return subprocess.run(["bash", str(SCRIPT), "v0.1.3", *map(str, targets or self.targets)], capture_output=True, text=True)
 
+    @mac_only()
     def test_copies_tagged_files_with_subpath_safe_urls(self):
         result = self.run_sync()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -51,6 +55,7 @@ class SyncGetTests(unittest.TestCase):
             self.assertEqual(len(json.loads((folder / "steps.json").read_text())["steps"]), 10)
         self.assertEqual((self.targets[0] / "public/get/index.html").read_bytes(), (self.targets[1] / "public/get/index.html").read_bytes())
 
+    @mac_only()
     def test_dirty_second_target_is_rejected_before_first_write(self):
         (self.targets[1] / "draft.txt").write_text("not approved")
         result = self.run_sync()
@@ -63,6 +68,7 @@ class SyncGetTests(unittest.TestCase):
         for args in [("add", "."), ("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "shape fixture"), ("update-ref", "refs/remotes/origin/main", "HEAD")]:
             subprocess.run(["git", "-C", str(target), *args], check=True, capture_output=True)
 
+    @mac_only()
     def test_file_instead_of_public_is_rejected_before_first_write(self):
         (self.targets[1] / "public").write_text("tracked file")
         self.commit_second_fixture()
@@ -71,6 +77,7 @@ class SyncGetTests(unittest.TestCase):
         self.assertFalse((self.targets[0] / "public").exists())
         self.assertIn("DESTINATION_TYPE_MISMATCH", result.stderr)
 
+    @mac_only()
     def test_directory_instead_of_asset_is_rejected_before_first_write(self):
         folder = self.targets[1] / "public/get/index.html"
         folder.mkdir(parents=True)
@@ -81,6 +88,7 @@ class SyncGetTests(unittest.TestCase):
         self.assertFalse((self.targets[0] / "public").exists())
         self.assertIn("DESTINATION_TYPE_MISMATCH", result.stderr)
 
+    @mac_only()
     def test_original_checkout_is_rejected(self):
         result = self.run_sync([self.root / "homepage-repo", self.targets[1]])
         self.assertNotEqual(result.returncode, 0)

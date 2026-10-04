@@ -20,6 +20,9 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class Sandbox:
     def __init__(self, test):
         self.tmp = Path(tempfile.mkdtemp(prefix="wave-v02-test-"))
@@ -69,6 +72,7 @@ class TarballSelfFetch(unittest.TestCase):
         shutil.copy(BOOT, alone)
         return subprocess.run(["bash", str(alone), "--dry-run"], env=dict(sb.env, **extra), text=True, capture_output=True)
 
+    @mac_only()
     def test_downloads_verifies_extracts_and_reruns(self):
         sb = Sandbox(self)
         tgz = self.make_tarball(sb)
@@ -82,6 +86,7 @@ class TarballSelfFetch(unittest.TestCase):
         return subprocess.run(["bash", "-s", "--", *args], input=BOOT.read_text(), env=dict(sb.env, **extra), text=True,
                               capture_output=True, cwd=str(sb.home))
 
+    @mac_only()
     def test_piped_run_enters_through_the_pack_download_without_a_warning(self):
         sb = Sandbox(self)
         tgz = self.make_tarball(sb)
@@ -91,6 +96,7 @@ class TarballSelfFetch(unittest.TestCase):
         self.assertNotIn("BASH_SOURCE", r.stderr)
         self.assertIn(str(sb.home / ".wave/src/pack/steps.json"), r.stderr)   # 받아 푼 설치팩에서 다시 시작됨
 
+    @mac_only()
     def test_piped_run_never_trusts_a_steps_json_in_the_current_folder(self):
         # 표준입력 실행에서 SCRIPT_DIR 을 현재 폴더로 착각하면 안 된다: 현재 폴더의 steps.json/wave-pack 은 설치팩으로 안 쓴다.
         sb = Sandbox(self)
@@ -101,6 +107,7 @@ class TarballSelfFetch(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(str(sb.home / ".wave/src/pack/steps.json"), r.stderr)
 
+    @mac_only()
     def test_piped_run_without_pack_pin_stops_with_the_known_message(self):
         sb = Sandbox(self)
         r = self.run_piped(sb, "--dry-run")
@@ -108,6 +115,7 @@ class TarballSelfFetch(unittest.TestCase):
         self.assertNotIn("unbound variable", r.stderr)
         self.assertIn("설치팩 URL·SHA256 이 릴리스 때 채워지지 않음", r.stderr)
 
+    @mac_only()
     def test_sha_mismatch_stops_before_extract(self):
         sb = Sandbox(self)
         tgz = self.make_tarball(sb)
@@ -116,12 +124,14 @@ class TarballSelfFetch(unittest.TestCase):
         self.assertIn("SHA256 불일치", r.stderr)
         self.assertFalse((sb.home / ".wave/src/pack").exists())
 
+    @mac_only()
     def test_unfilled_placeholder_stops(self):
         sb = Sandbox(self)
         r = self.run_alone(sb)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("릴리스 때 채워지지 않음", r.stderr)
 
+    @mac_only()
     def test_unsafe_path_in_tarball_rejected(self):
         sb = Sandbox(self)
         evil = sb.tmp / "evil.tar.gz"
@@ -146,6 +156,7 @@ esac
 
 
 class ClaudeSteps(unittest.TestCase):
+    @mac_only()
     def test_s01_missing_claude_is_installed_via_official_script(self):
         sb = Sandbox(self)
         installer = sb.tmp / "install.sh"
@@ -157,6 +168,7 @@ class ClaudeSteps(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('"installed": true', r.stdout)
 
+    @mac_only()
     def test_s01_install_falls_back_to_direct_download(self):
         sb = Sandbox(self)
         base = sb.tmp / "dl"
@@ -180,6 +192,7 @@ class ClaudeSteps(unittest.TestCase):
         sb.stub("claude", FAKE_CLAUDE)
         (sb.fake / "ver").write_text(version + "\n")
 
+    @mac_only()
     def test_s01_old_version_runs_update_then_passes(self):
         sb = Sandbox(self)
         self._installed_claude(sb, "2.1.158")
@@ -188,6 +201,7 @@ class ClaudeSteps(unittest.TestCase):
         self.assertEqual((sb.fake / "calls").read_text().split(), ["update"])
         self.assertIn('"updated": true', r.stdout)
 
+    @mac_only()
     def test_s01_update_that_does_not_help_stops(self):
         sb = Sandbox(self)
         self._installed_claude(sb, "2.1.158")
@@ -195,6 +209,7 @@ class ClaudeSteps(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("claude update 후에도", r.stderr)
 
+    @mac_only()
     def test_s01_current_version_does_not_update(self):
         sb = Sandbox(self)
         self._installed_claude(sb, "2.1.278")
@@ -202,6 +217,7 @@ class ClaudeSteps(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse((sb.fake / "calls").exists())
 
+    @mac_only()
     def test_s02_not_logged_in_runs_login_then_rechecks(self):
         sb = Sandbox(self)
         sb.stub("claude", FAKE_CLAUDE)
@@ -216,6 +232,7 @@ class ClaudeSteps(unittest.TestCase):
         r = sb.call("step_s02", FAKE_LOGIN_OK="0")
         self.assertNotEqual(r.returncode, 0)
 
+    @mac_only()
     def test_s02_already_logged_in_skips_login(self):
         sb = Sandbox(self)
         sb.stub("claude", FAKE_CLAUDE)
@@ -249,6 +266,7 @@ class DownloadVerify(unittest.TestCase):
         return subprocess.run(["bash", "-c", 'source "$1"; STEPS_FILE="$2"; step_s03; echo "OBS=$STEP_OBSERVED"', "t",
                                str(sb.lib()), str(sb.steps)], env=dict(sb.env, **extra), text=True, capture_output=True)
 
+    @mac_only()
     def test_pass_with_pinned_sha_and_codesign_without_minisign(self):
         sb = Sandbox(self)
         self.setup_download(sb)
@@ -257,6 +275,7 @@ class DownloadVerify(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('"codesign_verified": true', r.stdout)
 
+    @mac_only()
     def test_sha_mismatch_fails(self):
         sb = Sandbox(self)
         self.setup_download(sb, pinned="1" * 64)
@@ -264,6 +283,7 @@ class DownloadVerify(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("SHA256 불일치", r.stderr)
 
+    @mac_only()
     def test_codesign_failure_fails(self):
         sb = Sandbox(self)
         self.setup_download(sb)
@@ -271,6 +291,7 @@ class DownloadVerify(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("codesign", r.stderr)
 
+    @mac_only()
     def test_cdhash_pin_checked_when_set(self):
         sb = Sandbox(self)
         self.setup_download(sb)

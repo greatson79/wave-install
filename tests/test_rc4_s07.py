@@ -22,6 +22,9 @@ esac
 '''
 
 
+from platform_scope import mac_only  # noqa: E402
+
+
 class S07Base(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
@@ -93,6 +96,7 @@ class LiveRoleSeats(S07Base):
     def count(self):
         return self.bash('live_role_seats').stdout.strip()
 
+    @mac_only()
     def test_counts_live_master_cso_worker_from_the_real_status(self):
         self.status(['master', 'cso', 'worker'])
         self.assertEqual(self.count(), '3 cso,master,worker 0 0')   # 실물 status: launch_complete 없음 → 신호 0
@@ -103,6 +107,7 @@ class LiveRoleSeats(S07Base):
         self.status(['master'], source='win_status_noboot.json')
         self.assertEqual(self.count(), '1 master 0 0')
 
+    @mac_only()
     def test_a_response_with_launch_complete_is_only_recorded(self):
         # surface.list 녹취의 행(launch_complete 있음)을 살아 있다고 뒤집어(agent_alive 한 필드) 읽혀 본다 — 신호는 기록용 값으로만 나온다.
         resp = real('mac_surface_list.json')['result']
@@ -111,6 +116,7 @@ class LiveRoleSeats(S07Base):
         (self.wave / 'fleet/status.json').write_text(json.dumps(resp))
         self.assertEqual(self.count(), '3 cso,master,worker 2 1')
 
+    @mac_only()
     def test_reviewer_and_numbered_workers(self):
         resp = real('mac_status_three_seats.json')
         for r in resp['surfaces']:
@@ -121,11 +127,13 @@ class LiveRoleSeats(S07Base):
         (self.wave / 'fleet/status.json').write_text(json.dumps(resp))
         self.assertEqual(self.count(), '2 master,worker 0 0')
 
+    @mac_only()
     def test_missing_status_is_zero(self):
         self.assertEqual(self.count(), '0 - 0 0')
 
 
 class UnfinishedOutcome(S07Base):
+    @mac_only()
     def test_three_live_seats_in_the_real_status_are_exit_2_not_a_failure(self):
         # 이전 status 형식처럼 launch_complete 가 없어도 세 역할이 생존하면 종료값 2 를 반환한다.
         self.status(['master', 'cso', 'worker'])
@@ -142,6 +150,7 @@ class UnfinishedOutcome(S07Base):
         self.assertIn('세 칸이 살아 있습니다 · master 첫 답을 확인하세요', r.stderr)
         self.assertIn('같은 설치 명령을 다시 실행', r.stderr)
 
+    @mac_only()
     def test_launch_complete_when_present_is_recorded_not_decided_on(self):
         resp = real('mac_surface_list.json')['result']
         for r in resp['surfaces']:
@@ -151,18 +160,21 @@ class UnfinishedOutcome(S07Base):
         self.assertIn('RC=2', r.stdout)
         self.assertEqual(json.loads(r.stdout.split('OBS=')[1])['launch_complete'], 2)
 
+    @mac_only()
     def test_the_real_noboot_status_is_a_failure(self):
         self.status(['master'], source='mac_status_noboot.json')
         r = self.bash('s07_unfinished; echo RC=$?')
         self.assertIn('RC=1', r.stdout)
         self.assertIn('살아 있는 칸 1/3', r.stderr)
 
+    @mac_only()
     def test_fewer_than_three_alive_is_a_failure(self):
         self.status(['master', 'worker'])
         r = self.bash('s07_unfinished; echo RC=$?')
         self.assertIn('RC=1', r.stdout)
         self.assertIn('살아 있는 칸 2/3', r.stderr)
 
+    @mac_only()
     def test_no_live_seat_is_a_failure(self):
         self.status(['master', 'cso', 'worker'], alive=False)
         r = self.bash('s07_unfinished; echo RC=$?')
@@ -177,6 +189,7 @@ class WaitLoop(S07Base):
         m.write_text(json.dumps({'surface_ref': self.master_ref, 'orchestra_check': 'exit 0'}))
         os.utime(m, (time.time() + 20, time.time() + 20))
 
+    @mac_only()
     def test_all_good_still_passes(self):
         self.status(['master', 'cso', 'worker'])
         self.marker()
@@ -184,17 +197,20 @@ class WaitLoop(S07Base):
         self.assertIn('RC=0', r.stdout, r.stderr)
         self.assertIn('"fleet_started":true', r.stdout)
 
+    @mac_only()
     def test_alive_but_marker_missing_ends_with_2(self):
         self.status(['master', 'cso', 'worker'])
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '4'})
         self.assertIn('RC=2', r.stdout, r.stderr)
         self.assertIn('alive_unconfirmed', r.stdout)
 
+    @mac_only()
     def test_nothing_alive_ends_with_1(self):
         self.status([])
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '3'})
         self.assertIn('RC=1', r.stdout, r.stderr)
 
+    @mac_only()
     def test_open_gate_stops_the_budget(self):
         # 상한 10초인데 확인 창이 ~14초 떠 있다가 사람이 고른 뒤 마커가 생긴다 — 예산이 멈췄으면 통과해야 한다(부하에도 흔들리지 않게 여유를 둠).
         self.status(['master', 'cso', 'worker'], source='rc5_partial_status.json')
@@ -210,6 +226,7 @@ class WaitLoop(S07Base):
         t.join()
         self.assertIn('RC=0', r.stdout, r.stderr)
 
+    @mac_only()
     def test_declaration_names_the_boot_script(self):
         self.status(['master', 'cso', 'worker'])
         self.run_s07({'WAVE_AWAKENING_SECONDS': '3'})
@@ -218,6 +235,7 @@ class WaitLoop(S07Base):
         self.assertIn('javis_bootstrap.py', sent)
         self.assertIn('마지막 JSON', sent)
 
+    @mac_only()
     def test_rerun_with_declared_but_no_marker_resends_once(self):
         # 같은 master 가 살아 있고(이 설치가 만든 것) 선언 기록이 있어도, 각성 표지가 없으면 선언을 한 번 다시 보낸다.
         now = int(time.time())
@@ -235,12 +253,14 @@ class WaitLoop(S07Base):
         self.assertEqual(sent.count('너는 마스터다'), 1, sent)
         self.assertIn('지침 완료가 아직 확인되지 않아', r.stderr)
 
+    @mac_only()
     def test_waiting_line_reports_marker_and_seats(self):
         self.status(['master'], source='mac_status_noboot.json')   # 실물 noboot 모양: master 만 생존
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '5', 'WAVE_WAIT_REPORT_SECONDS': '1'})
         self.assertIn('기다리는 것: 지침 완료 미확인 · 좌석 1/3', r.stderr)
         self.assertNotIn('주입', r.stderr)
 
+    @mac_only()
     def test_every_app_gate_wording_pauses_the_budget(self):
         # 앱 first_run_gate.rs 의 질문 문면 전부(폴더 신뢰 4 · 권한 경고 2 · 큰 화면 권유)가 예산을 멈춘다.
         for text in ("Do you trust this folder?", "In Bypass Permissions mode, Claude Code will not ask for your approval",
@@ -252,6 +272,7 @@ class WaitLoop(S07Base):
                 r = self.bash('wait_gui_onboarded(){ :; }; notice_first_run_gate; echo VISIBLE=$GATE_VISIBLE')
                 self.assertIn('VISIBLE=1', r.stdout, r.stderr)
 
+    @mac_only()
     def test_gate_pause_is_capped(self):
         self.status(['master', 'cso', 'worker'])
         (self.wave / 'gate.on').write_text('')
@@ -262,6 +283,7 @@ class WaitLoop(S07Base):
 
 
 class HomeStart(S07Base):
+    @mac_only()
     def test_children_of_bounded_command_start_in_the_home_not_the_callers_folder(self):
         # 2238(맥 대칭): 설치기가 부르는 cys(데몬 자동기동 포함)가 호출자 폴더를 물려받지 않는다.
         elsewhere = self.home / 'project'
@@ -272,6 +294,7 @@ class HomeStart(S07Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(os.path.realpath(r.stdout.strip()), os.path.realpath(str(self.home)))
 
+    @mac_only()
     def test_timeout_and_exit_code_behaviour_is_unchanged(self):
         r = self.bash('WAVE_COMMAND_TIMEOUT=1 bounded_command sleep 5; echo RC=$?')
         self.assertIn('RC=124', r.stdout)
@@ -282,6 +305,7 @@ class HomeStart(S07Base):
 class PermissionNotice(S07Base):
     TEXT = "이 설치는 Wave 의 세 작업 칸(마스터·CSO·워커)이 권한 확인 창 없이 바로 일하도록 설정합니다. 되돌리려면 reset 을 실행하세요."
 
+    @mac_only()
     def test_mac_prints_the_confirmed_line_after_the_help_notice(self):
         r = self.bash('show_permission_notice')
         self.assertIn(self.TEXT, r.stderr)

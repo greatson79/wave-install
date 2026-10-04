@@ -26,6 +26,10 @@ def judge(repo, baseline, head, git=None, env=None):
         target=run('rev-parse','--verify',head+'^{commit}')
         if run('rev-parse','--is-shallow-repository')!='false':
             raise ValueError('얕은 이력은 검사 불가: fetch-depth 0 필요')
+        try:
+            run('merge-base','--is-ancestor',base,target)
+        except ValueError as e:
+            raise ValueError('기준점이 입력의 조상이 아님 또는 조상 확인 실패') from e
         raw=run('log','--format=%H%x09%ae%x09%ce',base+'..'+target)
         lines=raw.splitlines() if raw else []
         bad=[]
@@ -34,7 +38,7 @@ def judge(repo, baseline, head, git=None, env=None):
             if len(fields)!=3 or fields[1:]!=[EMAIL,EMAIL]:bad.append(line)
         report='기준 %s → 입력 %s · 새 커밋 %d개\n'%(base,target,len(lines))
         report+='SHA\t작성자 이메일\t커미터 이메일\n'+raw+'\n'
-        report+=('FAIL: 불일치 %d개'%len(bad)) if bad else 'PASS'
+        report+=('FAIL: 불일치 %d개'%len(bad)) if bad else ('PASS' if lines else '검사 0건')
         return int(bool(bad)),report
     except (OSError,TypeError,ValueError) as e:
         return 1,'FAIL: 이력 판정 불가: '+str(e)
@@ -54,7 +58,7 @@ def main():
         targets=[('installer',a.repo,inputs['installer_sha']),('runner',a.repo,a.runner_head),
                  ('mac',a.app_repo,a.mac_head),('win',a.app_repo,a.win_head)]
         for label,repo,head in targets:
-            rc,report=judge(repo,base[label],head);failed|=bool(rc)
+            rc,report=judge(repo,base['app' if label in ('mac','win') else label],head);failed|=bool(rc)
             reports.append('[%s]\n%s'%(label,report))
     except (OSError,ValueError,KeyError) as e:
         reports.append('FAIL: 입력·기준점 읽기 실패: '+str(e));failed=True

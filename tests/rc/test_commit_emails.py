@@ -25,6 +25,15 @@ class Emails(unittest.TestCase):
         return self.git('rev-parse','HEAD')
     def judge(self,head):return check.judge(self.repo,self.base,head,git=GIT,env=self.env)
     def test_legacy_commit_excluded(self):self.assertEqual(self.judge(self.base)[0],0)
+    def test_ancestor_input_fails(self):
+        old=self.base;self.base=self.commit()
+        self.assertEqual(self.judge(old)[0],1)
+    def test_unrelated_branch_fails(self):
+        self.git('checkout','--orphan','unrelated')
+        self.assertEqual(self.judge(self.commit())[0],1)
+    def test_zero_count_is_not_labelled_pass(self):
+        rc,report=self.judge(self.base)
+        self.assertEqual(rc,0);self.assertIn('검사 0건',report);self.assertNotIn('PASS',report)
     def test_new_correct_emails_pass(self):self.assertEqual(self.judge(self.commit())[0],0)
     def test_wrong_author_fails(self):self.assertEqual(self.judge(self.commit('wrong@example.invalid'))[0],1)
     def test_wrong_committer_fails(self):self.assertEqual(self.judge(self.commit(committer='wrong@example.invalid'))[0],1)

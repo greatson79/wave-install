@@ -9,7 +9,7 @@ S2 릴리스 v0.1.0의 `release` 블록 치환을 완료했다. 설치기는 자
 - `release.version`: `0.1.0` 유지 확인
 - `release.repository`: `greatson79/wave-terminal` 유지 확인
 - `release.asset_name.macos_arm64`
-- `release.asset_name.macos_x64`(x64 릴리스가 없으면 명시적으로 `null`이 아닌 지원 제외 정책을 별도 결재)
+- `release.asset_name.macos_x64`(x64 릴리스가 없으면 명시적으로 `null`이 아닌 지원 제외 정책을 별도 승인)
 - `release.asset_name.windows_x64`
 - `release.asset_url.macos_arm64`
 - `release.asset_url.macos_x64`

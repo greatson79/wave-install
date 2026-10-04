@@ -536,13 +536,6 @@ jobs:
       - name: Raw installer exits and S07-S09 states (all jobs)
         if: always()
         run: python3 tests/rc/install_outcomes.py raw-evidence --raw-table "종료값표_${{ github.run_id }}.txt"
-      - name: Synthetic no-boot outcomes must match exit 2 and S07-S09 states
-        if: always()
-        run: |
-          rc=0
-          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-mac-noboot-${{ github.run_id }}" --noboot mac || rc=1
-          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-win-noboot-${{ github.run_id }}" --noboot win || rc=1
-          exit "$rc"
       - name: Judge input must be pure (no other job's evidence mixed in)
         run: python3 tests/rc/check_evidence_mix.py evidence
       - name: G9 real-device evidence must carry installer exit and fleet_state (gate.py does not read them)
@@ -561,6 +554,13 @@ jobs:
       - name: The gate table must have no FAIL (unmeasured cells are fine) — gate.py exits 1 on unmeasured, so its exit code is not usable here
         if: always()
         run: python3 tests/rc/check_gate_table.py gate-result.json gate-result-kr.json
+      - name: Synthetic no-boot outcomes must match exit 2 and S07-S09 states
+        if: always()
+        run: |
+          rc=0
+          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-mac-noboot-${{ github.run_id }}" --noboot mac || rc=1
+          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-win-noboot-${{ github.run_id }}" --noboot win || rc=1
+          exit "$rc"
       - name: Every required job must have succeeded (one failed job fails the whole run)
         if: always()
         env:

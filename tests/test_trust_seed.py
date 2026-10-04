@@ -33,7 +33,7 @@ class HelperTests(unittest.TestCase):
         self.cfg, self.sf = self.dir / '.claude.json', self.dir / 'settings.json'
         self.journal = Path(t.name) / 'wave/trust-seed.tsv'
         self.work = Path(t.name) / 'wave'
-        self.home = '/Users/first.last'  # 마침표 든 홈(맥 미니 실기와 같은 꼴)도 한 열쇠로 다룬다
+        self.home = '/Users/first.last'  # 마침표가 포함된 계정 경로도 하나의 키로 다룬다
 
     def seed(self):
         return trust_seed.seed(str(self.dir), str(self.journal), str(self.work), self.home)
@@ -94,7 +94,7 @@ class HelperTests(unittest.TestCase):
         self.assertFalse(self.journal.exists())
 
     def test_skip_prompt_prior_value_is_recorded_and_restored(self):
-        # 주인님 결정 2026-10-03 23:05: skipDangerousModePermissionPrompt — 지인과 같은 키·값 · 바꾸기 전 값을 기록 · rollback 이 되돌림
+        # 기존 값과 변경 이력을 기록하고 되돌리기를 확인한다
         for prior, row in ((False, 'false'), ('absent', 'absent')):
             with self.subTest(prior=prior):
                 self.journal.unlink(missing_ok=True)

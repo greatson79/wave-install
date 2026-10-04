@@ -29,11 +29,11 @@ New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
 $live=[pscustomobject]@{surfaces=@(($recorded.surfaces | Where-Object {$_.role -eq 'master'}),($recorded.surfaces | Where-Object {$_.role -eq 'worker'}))}
 $marker=Join-Path $env:USERPROFILE '.cys/.master-bootstrapped'
 '{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker
-if(Test-AwakenedFleet $live){throw 'missing CSO accepted'}
+if(Test-AwakenedFleet $live){throw '필수 역할 누락이 통과됨'}
 $live.surfaces += ($recorded.surfaces | Where-Object {$_.role -eq 'cso'})
 if(-not(Test-AwakenedFleet $live)){throw 'valid three-seat fleet rejected'}
 $live.surfaces[2].agent_alive=$false
-if(Test-AwakenedFleet $live){throw 'dead CSO accepted'}
+if(Test-AwakenedFleet $live){throw '종료된 필수 역할이 통과됨'}
 $live.surfaces[2].agent_alive=$true
 $live.surfaces += [pscustomobject]@{surface_ref='surface:4';role='reviewer';exited=$true;agent_alive=$false}
 if(-not(Test-AwakenedFleet $live)){throw 'reviewer incorrectly required'}
@@ -60,7 +60,7 @@ if((Get-AwakeningBudgetMs 420000) -ne 0){throw 'deadline not enforced'}
 if((Get-AwakeningBudgetMs 420001) -ne 0){throw 'expired deadline became negative'}
 $runText=($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Run-S07'},$false))[0].Extent.Text
 if($runText -match 'for \(\$attempt' -or $runText -notmatch 'Stopwatch.*StartNew' -or $runText -notmatch 'Get-LiveFleet \(Get-AwakeningBudgetMs'){throw 'deadline wiring absent'}
-Write-Host 'PASS CSO required/alive; reviewer excluded; 420-second remaining budget boundaries'
+Write-Host 'PASS required roles live; unrelated role excluded; 420-second remaining budget boundaries'
 function Start-WaveApp { }
 function Seed-WaveClaudeTrust { }  # 신뢰 사전 기록은 windows_trust_seed_fixture.ps1 이 따로 본다(여기서 좌석 설정 파일을 쓰지 않게)
 $HelpRules=[object[]]([regex]::Match((Get-Content (Join-Path $PWD 'bootstrap.ps1') -Raw),"(?s)\`$HelpRulesJson = @'\r?\n(.*?)\r?\n'@").Groups[1].Value|ConvertFrom-Json)

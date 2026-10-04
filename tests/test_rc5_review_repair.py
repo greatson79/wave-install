@@ -1,4 +1,4 @@
-"""독립 대조 지적: 실물 녹취의 명시적 변이와 격리 파일로 재현."""
+"""S07 역할 시각 결속과 설치 이어받기 검증 회귀."""
 import hashlib, json, os, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 import test_rc5_resume as resume

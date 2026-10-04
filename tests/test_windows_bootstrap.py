@@ -441,7 +441,7 @@ if (-not (Test-AwakenedFleet $fixtureStatus)) { throw 'numeric marker rejected f
 if (-not (Test-AwakenedFleet $fixtureStatus)) { throw 'marker incorrectly gates injected fleet' }
 '{"surface_ref":"1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 $fixtureStatus.surfaces[1].agent_alive=$false
-if (Test-AwakenedFleet $fixtureStatus) { throw 'dead CSO accepted' }
+if (Test-AwakenedFleet $fixtureStatus) { throw '종료된 필수 역할이 통과됨' }
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Bounded native child test requires Windows')

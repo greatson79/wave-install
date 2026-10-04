@@ -38,12 +38,12 @@ class W12Tests(unittest.TestCase):
             marker.write_text(json.dumps({'surface_ref':'1','orchestra_check':'exit 0'}))
             self.assertEqual(check(seats),0, 'numeric master marker must match surface:1')
             marker.write_text(json.dumps({'surface_ref':'surface:1','orchestra_check':'exit 0'}))
-            self.assertNotEqual(check([seats[0],seats[2]]),0, 'missing CSO must fail')
+            self.assertNotEqual(check([seats[0],seats[2]]),0, '필수 역할 누락을 거부해야 한다')
             self.assertNotEqual(check([seats[0],seats[1]]),0, 'missing worker must fail')
             dead=[dict(s) for s in seats]; dead[1]['agent_alive']=False
-            self.assertNotEqual(check(dead),0,'dead CSO must fail')
+            self.assertNotEqual(check(dead),0,'종료된 필수 역할을 거부해야 한다')
             reviewer=dict(seats[1],role='reviewer')
-            self.assertNotEqual(check([seats[0],reviewer,seats[2]]),0,'reviewer cannot replace CSO')
+            self.assertNotEqual(check([seats[0],reviewer,seats[2]]),0,'다른 역할로 필수 역할을 대체할 수 없어야 한다')
             marker.write_text(json.dumps({'surface_ref':'surface:99','orchestra_check':'exit 0'}))
             self.assertEqual(check(seats),0,'marker is observational, not a gate')
     def test_awakening_commands_obey_remaining_deadline(self):

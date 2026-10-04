@@ -42,6 +42,10 @@ class WorkflowTests(unittest.TestCase):
                     s.pop('if')
         mutate('live download in default run', unguard_pin, 'pin check must be opt-in')
 
+    def test_standard_user_e2e_script_does_not_read_readme_prose(self):
+        self.assertNotIn('README', (ROOT/'scripts/ci/nonadmin-child.ps1').read_text(encoding='utf-8'))
+        self.assertIn('scripts/ci/install-lines.json', (ROOT/'scripts/ci/nonadmin-child.ps1').read_text(encoding='utf-8'))
+
     def test_install_lines_contract_is_self_consistent(self):
         import json
         c = json.loads((ROOT/'scripts/ci/install-lines.json').read_text(encoding='utf-8'))

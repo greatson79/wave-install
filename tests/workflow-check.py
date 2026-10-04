@@ -69,6 +69,12 @@ def validate(workflow):
     for required in ('tests/help-rules-check.py', 'tests/test_windows_checks.py', 'tests/win-pin-mutate.py',
                      'tests/test_workflow_contract.py', 'tests/test_windows_bootstrap.py'):
         need(required in commands, f'missing contract check: {required}')
+    one_line = [s for s in steps if 'one-line command' in s.get('name', '')]
+    need(len(one_line) == 1, 'exactly one user one-line step required')
+    for step in one_line:
+        body = step.get('run', '')
+        need('scripts/ci/install-lines.json' in body, 'one-line step must read the machine contract')
+        need('README' not in body, 'one-line step must not read README prose')
     for step in steps:
         if is_live_pin(step.get('run', '')):
             need(step.get('if') == RELEASE_GATE, 'live release pin check must be opt-in')

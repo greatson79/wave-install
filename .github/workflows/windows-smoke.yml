@@ -74,15 +74,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          # README 의 한 줄을 그대로 실행한다(릴리스 주소만 로컬 서버로). 2026-10-01 실기: irm|iex 가 BOM 때문에 ParserError.
+          # 수강생 설치 한 줄은 사람이 읽는 문서가 아니라 기계 계약 scripts/ci/install-lines.json 에서 읽는다(public_base 만 로컬 서버로). 2026-10-01 실기: irm|iex 가 BOM 때문에 ParserError.
           $ErrorActionPreference = 'Continue'   # 자식 powershell 의 stderr 를 판정용 텍스트로 받는다(종료로 바꾸지 않음)
-          $line = Get-Content -Encoding UTF8 README.md | Where-Object { $_ -like 'powershell *install-wave.ps1*' } | Select-Object -First 1
-          if (-not $line) { throw 'README Windows one-line command not found' }
-          $srv = Start-Process python -ArgumentList '-m','http.server','8765','--bind','127.0.0.1' -PassThru -WindowStyle Hidden
+          $contract = Get-Content -Raw -Encoding UTF8 scripts/ci/install-lines.json | ConvertFrom-Json
+          $line = $contract.win
+          if (-not $line -or -not $contract.public_base -or -not $line.Contains($contract.public_base)) { throw 'install-lines.json Windows one-line command invalid' }
+          $srv = Start-Process python -ArgumentList 'scripts/ci/oneline-local.py','8765' -PassThru -WindowStyle Hidden
           Start-Sleep -Seconds 3
           try {
-            $local = $line -replace 'https://github\.com/greatson79/wave-install/releases/download/v[0-9.]+/', 'http://127.0.0.1:8765/'
-            $out = (Invoke-Expression $local 2>&1 | Out-String)
+            $local = $line.Replace($contract.public_base, 'http://127.0.0.1:8765/')
+            $out = (& { try { Invoke-Expression $local 2>&1 } catch { $_.ToString() } } | Out-String)   # stub 이 자식 비정상 종료를 throw 해도 출력으로 받아 판정한다
             Write-Host $out
             if ($out -match 'ParserError|ExpectedExpression|At line:1 char:19') { throw 'documented one-line command hits a parser error' }
             if ($out -notmatch 'ZIP URL') { throw 'documented one-line command did not reach the pack self-fetch step' }

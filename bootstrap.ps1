@@ -948,11 +948,21 @@ function Test-LiveSeat([object]$Seat) {
   return ($exited -is [bool] -and $alive -is [bool] -and -not $exited -and $alive)
 }
 
+function Test-JsonNumber([object]$Value) {
+  if ($null -eq $Value) { return $false }
+  $typeCode = [Type]::GetTypeCode($Value.GetType())
+  return ($typeCode -in @([TypeCode]::SByte, [TypeCode]::Byte, [TypeCode]::Int16, [TypeCode]::UInt16,
+    [TypeCode]::Int32, [TypeCode]::UInt32, [TypeCode]::Int64, [TypeCode]::UInt64,
+    [TypeCode]::Single, [TypeCode]::Double, [TypeCode]::Decimal))
+}
+
 function ConvertTo-ValidStartTime([object]$Value) {
   if ($Value -is [string]) { $text = $Value.Trim() }
-  elseif ($Value -is [int] -or $Value -is [long]) { $text = $Value.ToString([Globalization.CultureInfo]::InvariantCulture) }
-  elseif ($Value -is [double] -and $Value -ge 1000000000 -and $Value -lt 10000000000 -and [Math]::Truncate($Value) -eq $Value) { $text = $Value.ToString('0', [Globalization.CultureInfo]::InvariantCulture) }
-  else { return $null }
+  elseif (Test-JsonNumber $Value) {
+    try { $number = [decimal]$Value } catch { return $null }
+    if ($number -lt 1000000000 -or $number -ge 10000000000 -or [decimal]::Truncate($number) -ne $number) { return $null }
+    $text = $number.ToString('0', [Globalization.CultureInfo]::InvariantCulture)
+  } else { return $null }
   [long]$parsed = 0
   if ($text -cnotmatch '^[0-9]{10}$' -or -not [long]::TryParse($text, [Globalization.NumberStyles]::None, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) { return $null }
   if ($parsed -lt 1000000000) { return $null }
@@ -963,9 +973,9 @@ function Read-RecordedStartTime([string]$Path) {
   try { return (ConvertTo-ValidStartTime ([IO.File]::ReadAllText($Path))) } catch { return $null }
 }
 
-function Test-SeatCreatedSince([object]$Seat, [double]$Since) {
+function Test-SeatCreatedSince([object]$Seat, [object]$Since) {
   $created = Get-StateField $Seat 'created_at'
-  return (($created -is [int] -or $created -is [long] -or $created -is [double]) -and $created -ge $Since)
+  return ((Test-JsonNumber $created) -and $created -ge $Since)
 }
 
 function Test-AwakenedFleet([object]$Status, [string]$MasterRef = '', [object]$Since = $null) {
@@ -1330,7 +1340,9 @@ function Get-StateField([object]$Object, [string]$Name) {
 }
 
 function Test-ByteCount([object]$Value) {
-  return (($Value -is [int] -or $Value -is [long]) -and $Value -ge 0)
+  if ($Value -is [int] -or $Value -is [long]) { return ($Value -ge 0) }
+  if ($Value -is [decimal]) { return ($Value -ge 0 -and $Value -le [long]::MaxValue -and [decimal]::Truncate($Value) -eq $Value) }
+  return $false
 }
 
 function Read-SharedCheckLog([string]$Path) {

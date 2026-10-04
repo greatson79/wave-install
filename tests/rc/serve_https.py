@@ -5,6 +5,8 @@ RC_HELP_LOG 가 있으면 도움 요청 API 를 흉내 낸다(윈 Ctrl+C 측정�
 import functools, http.server, json, os, ssl, sys, time
 d, port, cert, key = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 LOG = os.environ.get("RC_HELP_LOG")
+# 게시 서버와 같은 모양: 짧은 한 줄이 받는 /mac·/win 은 릴리스 파일로 307
+SHORT = {"/mac": "/bootstrap.sh", "/win": "/win-start.ps1"}
 RID, TOKEN = "a" * 32, "b" * 64
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -22,6 +24,8 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_error(404)
     def do_GET(self):
         if LOG and self.path.startswith("/api/"): return self._help()
+        if self.path in SHORT:
+            self.send_response(307); self.send_header("Location", SHORT[self.path]); self.send_header("Content-Length", "0"); self.end_headers(); return
         super().do_GET()
 
 h = functools.partial(H, directory=d)

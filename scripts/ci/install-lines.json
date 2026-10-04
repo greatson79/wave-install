@@ -1,0 +1,6 @@
+{
+  "comment": "수강생이 치는 설치 한 줄의 기계 계약 정본. CI·RC 는 README 가 아니라 이 파일에서 한 줄을 읽고, 줄 안의 public_base 만 시험 서버 주소로 바꾼다.",
+  "public_base": "https://waveainetworks.com/",
+  "mac": "curl -fsSL https://waveainetworks.com/mac | bash",
+  "win": "irm https://waveainetworks.com/win | iex"
+}

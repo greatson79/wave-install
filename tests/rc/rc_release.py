@@ -4,6 +4,8 @@
 산출(--out): 한 줄 설치가 받는 bootstrap.sh/.ps1 · 설치팩 tar.gz/zip · 앱 자산 · SHA256SUMS, 그리고 rc-release.json(한 줄 명령·지문).
 설치기는 minisign 을 쓰지 않는다(SHA256 + codesign/CDHash · Authenticode) — 시험 서명키는 필요 없고, 비밀값은 만들지도 기록하지도 않는다."""
 import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, tempfile
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import install_lines
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--os", choices=["mac", "win"], required=True)
@@ -46,18 +48,15 @@ shutil.copy2(asset, out / name)
 with open(out / "SHA256SUMS", "a", encoding="utf-8") as f:  # make-release 가 쓴 줄 뒤에 자산 줄 추가(자산 줄은 정확히 1개)
     f.write("%s  %s\n" % (sha, name))
 
-readme = (stage / "README.md").read_text(encoding="utf-8").splitlines()
-line = next(l for l in readme if (l.startswith("curl -fsSL https://github.com/greatson79/wave-install/releases/download/") if a.os == "mac" else l.startswith("powershell ") and "install-wave.ps1" in l))
+line = install_lines.contract_line(stage, a.os)  # 수강생 설치 한 줄 — 기계 계약(scripts/ci/install-lines.json) 정본, README 아님
+one = install_lines.rc_one_line(stage, a.os, a.base)  # 주소만 시험 서버로 — /mac·/win 은 시험 서버가 릴리스 파일로 307
 if a.os == "win":
     stub = out / "win-start.ps1"
     subprocess.run([sys.executable, str(stage / "scripts/render_win_start.py"), "--bootstrap", str(out / "bootstrap.ps1"),
                     "--url", a.base + "bootstrap.ps1", "--output", str(stub)], check=True)
     with open(out / "SHA256SUMS", "a", encoding="utf-8") as f:
         f.write("%s  %s\n" % (hashlib.sha256(stub.read_bytes()).hexdigest(), stub.name))
-    one = "irm " + a.base + "win-start.ps1 | iex"
-else:
-    one = re.sub(r"https://github\.com/greatson79/wave-install/releases/download/v[0-9.]+/", a.base, line)
 (out / "rc-release.json").write_text(json.dumps({"os": a.os, "installer_version": ver, "asset": name, "asset_sha256": sha, "cdhash": a.cdhash,
-                                                 "one_line": one, "readme_line": line}, ensure_ascii=False, indent=1), encoding="utf-8")
+                                                 "one_line": one, "contract_line": line}, ensure_ascii=False, indent=1), encoding="utf-8")
 shutil.rmtree(stage)
 print(one)

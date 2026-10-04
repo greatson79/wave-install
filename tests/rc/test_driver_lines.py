@@ -25,10 +25,26 @@ class Assembly(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             for osn, key in (("mac", "macos"), ("win", "windows")):
                 _, rc = assemble(osn, "https://127.0.0.1:8443/", pathlib.Path(d))
-                want = re.sub(r"https://github\.com/greatson79/wave-install/releases/download/[^/\"' ]+/", "https://127.0.0.1:8443/", steps[key])
-                self.assertEqual(rc["reinstall_line"], want)
-                self.assertIn("127.0.0.1:8443", rc["reinstall_line"]); self.assertNotIn("github.com", rc["reinstall_line"])
+                line = rc["reinstall_line"]
+                self.assertIn("127.0.0.1:8443", line)  # 주소는 시험 서버로
+                self.assertNotIn("github.com/greatson79/wave-install/releases", line); self.assertNotIn("waveainetworks.com", line)
+                # 주소 말고는 게시 명령과 같다: 시험 서버 주소를 공개 주소 하나로 되돌리면 정본과 일치
+                back = line.replace("https://127.0.0.1:8443/", "@@")
+                orig = re.sub(r"https://github\.com/greatson79/wave-install/releases/download/[^/\"' ]+/|https://waveainetworks\.com/", "@@", steps[key])
+                self.assertEqual(back, orig)
         self.assertIn("--reinstall", steps["macos"]); self.assertIn("-Reinstall", steps["windows"])
+
+    def test_reinstall_line_handles_both_published_forms(self):
+        base = "https://127.0.0.1:8443/"
+        long_form = {"release": {"repository": "greatson79/wave-install"}, "reinstall": {"command": {
+            "macos": 'curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh" --reinstall', "windows": "w"}}}
+        short_form = {"release": {"repository": "greatson79/wave-install"}, "reinstall": {"command": {
+            "macos": "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall", "windows": "w"}}}
+        self.assertEqual(install_lines.reinstall_line(ROOT, long_form, "mac", base),
+                         'curl -fsSL https://127.0.0.1:8443/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh" --reinstall')
+        self.assertEqual(install_lines.reinstall_line(ROOT, short_form, "mac", base), "curl -fsSL https://127.0.0.1:8443/mac | bash -s -- --reinstall")
+        with self.assertRaises(SystemExit):
+            install_lines.reinstall_line(ROOT, {"release": {"repository": "x/y"}, "reinstall": {"command": {"macos": "echo none", "windows": "w"}}}, "mac", base)
 
 
 @unittest.skipUnless(shutil.which("openssl") and shutil.which("curl"), "openssl/curl 없음")
@@ -57,8 +73,12 @@ class MacG6(unittest.TestCase):
                 self.assertEqual(red.returncode, 127); self.assertIn("No such file", red.stderr)
                 green = run(rc["reinstall_line"])  # 게시된 재설치 명령
                 self.assertEqual(green.returncode, 0, green.stderr)
-                self.assertTrue((home / "install-wave.sh").exists())
                 self.assertIn("ARGS:--reinstall", (home / "ran.txt").read_text())
+                short = {"release": {"repository": "greatson79/wave-install"}, "reinstall": {"command": {"macos": "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall", "windows": "w"}}}
+                (home / "ran.txt").unlink()
+                green2 = run(install_lines.reinstall_line(ROOT, short, "mac", base))  # 짧은 한 줄 형식(rc.5 정본): 파일 저장 없이 /mac 307 → bootstrap.sh
+                self.assertEqual(green2.returncode, 0, green2.stderr)
+                self.assertEqual((home / "ran.txt").read_text().strip(), "ARGS:--reinstall")
             finally:
                 srv.terminate(); srv.wait(10)
 

@@ -25,3 +25,15 @@ def rc_one_line(root, os_name, base):
     if not base.endswith("/"):
         raise ValueError("base 는 / 로 끝나야 함")
     return contract_line(root, os_name).replace(contract(root)["public_base"], base)
+
+
+def reinstall_line(root, steps, os_name, base):
+    """수강생 재설치 명령(steps.json reinstall.command 정본)에서 주소만 시험 서버로 — 릴리스 주소(옛 긴 형식)와 공개 주소(짧은 한 줄 형식) 둘 다 같은 규칙으로 바꾼다."""
+    cmd = steps["reinstall"]["command"]["macos" if os_name == "mac" else "windows"]
+    release = re.findall(r"https://github\.com/" + re.escape(steps["release"]["repository"]) + r"/releases/download/[^/\"' ]+/", cmd)
+    out = cmd
+    for prefix in set(release) | {contract(root)["public_base"]}:
+        out = out.replace(prefix, base)
+    if out == cmd:
+        raise SystemExit("steps.json reinstall.command 에서 바꿀 주소(릴리스·공개)를 찾지 못함: " + cmd)
+    return out

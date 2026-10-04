@@ -24,36 +24,17 @@ Wave Terminal은 원개발자 idoforgod의 [`cys-terminal`](https://github.com/i
 
 ## 운영체제 안내
 
-Wave Terminal 앱 0.2.0 설치 자산(macOS arm64 DMG · Windows setup.exe)은 설치기 시험판 `v0.3.0-rc.5` 프리릴리스에 함께 올리며 그 주소에 연결되어 있습니다. macOS DMG는 CI 빌드 앱(3af28f2)을 ad-hoc 서명으로 다시 봉인한 재패키징이고(공증 없음), 별도 x64 빌드가 없어 `macos_x64` 항목도 같은 arm64 DMG를 가리킵니다.
+현재 최신 공개 설치기 릴리스는 `v0.3.0-rc.4`입니다. Wave Terminal 앱 0.2.0 설치 자산(macOS arm64 DMG · Windows setup.exe)은 다음 시험판 `v0.3.0-rc.5` 프리릴리스에 함께 올리며 그 주소에 연결합니다. macOS DMG는 CI 빌드 앱(3af28f2)을 ad-hoc 서명으로 다시 봉인한 재패키징이고(공증 없음), 별도 x64 빌드가 없어 `macos_x64` 항목도 같은 arm64 DMG를 가리킵니다.
 
-공식 도메인은 별도로 확정한 뒤 연결하며, 그 전까지는 배포된 임시 URL만 검증 대상으로 삼습니다.
+## 설치
 
-## 설치 (macOS) — 명령 한 줄
+macOS: `curl -fsSL https://waveainetworks.com/mac | bash`
 
-터미널에 아래 한 줄만 붙여넣고 Return을 누릅니다. 설치기가 설치팩(`wave-install-0.3.0`)을
-스스로 내려받아 고정 SHA256으로 확인·압축 해제한 뒤 이어서 진행합니다.
-Claude Code가 없으면 공식 설치기로 설치하고, 낮으면 `claude update`를 대신 실행하며,
-로그인이 안 되어 있으면 같은 창에서 `claude auth login`을 진행합니다.
+Windows PowerShell: `irm https://waveainetworks.com/win | iex`
 
-```bash
-curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh"
-```
+자세한 안내는 [waveainetworks.com/get](https://waveainetworks.com/get)을 확인하세요.
 
-<details><summary>고급: 설치팩 zip을 직접 받은 경우</summary>
-
-[wave-install-0.3.0.zip](https://github.com/greatson79/wave-install/archive/refs/tags/v0.3.0.zip)을
-받아 압축을 풀면 `wave-install-0.3.0` 폴더가 생깁니다. 그 폴더에서 `bash bootstrap.sh` 한 줄만 실행하세요
-(위 curl 명령은 필요 없습니다).
-
-</details>
-
-## 설치 (Windows) — 명령 한 줄
-
-PowerShell을 열고 아래 한 줄만 붙여넣은 뒤 Enter를 누릅니다(관리자 권한 불필요). 설치기가 설치팩(`wave-install-0.3.0.zip`)을 받아 고정 SHA256으로 확인한 뒤 이어서 진행하고, Claude Code 설치·업데이트·로그인도 같은 창에서 처리합니다.
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1')"
-```
+### Windows 앱의 SmartScreen 안내
 
 Wave Terminal 설치 파일을 실행할 때 SmartScreen 창이 뜨면 **추가 정보 → 실행**을 누릅니다. 백신이 경고하면 예외 등록 없이 화면을 사진으로 남겨 문의해 주세요.
 
@@ -152,21 +133,9 @@ Windows 핀은 앱 0.2.0 CI 빌드(87d206b)로 확정했으며, 바이트 수와
 공개 릴리스 대조와 실제 러너 결과는 아래 검증 기록에 구분해 남깁니다.
 [핀 갱신·재실행·검증 절차](docs/windows-bootstrap.md)와 [진단 코드](docs/help-codes.md)를 참고하세요.
 
-## 재설치 — 운영체제별 한 줄
+## 재설치·이어받기
 
-설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일을 모두 삭제하는 명령은 아닙니다.
-
-macOS:
-```bash
-curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o "$HOME/install-wave.sh" && bash "$HOME/install-wave.sh" --reinstall
-```
-
-Windows PowerShell:
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\install-wave.ps1') -Reinstall"
-```
-
-압축 해제한 설치팩에는 `reinstall.sh`·`reinstall.ps1`도 동봉합니다. 이 보조 스크립트의 옛 환경/Run 정리는 위 bootstrap 명령과 별도 경로입니다.
+`/mac`·`/win` 설치 한 줄은 옵션 없이 기본 실행합니다. 재설치·이어받기 절차는 [자세한 안내](https://waveainetworks.com/get)를 확인하세요.
 
 ## 좌석 초기 설정과 reset
 

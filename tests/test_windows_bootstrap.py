@@ -18,11 +18,11 @@ class BootstrapTests(unittest.TestCase):
         self.assertLess(contract.index("$created.exit_code -eq 2"), contract.index("throw '마스터 좌석 생성 실패'"))
         self.assertIn("$created.timed_out -or $created.exit_code -ne 0) { throw '마스터 좌석 생성 실패'", contract)
 
-    def test_s07_accepts_full_and_numeric_master_surface_refs(self):
+    def test_s07_uses_injection_signal_and_not_master_marker(self):
         source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
         contract = source.split('function Test-AwakenedFleet', 1)[1].split('function Get-AwakeningBudgetMs', 1)[0]
-        self.assertIn("$_.surface_ref; ([string]$_.surface_ref -replace '^surface:', '')", contract)
-        self.assertIn('-contains [string]$marker.surface_ref', contract)
+        self.assertIn('Get-SeatLaunchComplete', contract)
+        self.assertNotIn('.master-bootstrapped', contract)
 
     def test_release_pins_are_read_from_config_and_refreshed(self):
         self.run_ps(r'''
@@ -407,17 +407,14 @@ if ($StepStatus -ne 'unmeasured' -or $StepObserved.reason -ne 'call_failed' -or 
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Run-S07 uses Windows PowerShell child process')
-    def test_s07_requires_master_marker_and_three_live_roles(self):
+    def test_s07_requires_three_live_injected_roles(self):
         self.run_ps(r'''
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 $StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
 Load-Config
 Init-State
 New-Item -ItemType Directory -Force (Join-Path $env:USERPROFILE '.cys')|Out-Null
-$script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | ForEach-Object {
-  [pscustomobject]@{surface_ref=('surface:'+$_);role=$_;exited=$false;agent_alive=$true}
-})}
-$fixtureStatus.surfaces[0].surface_ref = 'surface:1'
+$script:fixtureStatus=(Get-Content (Join-Path $env:TEST_ROOT 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
 $script:appCalls=0
 function Start-WaveApp { $script:appCalls++ }
 function Invoke-BoundedCheck {
@@ -425,7 +422,9 @@ function Invoke-BoundedCheck {
   if (($Arguments -join ' ') -ne 'status --json') { throw 'unexpected process request; no daemon access allowed' }
   return [pscustomobject]@{timed_out=$false;exit_code=0;stdout=($fixtureStatus|ConvertTo-Json -Depth 8);stderr=''}
 }
-if (Test-AwakenedFleet $fixtureStatus) { throw 'missing master marker accepted' }
+if (-not (Test-AwakenedFleet $fixtureStatus)) { throw 'injected fleet rejected without marker' }
+function Wait-GuiOnboarded {}
+function Seed-WaveClaudeTrust {}
 '{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 '0.0.0'|Set-Content (Join-Path $env:USERPROFILE '.cys/.gui-onboarded') -Encoding UTF8
 Run-S07
@@ -434,7 +433,7 @@ if (-not $StepObserved.fleet_started -or $appCalls -ne 1) { throw 'fleet evidenc
 '{"surface_ref":"1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 if (-not (Test-AwakenedFleet $fixtureStatus)) { throw 'numeric marker rejected for surface:1' }
 '{"surface_ref":"2","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
-if (Test-AwakenedFleet $fixtureStatus) { throw 'wrong numeric marker accepted' }
+if (-not (Test-AwakenedFleet $fixtureStatus)) { throw 'marker incorrectly gates injected fleet' }
 '{"surface_ref":"1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 $fixtureStatus.surfaces[1].agent_alive=$false
 if (Test-AwakenedFleet $fixtureStatus) { throw 'dead CSO accepted' }

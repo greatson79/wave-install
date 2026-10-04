@@ -234,12 +234,14 @@ class MacBootstrapTests(unittest.TestCase):
         (self.home / '.cys/.gui-onboarded').write_text('0.0.0\n')
         (self.home / 'screen.txt').write_text(TRUST_SCREEN)
         fleet = self.home / 'fleet.json'
-        master = {'surface_ref': 'surface:5', 'role': 'master', 'exited': False, 'agent_alive': True, 'created_at': 9999999999}
-        fleet.write_text(json.dumps({'surfaces': [master, {'surface_ref': 'surface:7', 'role': 'cso', 'exited': False, 'agent_alive': True,
-                                                           'created_at': 9999999999}]}))
+        recording=json.loads((ROOT/'tests/fixtures/real_cys/rc5_three_status.json').read_text())['response']
+        rows=[]
+        for role,ref in [('master','surface:5'),('cso','surface:7'),('worker','surface:8')]:
+            row=dict(next(r for r in recording['surfaces'] if r['role']==role),surface_ref=ref,created_at=9999999999)
+            rows.append(row)
+        fleet.write_text(json.dumps({'surfaces':rows[:2]}))
         full = self.home / 'full.json'
-        full.write_text(json.dumps({'surfaces': [master, {'surface_ref': 'surface:7', 'role': 'cso', 'exited': False, 'agent_alive': True, 'created_at': 9999999999},
-                                                 {'surface_ref': 'surface:8', 'role': 'worker-1', 'exited': False, 'agent_alive': True, 'created_at': 9999999999}]}))
+        full.write_text(json.dumps({'surfaces':rows}))
         (self.fakebin / 'open').write_text('#!/bin/sh\nexit 0\n')
         (self.fakebin / 'open').chmod(0o755)
         cys = self.wave / 'bin/cys'

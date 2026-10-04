@@ -245,7 +245,12 @@ class MacResumeAndPackTests(unittest.TestCase):
                               text=True, capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
 
     def seat(self, ref, role, created):
-        return dict(surface_ref=ref, role=role, exited=False, agent_alive=True, created_at=created)
+        # 실물 세 역할 녹취를 사용하고 회귀 경계용 좌석 번호/시각만 옮긴다.
+        data = json.loads((ROOT / 'tests/fixtures/real_cys/rc5_three_status.json').read_text())['response']
+        base = 'worker' if role.startswith('worker') else role
+        row = next(dict(r) for r in data['surfaces'] if r['role'] == base)
+        row.update(surface_ref=ref, role=role, created_at=created)
+        return row
 
     def prepare(self, masters, saved_ref='surface:5', master_created=None):
         created = self.since + 5 if master_created is None else master_created

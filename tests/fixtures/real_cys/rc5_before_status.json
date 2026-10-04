@@ -1,0 +1,54 @@
+{
+  "provenance": {
+    "command": "<HOME>/cys-workspace/runtime/.cys/wave-terminal-rc5-app/target/debug/cys status --json",
+    "recorded_at": "2026-10-04T05:54:31.215826+00:00",
+    "binary": "c1c4969f969ea32c7cf4c74db30311943232611e (build before commit; base build_id 87d206bc9823)",
+    "source": "<HOME>/Desktop/Ai_works/개발본부/_round/rc5/녹취_status_launch_complete/before.json",
+    "stdout_sha256": "e3c2fbff071722c89113fcfc74c0b8f27a980227386c9fde693335bf23108e3d",
+    "exit_code": 0
+  },
+  "response": {
+    "daemon": {
+      "build_id": "87d206bc9823",
+      "embedded_pack_hash": "e39a40918056e9603700ec3f90e0039ce3b3403a846ac4c08a7170e8cd0aeced",
+      "latest_seq": 2,
+      "parser_panics": 0,
+      "protocol_version": "1",
+      "started_at": 1791093269.228247,
+      "version": "0.2.0"
+    },
+    "feed": {
+      "oldest_pending_age_secs": null,
+      "pending": 0
+    },
+    "health_recent": [],
+    "pause_info": null,
+    "paused": false,
+    "surfaces": [
+      {
+        "agent": "claude",
+        "agent_alive": false,
+        "created_at": 1791093269.864373,
+        "cwd": "/tmp/rc5-live-agfozao1/home",
+        "exited": false,
+        "idle_secs": 0,
+        "last_parser_panic": null,
+        "launch_complete": false,
+        "line_count": 6,
+        "live_cwd": "/private/tmp/rc5-live-agfozao1/home",
+        "model": null,
+        "model_fallback": null,
+        "parser_panics": 0,
+        "queue_depth": 0,
+        "queue_paused": false,
+        "role": "master",
+        "status": null,
+        "surface_id": 1,
+        "surface_ref": "surface:1",
+        "title": "master-claude · home",
+        "usage": null
+      }
+    ],
+    "todo": {}
+  }
+}

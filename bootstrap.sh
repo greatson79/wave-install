@@ -732,7 +732,7 @@ PY_VERIFY
 # master 는 앱 계약대로 `cys launch-agent --role master` 로 띄운다(앱이 agent 정보를 기록하고 MASTER 지침을 주입한다).
 step_s07() {
   mkdir -p "$WAVE_HOME/fleet"
-  local ref started deadline remaining existing reused=false restored= master_source=created
+  local ref started deadline remaining existing reused=false restored= master_source=created marker_present=false
   # 이번 시도의 시작 — S05 데몬 시작 직후 자동복원이 S07 진입 전(같은 초 경계 안팎)에 만든 cso·worker 도 이 시도의 좌석이다
   # (진입 시각의 초 버림값을 쓰면 그 좌석이 created_at < since 로 영영 배제되어 420초 대기). 이전 실행의 좌석은 여전히 시작보다 앞이라 배제된다.
   started="$RUN_STARTED"
@@ -743,7 +743,7 @@ step_s07() {
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
   # 재실행·resume: 이 설치가 앞서 만든 master(started-at 이후 생성, master-ref 기록이 있으면 그것과 일치) 하나만
   # 살아 있으면 새로 만들지 않고 재사용한다. master-ref 가 없으면 launch-agent 가 상한에 걸려 ref 를 못 받은 경우다.
-  # 각성 표지가 확인되지 않으면(선언 전달 기록이 있어도) 선언을 한 번 다시 보낸다(W-DECLARE 복구 · 부트 스크립트를 건너뛴 master 도).
+  # 세 역할의 지침 완료가 확인되지 않으면(선언 전달 기록이 있어도) 선언을 한 번 다시 보낸다(W-DECLARE 복구 · 부트 스크립트를 건너뛴 master 도).
   # 기록과 다른 master·둘 이상·기록 이전 생성 master 는 중복 생성 없이 중단한다.
   # (Windows Run-S07 은 살아 있는 master 하나를 재사용하고 started-at 기록이 있을 때만 선언을 다시 보낸다.)
   existing="$(python3 - "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/started-at" "$RUN_STARTED" <<'PY_EXISTING'
@@ -787,7 +787,7 @@ PY_EXISTING
     log "이 설치가 앞서 만든 master($ref)를 재사용해 각성을 확인합니다."
     cp "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/status.json"
     if ! verify_live_fleet "$ref" "$started"; then
-      log "각성 표지가 아직 없어 master($ref)에 선언을 한 번 다시 보냅니다."
+      log "세 좌석의 지침 완료가 아직 확인되지 않아 master($ref)에 선언을 한 번 다시 보냅니다."
       send_master_declaration "$deadline" || return 1
     fi
   else
@@ -810,7 +810,8 @@ PY_EXISTING
        verify_live_fleet "$ref" "$started" && (( SECONDS < deadline )); then
       # 사후 대조용: 이 설치가 받아들인 master 좌석 번호와 출처(created=이 설치가 만듦 · reused=이 설치가 앞서 만든 것 · restored=자동복원이 만든 것)
       log "master 좌석 $ref 을(를) 사용합니다($master_source)."
-      STEP_OBSERVED="{\"seats\":3,\"roles\":[\"master\",\"cso\",\"worker\"],\"fleet_started\":true,\"master_marker_verified\":true,\"master_reused\":$reused,\"master_ref\":\"$ref\",\"master_source\":\"$master_source\"}"
+      marker_present=false; [[ -f "$HOME/.cys/.master-bootstrapped" ]] && marker_present=true
+      STEP_OBSERVED="{\"seats\":3,\"roles\":[\"master\",\"cso\",\"worker\"],\"fleet_started\":true,\"master_marker_present\":$marker_present,\"launch_complete\":3,\"master_reused\":$reused,\"master_ref\":\"$ref\",\"master_source\":\"$master_source\"}"
       return 0
     fi
     notice_first_run_gate
@@ -829,8 +830,7 @@ PY_EXISTING
 
 # 상한에 닿았을 때: master·cso·worker 세 역할 좌석이 모두 살아 있으면(exited=false ∧ agent_alive=true) 설치 실패가 아니라
 # 「세 칸 생존 · 확인 미완」(2, 진단 코드 J-VER-04) — 단계는 통과로 치지 않는다(fleet_started 는 true 가 아니다).
-# 좌석 부족·사망은 진척이 부족한 것이므로 실패(1). 지침 주입 여부는 판정에 쓰지 않는다 — `cys status --json` 에는 그 신호가 없다
-# (launch_complete 는 데몬 surface.list 응답에만 있음). 신호가 있으면 관측값에 개수만 기록한다.
+# 좌석 부족·사망은 실패(1). 옛 앱의 launch_complete 누락은 미확인(2)이며 표지가 대신 통과시키지 않는다.
 s07_unfinished() {
   local n roles injected signal lc=null
   WAVE_COMMAND_TIMEOUT=5 bounded_cys status --json > "$WAVE_HOME/fleet/status.json" 2>/dev/null || true
@@ -845,30 +845,54 @@ s07_unfinished() {
 }
 
 # 살아 있는 master·cso·worker 좌석: 「<역할 수> <역할,역할> <launch_complete 가 true 인 역할 수> <launch_complete 신호 유무 1|0>」
-# (status.json 기준 · 없으면 「0 - 0 0」). 뒤 두 값은 관측값 기록용일 뿐 판정에 쓰지 않는다.
-live_role_seats() {
-  python3 - "$WAVE_HOME/fleet/status.json" <<'PY_LIVE_ROLES'
-import json, sys
+# status.json 기준 · 없으면 「0 - 0 0」. 통과 판정도 같은 신호 읽기 경계를 사용한다.
+# launch_complete 를 읽는 단일 경계. 옛 앱의 누락/잘못된 형식은 미확인이다.
+fleet_status_read() {
+  python3 - "$WAVE_HOME/fleet/status.json" "$@" <<'PY_FLEET'
+import json, re, sys
+from pathlib import Path
+path, mode, *args = sys.argv[1:]
 try:
-    rows = json.load(open(sys.argv[1]))['surfaces']
-except Exception:
+    rows = json.loads(Path(path).read_text())['surfaces']
+    if not isinstance(rows, list): rows = []
+except (OSError, ValueError, KeyError, TypeError):
     rows = []
-live = [s for s in rows if s.get('exited') is False and s.get('agent_alive') is True and str(s.get('role') or '').startswith(('master', 'cso', 'worker'))]
-base = lambda s: str(s['role']).split('-')[0]
-roles = sorted({base(s) for s in live})
-done = {base(s) for s in live if s.get('launch_complete') is True}
-signal = 1 if any('launch_complete' in s for s in rows) else 0
-print(len(roles), ','.join(roles) or '-', len(done), signal)
-PY_LIVE_ROLES
+rows = [s for s in rows if isinstance(s, dict)]
+def role(s):
+    value = s.get('role')
+    return 'worker' if isinstance(value, str) and re.fullmatch(r'worker(?:-[A-Za-z0-9_-]+)?', value) else value if value in ('master', 'cso') else None
+def launch_complete(s):
+    value = s.get('launch_complete')
+    return value if type(value) is bool else None
+live = [s for s in rows if role(s) and s.get('exited') is False and s.get('agent_alive') is True]
+if mode == 'count':
+    roles = sorted({role(s) for s in live})
+    done = {role(s) for s in live if launch_complete(s) is True}
+    signal = int(any(launch_complete(s) is not None for s in rows if role(s)))
+    print(len(roles), ','.join(roles) or '-', len(done), signal)
+elif mode == 'verify':
+    ref, since = args
+    def current(s):
+        created = s.get('created_at')
+        return type(created) in (int, float) and created >= float(since)
+    ready = [s for s in live if launch_complete(s) is True]
+    ok = (any(role(s) == 'master' and s.get('surface_ref') == ref for s in ready)
+          and any(role(s) == 'cso' and current(s) for s in ready)
+          and any(role(s) == 'worker' and current(s) for s in ready))
+    sys.exit(0 if ok else 1)
+PY_FLEET
 }
+
+live_role_seats() { fleet_status_read count; }
 
 # S07 대기 중 30초마다 기다리는 것을 한 줄로 남긴다(표지 · 좌석 n/3 · 확인 창).
 log_waiting_for() {
-  local n roles mark=없음 gate=
-  read -r n roles _ _ <<< "$(live_role_seats)"
+  local n roles injected signal completion=미확인 mark=없음 gate=
+  read -r n roles injected signal <<< "$(live_role_seats)"
   [[ -f "$HOME/.cys/.master-bootstrapped" ]] && mark=있음
   [[ "$GATE_VISIBLE" == 1 ]] && gate=" · 확인 창 대기 중(예산 정지)"
-  log "기다리는 것: 각성 표지 ${mark} · 좌석 ${n:-0}/3${gate}"
+  [[ "${signal:-0}" == 1 ]] && completion="${injected:-0}/3"
+  log "기다리는 것: 지침 완료 ${completion} · 좌석 ${n:-0}/3 · 각성 표지 ${mark}(관측)${gate}"
 }
 
 # 좌석 첫 실행 질문(온보딩 · 「Quick safety check — trust this folder?」 — 기본값 No, exit) 사전 설정.
@@ -948,24 +972,7 @@ wait_gui_onboarded() {
   fail_message "J-VER-02 — W-ONBOARD: Wave Terminal 첫 실행 준비(온보딩) 완료 표지를 확인하지 못했습니다. 앱 창을 열어 둔 채 같은 설치 명령을 다시 실행하세요(처음에 --reinstall 을 붙였다면 그것은 빼고 --resume 만 붙입니다)."
 }
 
-verify_live_fleet() {
-  python3 - "$WAVE_HOME/fleet/status.json" "$HOME/.cys/.master-bootstrapped" "$1" "$2" <<'PY_LIVE'
-import json, sys
-from pathlib import Path
-status, marker = map(Path, sys.argv[1:3]); ref, since = sys.argv[3:]
-try:
-    m = json.loads(marker.read_text())
-    live = [s for s in json.loads(status.read_text())['surfaces'] if s.get('exited') is False and s.get('agent_alive') is True]
-    masters = [s for s in live if s.get('surface_ref') == ref and s.get('role') == 'master']
-    csos = [s for s in live if s.get('role') == 'cso' and s.get('created_at', 0) >= float(since)]
-    children = [s for s in live if str(s.get('role', '')).startswith('worker') and s.get('created_at', 0) >= float(since)]
-    ok = (marker.stat().st_mtime >= float(since) and m.get('orchestra_check') == 'exit 0'
-          and str(m.get('surface_ref')) in {ref, ref.split(':')[1]} and masters and csos and children)
-except (OSError, ValueError, KeyError, TypeError):
-    ok = False
-sys.exit(0 if ok else 1)
-PY_LIVE
-}
+verify_live_fleet() { fleet_status_read verify "$1" "$2"; }
 
 verify_original_injection() {
   bounded_cys pack-manifest > "$WAVE_HOME/verify/embedded-pack.json" || return 1
@@ -1119,6 +1126,38 @@ mark_install_complete() {
   summarize_state final
 }
 
+# 진단 수집은 설치 판정과 분리한다. 원문·명령 종료값을 보존하며 수집 실패는 비통과 값을 바꾸지 않는다.
+capture_s07_evidence() (
+  set +e
+  local original_rc="$1" dir list_rc status_rc
+  umask 077
+  mkdir -p "$WAVE_HOME/fleet" || return 0
+  dir="$(mktemp -d "$WAVE_HOME/fleet/failure-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")" || return 0
+  WAVE_COMMAND_TIMEOUT=5 bounded_cys list > "$dir/list.txt" 2> "$dir/list.stderr"
+  list_rc=$?
+  WAVE_COMMAND_TIMEOUT=5 bounded_cys status --json > "$dir/status.json" 2> "$dir/status.stderr"
+  status_rc=$?
+  python3 - "$dir" "$original_rc" "$list_rc" "$status_rc" <<'PY_EVIDENCE'
+import json, sys
+from pathlib import Path
+from datetime import datetime, timezone
+folder = Path(sys.argv[1])
+result = dict(recorded_at=datetime.now(timezone.utc).isoformat(), installer_exit_code=int(sys.argv[2]),
+              list_command='cys list', list_exit_code=int(sys.argv[3]),
+              status_command='cys status --json', status_exit_code=int(sys.argv[4]))
+try:
+    rows = json.loads((folder/'status.json').read_text())['surfaces']
+    seats = [{k:s.get(k) for k in ('role','surface_ref','exited','agent_alive')} for s in rows
+             if isinstance(s,dict) and (s.get('role') in ('master','cso','worker') or str(s.get('role','')).startswith('worker-'))]
+except (OSError, ValueError, KeyError, TypeError):
+    seats = []; result['roles_unconfirmed'] = True
+(folder/'roles.json').write_text(json.dumps(seats,ensure_ascii=False,indent=2)+'\n')
+(folder/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+PY_EVIDENCE
+  log "S07 비통과 시점 증거: $dir (설치 종료값 $original_rc)"
+  return 0
+)
+
 run_step() {
   local step_id="$1"
   local function_name
@@ -1148,6 +1187,7 @@ run_step() {
   cat "$stderr_file" >> "$LOG_FILE"
   set -e
   if [[ "$rc" -ne 0 ]]; then
+    [[ "$step_id" != S07_INITIAL_FLEET ]] || capture_s07_evidence "$rc" || true
     if [[ "$rc" -eq 2 ]]; then help_progress fail J-VER-04; else help_progress fail J-UNK-00; fi   # 2 = 세 칸 생존·확인 미완(S07) — 전용 코드만 알리고 도움 요청은 보내지 않는다
     # 상태 파일에는 가린 뒤 자른 stderr 끝부분(최대 4KB)만 남긴다. 원문 전체는 install.log 에만 있다.
     STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" "$SCRIPT_DIR/lib" <<'PY_REASON'

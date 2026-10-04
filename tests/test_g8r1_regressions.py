@@ -221,6 +221,7 @@ class StepsAndNoticeTextTests(unittest.TestCase):
         self.assertIn("'help-notice.txt'", (ROOT / 'lib/install-help.ps1').read_text(encoding='utf-8'))
 
 
+@mac_only()
 class MacResumeAndPackTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix='wave-g8r1-s07-')
@@ -630,6 +631,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertLess(body.index('release_cdhash_pin'), body.index('curl --fail'))
 
 
+@mac_only()
 class MacArchGateTests(unittest.TestCase):
     """S00 stops on Intel macs; arm64 and Rosetta (proc_translated=1) pass. uname/sysctl are faked."""
     def run_s00(self, machine, translated, arm64_flag):

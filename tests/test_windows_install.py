@@ -75,7 +75,7 @@ catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
         self.assertTrue(call["wait"] and call["pass"])
         self.assertTrue(call["args"].startswith("/S /D="), call)
         self.assertNotIn('"', call["args"])
-        self.assertTrue(call["args"].endswith("/wave/bin"), call)
+        self.assertTrue(call["args"].replace("\\", "/").endswith("/wave/bin"), call)  # 윈은 역슬래시 경로 — 구분자만 맞춘다(5.1 확인은 다음 계약 잡)
 
     def test_nonzero_nsis_exit_is_failure(self):
         result, call = self.run_install(code=7)

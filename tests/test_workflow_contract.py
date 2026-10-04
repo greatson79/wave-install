@@ -52,6 +52,7 @@ class WorkflowTests(unittest.TestCase):
                 if step.get('if') == "runner.os == 'macOS'":
                     step['run'] = step['run'].replace('python tests/run_unit_suite.py', '')
         mutate('mac suite dropped', drop_mac_suite, 'macOS step must run the full suite')
+        mutate('shallow checkout', lambda w: w['jobs']['bootstrap-contract']['steps'][0].pop('with'), 'full history and tags')
         mutate('write token', lambda w: w.update(permissions={'contents': 'write'}), 'read-only token')
         def one_line_step(w):
             return next(s for s in w['jobs']['bootstrap-contract']['steps'] if 'one-line command' in s.get('name', ''))

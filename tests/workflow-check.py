@@ -51,6 +51,7 @@ def validate(workflow):
     need(set(strategy.get('matrix', {}).get('os', [])) == {'windows-latest', 'macos-latest'}, 'Windows/macOS runner matrix missing')
     steps = contract.get('steps', [])
     need(bool(steps) and steps[0].get('uses', '').startswith('actions/checkout@'), 'checkout must be first')
+    need(bool(steps) and str((steps[0].get('with') or {}).get('fetch-depth')) == '0', 'checkout must fetch full history and tags (sync-get test reads a tag)')
     for index, platform, shell in ((1, 'Windows', 'cmd'), (2, 'macOS', 'bash')):
         step = steps[index] if len(steps) > index else {}
         need(step.get('if') == f"runner.os == '{platform}'" and step.get('shell') == shell

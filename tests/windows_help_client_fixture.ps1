@@ -28,7 +28,7 @@ Reset-Fixture @(, @(201, @{}))
 $null = Send-HelpRequest -BaseUrl 'https://example.test' -InstallId ('a' * 32) -Version '9.9.9' -Step '1/10' -Code 'J-UNK-00' -EnvReport 'e' -LogTail 'l' -Interactive $true -Username 'alice'
 $gate.no_call_before_notice = ($script:calls.Count -eq 0)
 
-$noticeText = (Show-HelpNotice 6>&1 | Out-String)
+$noticeText = (Show-HelpNotice 6>&1 | Out-String -Width 4096)   # 5.1 의 Out-String 은 호스트 폭(80)에서 줄을 접는다 — 문구 비교는 접힘 없이
 if (-not $script:HelpNoticeShown) { throw 'notice did not arm sending' }
 
 # 2) WAVE_NO_PROGRESS=1 blocks help as well as progress.

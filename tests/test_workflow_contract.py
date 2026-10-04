@@ -18,6 +18,12 @@ class WorkflowTests(unittest.TestCase):
     def test_checked_in_workflow(self):
         self.assertEqual(checker.validate(self.workflow), [])
 
+    def test_native_windows_powershell_runs_complete_installer_test_suite(self):
+        steps = self.workflow['jobs']['bootstrap-contract']['steps']
+        native = next(s for s in steps if s.get('shell') == 'powershell' and s.get('if') == "runner.os == 'Windows'")
+        self.assertIn('$env:PWSH = (Get-Command powershell).Source', native['run'])
+        self.assertIn('python -m unittest discover -s tests', native['run'])
+
     def test_unsafe_workflow_mutants(self):
         def mutate(name, change, expected):
             with self.subTest(name=name):
@@ -31,6 +37,16 @@ class WorkflowTests(unittest.TestCase):
         mutate('install on PR', lambda w: w['jobs']['signed-install'].pop('if'), 'real installation must be opt-in')
         mutate('skip contracts', lambda w: w['jobs']['signed-install'].pop('needs'), 'depend on contract matrix')
         mutate('ignore failure', lambda w: w['jobs']['bootstrap-contract'].update({'continue-on-error': 'true'}), 'propagate failures')
+        def omit_native_test_suite(w):
+            for step in w['jobs']['bootstrap-contract']['steps']:
+                if step.get('shell') == 'powershell' and step.get('if') == "runner.os == 'Windows'":
+                    step['run'] = step['run'].replace('python -m unittest discover -s tests', '')
+        mutate('omit native PowerShell suite', omit_native_test_suite, '5.1 unittest suite must run')
+        def unpin_native_test_suite(w):
+            for step in w['jobs']['bootstrap-contract']['steps']:
+                if step.get('shell') == 'powershell' and step.get('if') == "runner.os == 'Windows'":
+                    step['run'] = step['run'].replace('$env:PWSH = (Get-Command powershell).Source\n', '')
+        mutate('unpin native PowerShell suite', unpin_native_test_suite, '5.1 suite must pin PWSH')
         mutate('write token', lambda w: w.update(permissions={'contents': 'write'}), 'read-only token')
         def unguard_pin(w):
             for s in w['jobs']['bootstrap-contract']['steps']:

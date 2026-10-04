@@ -55,8 +55,15 @@ def validate(workflow):
         step = steps[index] if len(steps) > index else {}
         need(step.get('if') == f"runner.os == '{platform}'" and step.get('shell') == shell
              and 'tests/ps-balance.py' in step.get('run', ''), f'{platform} delimiter precheck must be first executable check')
-    need(any(s.get('shell') == 'powershell' and s.get('if') == "runner.os == 'Windows'"
-             and 'ParseFile' in s.get('run', '') for s in steps), 'native Windows PowerShell 5.1 parse missing')
+    native_ps51 = next((s for s in steps if s.get('shell') == 'powershell'
+                        and s.get('if') == "runner.os == 'Windows'"), None)
+    need(native_ps51 is not None and 'ParseFile' in native_ps51.get('run', ''), 'native Windows PowerShell 5.1 parse missing')
+    if native_ps51 is not None:
+        native_run = native_ps51.get('run', '')
+        pin_at = native_run.find('$env:PWSH = (Get-Command powershell).Source')
+        suite_at = native_run.find('python -m unittest discover -s tests')
+        need(pin_at >= 0, '5.1 suite must pin PWSH to Windows PowerShell')
+        need(suite_at > pin_at, '5.1 unittest suite must run after pinning PWSH')
     need(any(s.get('shell') == 'pwsh' and not s.get('if') and 'ParseFile' in s.get('run', '') for s in steps), 'native PowerShell 7 parse missing')
     commands = '\n'.join(s.get('run', '') for s in steps)
     for required in ('tests/help-rules-check.py', 'tests/test_windows_checks.py', 'tests/win-pin-mutate.py',

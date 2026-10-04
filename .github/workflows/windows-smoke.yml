@@ -68,8 +68,8 @@ jobs:
             if ($errors.Count) { throw ($errors | Out-String) }
           }
           $env:PWSH = (Get-Command powershell).Source
-          python tests/test_windows_bootstrap.py
-          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 helper tests failed' }
+          python -m unittest discover -s tests
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 installer test suite failed' }
       - name: User one-line command exactly as documented (Windows PowerShell 5.1)
         if: runner.os == 'Windows'
         shell: powershell

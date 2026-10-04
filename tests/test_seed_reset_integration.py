@@ -52,7 +52,7 @@ class SeedResetTests(unittest.TestCase):
         self.settings.write_text('{"theme":"light","autoUpdatesChannel":"latest","other":42}')
         self.seed()
         data = json.loads(self.settings.read_text())
-        self.assertEqual(data, dict(theme='dark', autoUpdatesChannel='stable', other=42, remoteControlAtStartup=True, skipDangerousModePermissionPrompt=True))   # 제품 설정 계약
+        self.assertEqual(data, dict(theme='dark', autoUpdatesChannel='stable', other=42, remoteControlAtStartup=True, skipDangerousModePermissionPrompt=True))   # 기준 설정값 적용 결과
         self.assertEqual(self.personal.read_text(), '{"theme":"light","personal":true}')
 
     def test_reset_wave_and_all_restore_before_deleting_journal(self):

@@ -491,7 +491,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.assertEqual((self.wave / 'fleet/master-ref').read_text().strip(), 'surface:5')
 
     def test_resumed_attempt_uses_the_recorded_start_as_the_s07_since(self):
-        # 재개 계약: 재개 시 기록된 시도 시작 시각을 S07 기준으로 재사용 — 기록 시작 뒤 복원된 cso·worker 를 수용하고 started-at 에도 그 값이 남는다
+        # 재개 시 기록된 시도 시작 시각을 S07 기준으로 재사용하고, 이후 복원된 cso·worker 와 started-at 값을 확인한다
         first = int(time.time()) - 100
         (self.wave / 'attempt-started').write_text(str(first) + '\n')
         self.fleet.write_text(json.dumps({'surfaces': [self.seat('surface:9', 'master', first + 10), self.seat('surface:20', 'cso', first + 12),

@@ -35,9 +35,11 @@ try {
   if (Test-Path (Join-Path $profile '.wave')) { throw 'Profile was not empty' }
   @{ user = $identity.Name; sid = $identity.User.Value; administrator = $admin; profile = $profile; powershell = $PSVersionTable.PSVersion.ToString(); fresh_wave_home = $true; hkcu_sid_verified = $true; evidence_acl = (Get-Acl $Evidence).Sddl } | ConvertTo-Json | Set-Content (Join-Path $Evidence 'identity.json') -Encoding UTF8
   if ($Mode -eq 'published') {
-    $line = @(Get-Content (Join-Path $Root 'README.md') -Encoding UTF8 | Where-Object { $_ -like 'powershell *install-wave.ps1*' })
-    if ($line.Count -ne 1) { throw 'Expected exactly one README Windows command' }
-    $line[0] | Set-Content (Join-Path $Evidence 'readme-command.txt') -Encoding UTF8
+    # The user command comes from the machine contract, not from documentation prose.
+    $contract = Get-Content (Join-Path $Root 'scripts/ci/install-lines.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $line = @($contract.win)
+    if ($line.Count -ne 1 -or -not $line[0] -or -not $contract.public_base -or -not $line[0].Contains($contract.public_base)) { throw 'install-lines.json Windows command invalid' }
+    $line[0] | Set-Content (Join-Path $Evidence 'install-command.txt') -Encoding UTF8
     Invoke-Expression $line[0]
     exit $LASTEXITCODE
   }

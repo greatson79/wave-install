@@ -111,7 +111,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
         if mode == "nonexec":
             (app / "cysd").chmod(0o644)
         script = r'''
-set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }
+set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; RELEASE_EXPECTED_SHA256="f0509a71f92a9f83ec26d8b90876af9ce3e353ae3f6d343d2bf7ad29f3873287"; }
 hdiutil() { return 0; }
 ditto() {
   cp -R "$1" "$2" || return 1
@@ -153,7 +153,7 @@ printf '%s\n' "$STEP_OBSERVED"
                 probe.write_text(lsof)
                 probe.chmod(0o755)
                 self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
-                result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+                result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; RELEASE_EXPECTED_SHA256="f0509a71f92a9f83ec26d8b90876af9ce3e353ae3f6d343d2bf7ad29f3873287"; }; '
                                    'hdiutil() { printf "mounted" > "$HOME/mounted"; }; '
                                    'step_s04; printf "%s\\n" "$STEP_OBSERVED"')
                 self.assertNotEqual(result.returncode, 0)
@@ -172,7 +172,7 @@ printf '%s\n' "$STEP_OBSERVED"
         lsof.write_text('#!/bin/sh\necho 123\n')
         lsof.chmod(0o755)
         self.env["PATH"] = str(fakebin) + os.pathsep + os.environ["PATH"]
-        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; RELEASE_EXPECTED_SHA256="f0509a71f92a9f83ec26d8b90876af9ce3e353ae3f6d343d2bf7ad29f3873287"; }; '
                            'hdiutil() { printf "mounted" > "$HOME/mounted"; }; '
                            'run_step S04_INSTALL_LINK')
         self.assertNotEqual(result.returncode, 0)
@@ -222,7 +222,7 @@ printf '%s\n' "$STEP_OBSERVED"
         fake_cys.write_text('#!/bin/sh\nprintf "%s\\n" "$FAKE_DAEMON_STATUS"\n')
         fake_cys.chmod(0o755)
         self.env["FAKE_DAEMON_STATUS"] = status
-        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+        result = self.bash('set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; RELEASE_EXPECTED_SHA256="f0509a71f92a9f83ec26d8b90876af9ce3e353ae3f6d343d2bf7ad29f3873287"; }; '
                            'hdiutil() { return 0; }; step_s04')
         self.assertNotEqual(result.returncode, 0)
         return result.stdout + result.stderr
@@ -287,7 +287,7 @@ printf '%s\n' "$STEP_OBSERVED"
         (fakebin / "lsof").write_text("#!/bin/sh\necho 4242\n")
         (fakebin / "lsof").chmod(0o755)
         env = dict(self.env, PATH=str(fakebin) + os.pathsep + os.environ["PATH"])
-        r = subprocess.run(["bash", "-c", 'source "$1"; STEPS_FILE="$TEST_STEPS"; set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
+        r = subprocess.run(["bash", "-c", 'source "$1"; STEPS_FILE="$TEST_STEPS"; set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; RELEASE_EXPECTED_SHA256="f0509a71f92a9f83ec26d8b90876af9ce3e353ae3f6d343d2bf7ad29f3873287"; }; '
                             'hdiutil() { return 0; }; step_s04', "unit-test", str(self.lib)],
                            env=dict(env, TEST_MODE="ok"), text=True, capture_output=True, timeout=10)
         msg = r.stdout + r.stderr

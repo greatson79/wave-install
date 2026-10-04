@@ -172,6 +172,7 @@ class UnfinishedOutcome(S07Base):
 
 class WaitLoop(S07Base):
     def marker(self):
+        self.status(['master', 'cso', 'worker'], source='rc5_three_status.json')
         m = self.home / '.cys/.master-bootstrapped'
         m.write_text(json.dumps({'surface_ref': self.master_ref, 'orchestra_check': 'exit 0'}))
         os.utime(m, (time.time() + 20, time.time() + 20))
@@ -196,7 +197,7 @@ class WaitLoop(S07Base):
 
     def test_open_gate_stops_the_budget(self):
         # 상한 10초인데 확인 창이 ~14초 떠 있다가 사람이 고른 뒤 마커가 생긴다 — 예산이 멈췄으면 통과해야 한다(부하에도 흔들리지 않게 여유를 둠).
-        self.status(['master', 'cso', 'worker'])
+        self.status(['master', 'cso', 'worker'], source='rc5_partial_status.json')
         (self.wave / 'gate.on').write_text('')
 
         def human():
@@ -232,12 +233,12 @@ class WaitLoop(S07Base):
         self.assertIn('RC=2', r.stdout, r.stderr)
         sent = (self.wave / 'sent.log').read_text()
         self.assertEqual(sent.count('너는 마스터다'), 1, sent)
-        self.assertIn('각성 표지가 아직 없어', r.stderr)
+        self.assertIn('지침 완료가 아직 확인되지 않아', r.stderr)
 
     def test_waiting_line_reports_marker_and_seats(self):
         self.status(['master'], source='mac_status_noboot.json')   # 실물 noboot 모양: master 만 생존
         r = self.run_s07({'WAVE_AWAKENING_SECONDS': '5', 'WAVE_WAIT_REPORT_SECONDS': '1'})
-        self.assertIn('기다리는 것: 각성 표지 없음 · 좌석 1/3', r.stderr)
+        self.assertIn('기다리는 것: 지침 완료 미확인 · 좌석 1/3', r.stderr)
         self.assertNotIn('주입', r.stderr)
 
     def test_every_app_gate_wording_pauses_the_budget(self):

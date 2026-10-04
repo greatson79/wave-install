@@ -1,0 +1,10 @@
+{
+  "provenance": {
+    "command": "wave-terminal-rc5-app/target/debug/cys list",
+    "recorded_at": "2026-10-04T06:05:54.686172+00:00",
+    "binary": "c1c4969f969ea32c7cf4c74db30311943232611e",
+    "stdout_sha256": "1ec2597bb22b3d1cca50de6e8d1bf06f90f8097423474bf3487d5a74a6f006c5",
+    "exit_code": 0
+  },
+  "response": "surface:1\trole=master\tpid=64493\texited=false\tmaster-claude · home\t/tmp/rc5-three-4jx_h102/home\nsurface:2\trole=cso\tpid=64781\texited=false\tcso-claude · home\t/tmp/rc5-three-4jx_h102/home\nsurface:3\trole=worker\tpid=64941\texited=false\tworker-claude · home\t/tmp/rc5-three-4jx_h102/home\n"
+}

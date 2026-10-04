@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -245,7 +246,12 @@ class MacResumeAndPackTests(unittest.TestCase):
                               text=True, capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
 
     def seat(self, ref, role, created):
-        return dict(surface_ref=ref, role=role, exited=False, agent_alive=True, created_at=created)
+        # 실물 세 역할 녹취를 사용하고 회귀 경계용 좌석 번호/시각만 옮긴다.
+        data = json.loads((ROOT / 'tests/fixtures/real_cys/rc5_three_status.json').read_text())['response']
+        base = 'worker' if role.startswith('worker') else role
+        row = next(dict(r) for r in data['surfaces'] if r['role'] == base)
+        row.update(surface_ref=ref, role=role, created_at=created)
+        return row
 
     def prepare(self, masters, saved_ref='surface:5', master_created=None):
         created = self.since + 5 if master_created is None else master_created
@@ -834,6 +840,7 @@ $reason = [string]$Recorded.reason
 Write-Host ('BYTES=' + [Text.Encoding]::UTF8.GetByteCount($reason))
 Write-Host ('REASON=' + $reason.Substring([Math]::Max(0, $reason.Length - 200)).Replace("`n", ' '))
 Write-Host ('HEAD=' + $reason.Substring(0, 3))
+Write-Host ('FIXTURE_HOME=' + $env:USERPROFILE)
 Write-Host ('POSITION_HAS_HOME=' + ([string]$Recorded.position).Contains($env:USERPROFILE))
 Write-Host ('LOG_FULL=' + $logged.Contains('SECRETTOKENVALUE') + '/' + ($logged.Length -gt 200000))
 ''')
@@ -843,7 +850,8 @@ Write-Host ('LOG_FULL=' + $logged.Contains('SECRETTOKENVALUE') + '/' + ($logged.
                 self.assertIn('at ', values['REASON'])
                 self.assertNotIn('alicesmith', values['REASON'])
                 if with_lib:
-                    self.assertIn('/Users/<USER>/', values['REASON'])
+                    expected_home = re.sub(r'^/(?:Users|home)/[^/]+', '/Users/<USER>', values['FIXTURE_HOME'])
+                    self.assertIn((expected_home + '/<USER>/log')[-180:], values['REASON'])
                 else:
                     self.assertNotIn('.g8r1-win-', values['REASON'])
                     self.assertEqual(values['POSITION_HAS_HOME'], 'False')

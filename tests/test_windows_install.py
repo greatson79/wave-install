@@ -41,7 +41,7 @@ function Start-Process {
   if ($env:TEST_CODE -eq '0' -and $env:TEST_MISSING -ne '1') {
     $dir = Join-Path $WaveHome 'bin'
     New-Item -ItemType Directory -Force $dir | Out-Null
-    foreach ($name in @('cys.exe')) {
+    foreach ($name in @('cys.exe', 'cys-app.exe')) {
       $file = Join-Path $dir $name
       Set-Content $file -Value "#!/bin/sh`nprintf 'cys 0.1.1\n'`nexit 0"
       & chmod +x $file

@@ -20,7 +20,7 @@ class W12Tests(unittest.TestCase):
             result=subprocess.run(['bash','-c','source "$1"; SCRIPT_DIR="$2"; step_s06','test',str(lib),str(ROOT)],env=env,capture_output=True,text=True)
             self.assertNotEqual(result.returncode,0)
             self.assertEqual((pack/'directives/MASTER_DIRECTIVE.md').read_text(),'custom')
-    def test_three_live_roles_and_master_marker_without_reviewer(self):
+    def test_three_live_injected_roles_without_reviewer(self):
         import time
         with tempfile.TemporaryDirectory() as td:
             home=Path(td); wave=home/'wave'; fleet=wave/'fleet'; fleet.mkdir(parents=True)
@@ -29,7 +29,8 @@ class W12Tests(unittest.TestCase):
             marker=cys/'.master-bootstrapped'
             marker.write_text(json.dumps({'surface_ref':'surface:1','orchestra_check':'exit 0'}))
             lib=home/'lib.sh'; lib.write_text((ROOT/'bootstrap.sh').read_text().rsplit('\nmain "$@"',1)[0])
-            seats=[dict(surface_ref=f'surface:{i+1}',role=role,exited=False,agent_alive=True,created_at=since) for i,role in enumerate(['master','cso','worker'])]
+            raw=json.loads((ROOT/'tests/fixtures/real_cys/rc5_three_status.json').read_text())['response']['surfaces']
+            seats=[dict(next(r for r in raw if r['role']==role), surface_ref=f'surface:{i+1}', created_at=since) for i,role in enumerate(['master','cso','worker'])]
             def check(rows):
                 (fleet/'status.json').write_text(json.dumps({'surfaces':rows}))
                 return subprocess.run(['bash','-c','source "$1"; verify_live_fleet surface:1 "$2"','fixture',str(lib),str(since)],env=dict(os.environ,HOME=td,WAVE_HOME=str(wave)),capture_output=True,timeout=5).returncode
@@ -37,14 +38,14 @@ class W12Tests(unittest.TestCase):
             marker.write_text(json.dumps({'surface_ref':'1','orchestra_check':'exit 0'}))
             self.assertEqual(check(seats),0, 'numeric master marker must match surface:1')
             marker.write_text(json.dumps({'surface_ref':'surface:1','orchestra_check':'exit 0'}))
-            self.assertNotEqual(check([seats[0],seats[2]]),0, 'missing CSO must fail')
+            self.assertNotEqual(check([seats[0],seats[2]]),0, '필수 역할 누락을 거부해야 한다')
             self.assertNotEqual(check([seats[0],seats[1]]),0, 'missing worker must fail')
             dead=[dict(s) for s in seats]; dead[1]['agent_alive']=False
-            self.assertNotEqual(check(dead),0,'dead CSO must fail')
+            self.assertNotEqual(check(dead),0,'종료된 필수 역할을 거부해야 한다')
             reviewer=dict(seats[1],role='reviewer')
-            self.assertNotEqual(check([seats[0],reviewer,seats[2]]),0,'reviewer cannot replace CSO')
+            self.assertNotEqual(check([seats[0],reviewer,seats[2]]),0,'다른 역할로 필수 역할을 대체할 수 없어야 한다')
             marker.write_text(json.dumps({'surface_ref':'surface:99','orchestra_check':'exit 0'}))
-            self.assertNotEqual(check(seats),0,'wrong master marker must fail')
+            self.assertEqual(check(seats),0,'marker is observational, not a gate')
     def test_awakening_commands_obey_remaining_deadline(self):
         import time
         with tempfile.TemporaryDirectory() as td:

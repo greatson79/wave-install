@@ -7,7 +7,7 @@
   "binary": "mac 앱 3af28f20d657",
   "evidence_file": "rc-gate-table-37134620023/evidence/mac/noboot/fleet/status.json",
   "recorded_at": "2026-10-04T01:02:06+09:00 (증거 파일 수정 시각 · 수집 시각 아님)",
-  "masking": "사용자 계정 경로만 <USER> 로 가림 — 나머지 값은 원문"
+  "masking": "사용자 홈 경로는 <HOME> 으로 가림 — 나머지 값은 원문"
  },
  "response": {
   "daemon": {
@@ -31,12 +31,12 @@
     "agent": "claude",
     "agent_alive": true,
     "created_at": 1791042833.253918,
-    "cwd": "/Users/<USER>",
+    "cwd": "<HOME>",
     "exited": false,
     "idle_secs": 380,
     "last_parser_panic": null,
     "line_count": 371,
-    "live_cwd": "/Users/<USER>",
+    "live_cwd": "<HOME>",
     "model": "claude-opus-5-5",
     "model_fallback": false,
     "parser_panics": 0,
@@ -53,12 +53,12 @@
     "agent": null,
     "agent_alive": null,
     "created_at": 1791042835.458239,
-    "cwd": "/Users/<USER>",
+    "cwd": "<HOME>",
     "exited": false,
     "idle_secs": 414,
     "last_parser_panic": null,
     "line_count": 4,
-    "live_cwd": "/Users/<USER>",
+    "live_cwd": "<HOME>",
     "model": null,
     "model_fallback": null,
     "parser_panics": 0,

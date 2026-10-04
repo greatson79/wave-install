@@ -72,7 +72,7 @@ if ($Mode -eq 'unit') {
   $env:USERPROFILE = $env:RC4_FIXTURE_DIR
   $script:Logged = @()
   Write-WaitingFor (Real 'win_status_noboot.json')
-  if (($script:Logged -join ' ') -notmatch '기다리는 것: 각성 표지 없음 · 좌석 1/3' -or ($script:Logged -join ' ') -match '주입') { throw "waiting line: $($script:Logged -join ' ')" }
+  if (($script:Logged -join ' ') -notmatch '기다리는 것: 지침 완료 미확인 · 좌석 1/3' -or ($script:Logged -join ' ') -match '주입') { throw "waiting line: $($script:Logged -join ' ')" }
   Write-Host 'PASS waiting line: marker / seats n/3'
   Write-Host 'PASS unfinished: three live seats -> alive_unconfirmed (no failure wording), fewer/dead -> failure'
   exit 0

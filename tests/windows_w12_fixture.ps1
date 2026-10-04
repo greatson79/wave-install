@@ -20,14 +20,20 @@ Run-S06
 if($env:CYS_PACK_DIR -ne 'sentinel-parent-pack'){throw 'pack environment leaked'}
 if(Test-Path ($target+'.new')){throw 'legacy sidecar left behind'}
 if(-not $StepObserved.directive_bytes_match -or $StepObserved.legacy_backed_up.Count -ne 1){throw 'S06 migration assertion'}
-$live=[pscustomobject]@{surfaces=@([pscustomobject]@{surface_ref='surface:1';role='master';exited=$false;agent_alive=$true},[pscustomobject]@{surface_ref='surface:2';role='worker-1';exited=$false;agent_alive=$true})}
+$recorded=(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_three_status.json') -Raw | ConvertFrom-Json).response
+$script:RunStartedUnix=[long][Math]::Floor(($recorded.surfaces | Measure-Object created_at -Minimum).Minimum)
+New-Item -ItemType Directory -Force (Join-Path $WaveHome 'fleet') | Out-Null
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/started-at'),[string]$script:RunStartedUnix)
+[IO.File]::WriteAllText((Join-Path $WaveHome 'fleet/master-ref'),[string](($recorded.surfaces | Where-Object {$_.role -eq 'master'}).surface_ref))
+
+$live=[pscustomobject]@{surfaces=@(($recorded.surfaces | Where-Object {$_.role -eq 'master'}),($recorded.surfaces | Where-Object {$_.role -eq 'worker'}))}
 $marker=Join-Path $env:USERPROFILE '.cys/.master-bootstrapped'
 '{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker
-if(Test-AwakenedFleet $live){throw 'missing CSO accepted'}
-$live.surfaces += [pscustomobject]@{surface_ref='surface:3';role='cso';exited=$false;agent_alive=$true}
+if(Test-AwakenedFleet $live){throw '필수 역할 누락이 통과됨'}
+$live.surfaces += ($recorded.surfaces | Where-Object {$_.role -eq 'cso'})
 if(-not(Test-AwakenedFleet $live)){throw 'valid three-seat fleet rejected'}
 $live.surfaces[2].agent_alive=$false
-if(Test-AwakenedFleet $live){throw 'dead CSO accepted'}
+if(Test-AwakenedFleet $live){throw '종료된 필수 역할이 통과됨'}
 $live.surfaces[2].agent_alive=$true
 $live.surfaces += [pscustomobject]@{surface_ref='surface:4';role='reviewer';exited=$true;agent_alive=$false}
 if(-not(Test-AwakenedFleet $live)){throw 'reviewer incorrectly required'}
@@ -36,7 +42,7 @@ if(Test-AwakenedFleet $live){throw 'dead child accepted'}
 Write-Host 'PASS parser; S06 exact stub backup + app hash; live marker; dead child rejected'
 $live.surfaces[1].agent_alive=$true
 $script:AwakeningStartedAt=[DateTime]::UtcNow.AddMinutes(1)
-if(Test-AwakenedFleet $live){throw 'stale marker accepted'}
+if(-not(Test-AwakenedFleet $live)){throw 'stale marker must not gate completed injection'}
 $script:AwakeningStartedAt=$null
 [IO.File]::WriteAllText($target,'custom user text')
 function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
@@ -46,7 +52,7 @@ function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
 $blocked=$false
 try {Run-S06} catch {$blocked=$true}
 if(-not $blocked -or [IO.File]::ReadAllText($target) -ne 'custom user text'){throw 'custom preservation fail'}
-Write-Host 'PASS stale marker rejected; custom directive preserved; mismatch/new blocked'
+Write-Host 'PASS marker observational; custom directive preserved; mismatch/new blocked'
 
 if((Get-AwakeningBudgetMs 0) -ne 5000){throw 'initial status budget wrong'}
 if((Get-AwakeningBudgetMs 419999) -ne 1){throw 'remaining budget not enforced'}
@@ -54,11 +60,11 @@ if((Get-AwakeningBudgetMs 420000) -ne 0){throw 'deadline not enforced'}
 if((Get-AwakeningBudgetMs 420001) -ne 0){throw 'expired deadline became negative'}
 $runText=($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Run-S07'},$false))[0].Extent.Text
 if($runText -match 'for \(\$attempt' -or $runText -notmatch 'Stopwatch.*StartNew' -or $runText -notmatch 'Get-LiveFleet \(Get-AwakeningBudgetMs'){throw 'deadline wiring absent'}
-Write-Host 'PASS CSO required/alive; reviewer excluded; 420-second remaining budget boundaries'
+Write-Host 'PASS required roles live; unrelated role excluded; 420-second remaining budget boundaries'
 function Start-WaveApp { }
 function Seed-WaveClaudeTrust { }  # 신뢰 사전 기록은 windows_trust_seed_fixture.ps1 이 따로 본다(여기서 좌석 설정 파일을 쓰지 않게)
 $HelpRules=[object[]]([regex]::Match((Get-Content (Join-Path $PWD 'bootstrap.ps1') -Raw),"(?s)\`$HelpRulesJson = @'\r?\n(.*?)\r?\n'@").Groups[1].Value|ConvertFrom-Json)
-function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){ return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout="cys 9.9.9`n"} }
+function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){ return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout=$(if($Arguments[0] -eq 'launch-agent'){(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_master_launch.json') -Raw | ConvertFrom-Json).response}else{"cys 9.9.9`n"})} }
 $onboarded=Join-Path $env:USERPROFILE '.cys/.gui-onboarded'
 $clock=[Diagnostics.Stopwatch]::StartNew()
 $blocked=$false; try {Wait-GuiOnboarded $clock 300} catch {$blocked=($_.Exception.Message -match 'W-ONBOARD' -and (Get-JCode $_.Exception.Message) -eq 'J-VER-02')}
@@ -76,7 +82,7 @@ function Get-LiveFleet([int]$TimeoutMs=5000) {
 Run-S07
 if(-not $StepObserved.fleet_started -or $StepObserved.seats -ne 3 -or ($StepObserved.roles -join ',') -ne 'master,cso,worker'){throw 'three-seat observed contract mismatch'}
 Write-Host 'PASS S07 observed roles and live status timeout budget'
-$live.surfaces[0] | Add-Member -NotePropertyName cwd -NotePropertyValue 'C:\Users\설치 user'
+$live.surfaces[0] | Add-Member -NotePropertyName cwd -NotePropertyValue 'C:\Users\설치 user' -Force
 if((Get-MasterAwakeState $live) -ne 'unconfirmed'){throw 'awake confirmed without transcript'}
 $proj=Join-Path $env:USERPROFILE '.cys/claude/projects/C--Users----user'
 New-Item -ItemType Directory -Force $proj|Out-Null
@@ -94,7 +100,7 @@ function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:launched){return $live
 function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
  $script:calls += ($Arguments -join ' ')
  if($Arguments[0] -eq 'launch-agent'){$script:launched=$true;'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker}
- return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout="cys 9.9.9`n"}
+ return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout=$(if($Arguments[0] -eq 'launch-agent'){(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_master_launch.json') -Raw | ConvertFrom-Json).response}else{"cys 9.9.9`n"})}
 }
 Run-S07
 $li=[array]::FindIndex([string[]]$script:calls,[Predicate[string]]{param($c) $c -like 'launch-agent --role master*'})
@@ -109,12 +115,13 @@ $declared=Join-Path $WaveHome 'fleet/declared'
 if((Test-Path $declared) -or -not (Test-Path (Join-Path $WaveHome 'fleet/started-at'))){throw 'failed declaration recorded as delivered or start time missing'}
 $script:declSent=$false; function Write-Log { }
 $nowUnix=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-$masterOnly=[pscustomobject]@{surfaces=@([pscustomobject]@{surface_ref='surface:1';role='master';exited=$false;agent_alive=$true;created_at=$nowUnix})}
+$masterOnly=[pscustomobject]@{surfaces=@(($recorded.surfaces | Where-Object {$_.role -eq 'master'} | ConvertTo-Json -Depth 20 | ConvertFrom-Json))}
+$masterOnly.surfaces[0].created_at=$nowUnix
 function Get-LiveFleet([int]$TimeoutMs=5000) { if($script:declSent){return $live}; return $masterOnly }
 function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
  $script:calls += ($Arguments -join ' ')
  if($Arguments[0] -eq 'send' -and $script:sendExit -eq 0){$script:declSent=$true;'{"surface_ref":"surface:1","orchestra_check":"exit 0"}'|Set-Content $marker}
- return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout="cys 9.9.9`n"}
+ return [pscustomobject]@{timed_out=$false;exit_code=$(if($Arguments[0] -eq 'send'){$script:sendExit}else{0});stderr='';stdout=$(if($Arguments[0] -eq 'launch-agent'){(Get-Content (Join-Path $PWD 'tests/fixtures/real_cys/rc5_master_launch.json') -Raw | ConvertFrom-Json).response}else{"cys 9.9.9`n"})}
 }
 $script:calls=@(); $script:sendExit=0
 Run-S07

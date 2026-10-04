@@ -1,0 +1,11 @@
+{
+  "provenance": {
+    "command": "wave-terminal-rc5-app/target/debug/cys launch-agent --role master --agent claude --cwd /tmp/rc5-three-4jx_h102/home",
+    "recorded_at": "2026-10-04T06:05:36.862857+00:00",
+    "binary": "c1c4969f969ea32c7cf4c74db30311943232611e (existing built binary; build_id 87d206bc9823)",
+    "source": "rc5/녹취_status_three_roles/commands.json",
+    "stdout_sha256": "cc65307dfb645ce4c8265121acf719dada08e6d48c624ab0bf4c06f9d9603fcd",
+    "exit_code": 0
+  },
+  "response": "surface:1\n"
+}

@@ -88,3 +88,10 @@ if($Mode -eq 'since'){
   }
   Write-Host 'PASS invalid started-at rejected by S08 and resume'
 }
+
+if($Mode -eq 'start-time-floor'){
+  if($null -ne (ConvertTo-ValidStartTime '0000000000')){throw 'zero accepted as a recorded start time'}
+  if($null -ne (ConvertTo-ValidStartTime '0999999999')){throw 'below-floor ten-digit value accepted as a recorded start time'}
+  if((ConvertTo-ValidStartTime 1000000000) -ne 1000000000){throw 'minimum ten-digit epoch value rejected'}
+  Write-Host 'PASS start-time lower bound'
+}

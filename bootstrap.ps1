@@ -955,6 +955,7 @@ function ConvertTo-ValidStartTime([object]$Value) {
   else { return $null }
   [long]$parsed = 0
   if ($text -cnotmatch '^[0-9]{10}$' -or -not [long]::TryParse($text, [Globalization.NumberStyles]::None, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) { return $null }
+  if ($parsed -lt 1000000000) { return $null }
   return $parsed
 }
 

@@ -13,18 +13,18 @@
       "windows_x64": "wave-terminal-0.2.0-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/wave-terminal-0.2.0-macos-arm64.dmg",
-      "macos_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/wave-terminal-0.2.0-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/wave-terminal-0.2.0-windows-x64-setup.exe"
+      "macos_arm64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/wave-terminal-0.2.0-macos-arm64.dmg",
+      "macos_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/wave-terminal-0.2.0-macos-arm64.dmg",
+      "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/wave-terminal-0.2.0-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 128895805},
+    "bytes": {"windows_x64": 128902050, "macos_arm64": 487041830, "macos_x64": 487041830},
     "sha256": {
-      "macos_arm64": "599e406c4ba11e6f6de2eb4e03f87d7e786ddb0453e298ed0f16d4e08a3d7897",
-      "macos_x64": "599e406c4ba11e6f6de2eb4e03f87d7e786ddb0453e298ed0f16d4e08a3d7897",
-      "windows_x64": "f6ec20b05a96a68fc8202cb7af378efb88e977669d764607546c6e16cd014c99"
+      "macos_arm64": "c12efa2b75a6b986c5b819ee350ea53323c210d7d4d7422a67152d8cf0ab104f",
+      "macos_x64": "c12efa2b75a6b986c5b819ee350ea53323c210d7d4d7422a67152d8cf0ab104f",
+      "windows_x64": "2ba2d9246f8cf2e375defbaf67cb31ba6d02b4a682597aaf58b2f32d0de83f2a"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,
@@ -33,8 +33,8 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "24fc341cd7c075bcca0526912550519fbf0b50a4",
-      "macos_x64": "24fc341cd7c075bcca0526912550519fbf0b50a4"
+      "macos_arm64": "db580078edfb5ba83d801bfd539260ba374d08a9",
+      "macos_x64": "db580078edfb5ba83d801bfd539260ba374d08a9"
     }
   },
   "reinstall": {

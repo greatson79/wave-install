@@ -9,12 +9,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = ROOT / "steps.json"
-BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4"
-WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
+BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5"
+WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.5"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
 MAC = "wave-terminal-0.2.0-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
 WIN = "wave-terminal-0.2.0-windows-x64-setup.exe"
-MAC_SHA = "599e406c4ba11e6f6de2eb4e03f87d7e786ddb0453e298ed0f16d4e08a3d7897"
-CDHASH = "24fc341cd7c075bcca0526912550519fbf0b50a4"
+MAC_SHA = "c12efa2b75a6b986c5b819ee350ea53323c210d7d4d7422a67152d8cf0ab104f"
+CDHASH = "db580078edfb5ba83d801bfd539260ba374d08a9"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:
@@ -33,9 +33,9 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
     assert release["sha256"] == {
         "macos_arm64": MAC_SHA,
         "macos_x64": MAC_SHA,
-        "windows_x64": "f6ec20b05a96a68fc8202cb7af378efb88e977669d764607546c6e16cd014c99",
+        "windows_x64": "2ba2d9246f8cf2e375defbaf67cb31ba6d02b4a682597aaf58b2f32d0de83f2a",
     }
-    assert release["bytes"] == {"windows_x64": 128895805}
+    assert release["bytes"] == {"windows_x64": 128902050, "macos_arm64": 487041830, "macos_x64": 487041830}
     # minisign 은 설치기가 더 이상 쓰지 않는다(SHA256 + codesign/CDHash · Authenticode).
     assert release["minisig_url"] == {"macos_arm64": None, "macos_x64": None, "windows_x64": None}
     assert release["cdhash"] == {"macos_arm64": CDHASH, "macos_x64": CDHASH}

@@ -97,6 +97,18 @@ class TarballSelfFetch(unittest.TestCase):
         self.assertIn(str(sb.home / ".wave/src/pack/steps.json"), r.stderr)   # 받아 푼 설치팩에서 다시 시작됨
 
     @mac_only()
+    def test_piped_reinstall_argument_reaches_the_downloaded_pack_copy(self):
+        # 재설치 명령은 `curl … | bash -s -- --reinstall` 이다: 표준입력 실행에서도 인자가 받아 푼 설치팩으로 넘어가야 한다.
+        sb = Sandbox(self)
+        tgz = self.make_tarball(sb)
+        r = subprocess.run(["bash", "-x", "-s", "--", "--reinstall", "--dry-run"], input=BOOT.read_text(),
+                           env=dict(sb.env, WAVE_INSTALL_TARBALL_URL=f"file://{tgz}", WAVE_INSTALL_TARBALL_SHA256=sha(tgz)),
+                           text=True, capture_output=True, cwd=str(sb.home))
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        self.assertIn("pack/bootstrap.sh --reinstall --dry-run", r.stderr)   # exec 가 인자를 그대로 물려줌
+        self.assertNotIn("사용법", r.stderr)
+
+    @mac_only()
     def test_piped_run_never_trusts_a_steps_json_in_the_current_folder(self):
         # 표준입력 실행에서 SCRIPT_DIR 을 현재 폴더로 착각하면 안 된다: 현재 폴더의 steps.json/wave-pack 은 설치팩으로 안 쓴다.
         sb = Sandbox(self)

@@ -1,6 +1,6 @@
 # Signal-run evidence fixture provenance
 
-Copied byte-for-byte from `개발본부/_round/evidence/rc5-signal1-37188325110/rc-evidence-win-nonhome-37188325110/` on 2026-10-04. The source run evidence was supplied by the pulse lead; no response text or state was synthesized.
+Copied byte-for-byte from `evidence/rc5-signal1-37188325110/rc-evidence-win-nonhome-37188325110/` on 2026-10-04. No response text or state was synthesized.
 
 | File | Source SHA-256 | Fixture SHA-256 |
 |---|---|---|

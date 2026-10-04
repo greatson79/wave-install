@@ -34,6 +34,9 @@ class Emails(unittest.TestCase):
     def test_zero_count_is_not_labelled_pass(self):
         rc,report=self.judge(self.base)
         self.assertEqual(rc,0);self.assertIn('검사 0건',report);self.assertNotIn('PASS',report)
+    def test_zero_input_warning_is_explicit(self):
+        self.assertEqual(check.zero_input_warning([0,0,0,0]), 'WARN: 모든 검사 입력이 기준점과 같음(검사 0건)')
+        self.assertEqual(check.zero_input_warning([0,1,0,0]), '')
     def test_new_correct_emails_pass(self):self.assertEqual(self.judge(self.commit())[0],0)
     def test_wrong_author_fails(self):self.assertEqual(self.judge(self.commit('wrong@example.invalid'))[0],1)
     def test_wrong_committer_fails(self):self.assertEqual(self.judge(self.commit(committer='wrong@example.invalid'))[0],1)

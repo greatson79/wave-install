@@ -34,16 +34,6 @@ class EvidenceMix(unittest.TestCase):
         for sub in ("win/noboot", "mac/noboot", "win/nonhome"):
             with tempfile.TemporaryDirectory() as d:
                 self.write(d, sub + "/x", b"x"); self.assertEqual(check_evidence_mix.judge(d)[0], 1, sub)
-    def test_official1_all_merged_is_caught_and_the_six_set_is_clean(self):
-        if not OFFICIAL1.is_dir(): self.skipTest("증거 없음")
-        import shutil
-        def merge(names):
-            m = tempfile.mkdtemp()
-            for n in names: shutil.copytree(OFFICIAL1 / ("rc-evidence-%s-37138057562" % n), m, dirs_exist_ok=True)
-            return m
-        mixed = merge(["mac", "mac-g5", "mac-noboot", "win-ctrlc", "win-gates", "win-kr", "win-noboot", "win-nonhome", "win-upgrade", "freeze"])
-        shutil.copy2(OFFICIAL1 / "rc-evidence-win-gates-37138057562/win/hook_master.out", mixed + "/win/hook_master.out")   # 실제 CI 의 섞임 순서
-        self.assertEqual(check_evidence_mix.judge(mixed)[0], 1)
-        self.assertEqual(check_evidence_mix.judge(merge(["mac", "mac-g5", "freeze", "win-upgrade", "win-kr", "win-gates"]))[0], 0)   # 워크플로의 내려받기 순서(win-gates 마지막)
+    # 영구 skip: RC-4 공식 묶음은 고정하지 않으며 녹취 증거는 동봉하지 않는다.
 
 if __name__ == "__main__": unittest.main()

@@ -111,7 +111,7 @@ try {
     return
   }
   if ($Mode -eq 'noboot') {
-    # rc4: 부트 점검을 건너뛰는 합성 master — 좌석 셋은 뜨지만 표지(.master-bootstrapped)가 안 써진다. 기대 = rc4-expect.json 의 별도 종료값(판정 = check_noboot.py)
+    # rc.5 계약: 표지 없는 합성 master — S07~S09 통과, 원문 status·S08 미확인 안내를 evidence로 보존한다
     $nb = Join-Path $e 'noboot'; New-Item -ItemType Directory -Force $nb | Out-Null; Install-Fake
     New-Item -ItemType Directory -Force (Join-Path $h '.wave') | Out-Null; '' | Set-Content (Join-Path $h '.wave\rc-skip-bootstrap'); Reset-Fleet
     $env:BROWSER = 'false'; $ex = OneLine $one (Join-Path $nb 'run.log'); Remove-Item Env:BROWSER
@@ -119,7 +119,11 @@ try {
     if (-not (Test-Path (Join-Path $h '.cys\.master-bootstrapped'))) { '' | Set-Content (Join-Path $nb 'marker_absent') }
     foreach ($f in @('install-state.json', 'install.log')) { Copy-Item (Join-Path $h ".wave\$f") (Join-Path $nb $f) -ErrorAction SilentlyContinue }
     & $Py (Join-Path $rc 'surface_list.py') (Join-Path $nb 'surface_list.json') *> $null   # surface.list 원본 응답(증거만 · 실패해도 무시)
-    Copy-FleetStatusEvidence $nb; Copy-Item (Join-Path $h '.wave\rc') (Join-Path $nb 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
+    Copy-FleetStatusEvidence $nb
+    $rawStatus = Join-Path $h '.wave\verify\fleet-status.stdout.log'
+    if (-not (Test-Path -LiteralPath $rawStatus -PathType Leaf)) { throw 'noboot raw cys status stdout missing' }
+    Copy-Item -LiteralPath $rawStatus -Destination (Join-Path $nb 'cys-status.json') -ErrorAction Stop
+    Copy-Item (Join-Path $h '.wave\rc') (Join-Path $nb 'rc-synthetic-logs') -Recurse -ErrorAction SilentlyContinue
     return
   }
   if ($Mode -eq 'upgrade') {

@@ -385,9 +385,10 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   mac-noboot:
-    # rc4 상시 잡(맥 대칭): 부트 점검을 건너뛰는 합성 Claude — 기대 종료값·진단 코드·관측값은 tests/rc/rc4-expect.json 한 곳(윈과 공용)
+    # rc.5: 합성 Claude 설치도 S07~S09는 통과하되 표지·응답 각성은 만들어내지 않는다는 계약 검증
+    # 옛 앱 marker 폴백은 설치기 시험 test_old_app_with_marker_is_still_unconfirmed 이 지킨다.
     needs: cfg
-    name: macOS fake Claude that skips the boot check (expects the unconfirmed exit, never exit 1)
+    name: macOS synthetic Claude boot-skip contract (expects installer exit 0 and user-facing unconfirmed notice)
     runs-on: macos-latest
     timeout-minutes: 75
     steps:
@@ -413,8 +414,8 @@ jobs:
           nohup python3 tests/rc/serve_https.py "$RUNNER_TEMP/rcrel" 8443 "$D/c.pem" "$D/k.pem" >"$RUNNER_TEMP/serve.log" 2>&1 &
           sleep 2
       - run: bash tests/rc/mac-noboot.sh "$RUNNER_TEMP/rcrel/rc-release.json" "$RUNNER_TEMP/tls/c.pem" "$RUNNER_TEMP/ev"
-      - name: Judge against tests/rc/rc4-expect.json
-        run: python3 tests/rc/check_noboot.py "$RUNNER_TEMP/ev/mac/noboot"
+      - name: Judge rc.5 no-boot contract with raw fleet status and S08 observability
+        run: python3 tests/rc/check_noboot.py "$RUNNER_TEMP/ev/mac/noboot" tests/rc/install-outcome-expect-rc5.json rc5
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -422,8 +423,8 @@ jobs:
           path: ${{ runner.temp }}/ev
           if-no-files-found: error
   win-noboot:
-    # rc4 상시 잡: 좌석 셋은 뜨지만 부트 점검(javis_bootstrap.py)을 건너뛰어 표지가 안 써지는 합성 Claude. 기대 = 설치기의 「세 칸 생존 · 확인 미완」 별도 종료값 + 진단 코드(tests/rc/rc4-expect.json 한 곳) · exit 1 이면 FAIL · 기대값 미정이면 FAIL(판정 보류를 통과로 치지 않는다)
-    name: Windows fake Claude that skips the boot check (expects the unconfirmed exit, never exit 1)
+    # rc.5: S07 marker=false·launch_complete, raw status 세 역할, S08 master_awake=unconfirmed, install.log 안내를 함께 판정
+    name: Windows synthetic Claude boot-skip contract (expects installer exit 0 and user-facing unconfirmed notice)
     needs: [cfg, assemble-win]
     runs-on: windows-latest
     timeout-minutes: 60
@@ -440,9 +441,9 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode noboot -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
-      - name: Judge against tests/rc/rc4-expect.json
+      - name: Judge rc.5 no-boot contract with raw fleet status and S08 observability
         shell: bash
-        run: python tests/rc/check_noboot.py "$RUNNER_TEMP/ev/win/noboot"
+        run: python tests/rc/check_noboot.py "$RUNNER_TEMP/ev/win/noboot" tests/rc/install-outcome-expect-rc5.json rc5
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -557,12 +558,12 @@ jobs:
       - name: The gate table must have no FAIL (unmeasured cells are fine) — gate.py exits 1 on unmeasured, so its exit code is not usable here
         if: always()
         run: python3 tests/rc/check_gate_table.py gate-result.json gate-result-kr.json
-      - name: Synthetic no-boot outcomes must match exit 2 and S07-S09 states
+      - name: Synthetic no-boot outcomes must match rc.5 exit 0 and S07-S09 evidence
         if: always()
         run: |
           rc=0
-          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-mac-noboot-${{ github.run_id }}" --noboot mac || rc=1
-          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-win-noboot-${{ github.run_id }}" --noboot win || rc=1
+          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-mac-noboot-${{ github.run_id }}" --noboot mac --schema rc5 || rc=1
+          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-win-noboot-${{ github.run_id }}" --noboot win --schema rc5 || rc=1
           exit "$rc"
       - name: Every required job must have succeeded (one failed job fails the whole run)
         if: always()

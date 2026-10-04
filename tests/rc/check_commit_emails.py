@@ -5,6 +5,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -43,6 +44,9 @@ def judge(repo, baseline, head, git=None, env=None):
     except (OSError,TypeError,ValueError) as e:
         return 1,'FAIL: 이력 판정 불가: '+str(e)
 
+def zero_input_warning(counts):
+    return 'WARN: 모든 검사 입력이 기준점과 같음(검사 0건)' if len(counts) == 4 and all(n == 0 for n in counts) else ''
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--repo',type=Path,default=Path('.'))
@@ -52,17 +56,19 @@ def main():
     ap.add_argument('--inputs',type=Path,default=Path(__file__).with_name('rc-inputs.json'))
     ap.add_argument('--baseline',type=Path,default=Path(__file__).with_name('rc4-email-baseline.json'))
     ap.add_argument('--out',type=Path,required=True)
-    a=ap.parse_args();reports=[];failed=False
+    a=ap.parse_args();reports=[];failed=False;counts=[]
     try:
         base=json.loads(a.baseline.read_text());inputs=json.loads(a.inputs.read_text())
         targets=[('installer',a.repo,inputs['installer_sha']),('runner',a.repo,a.runner_head),
                  ('mac',a.app_repo,a.mac_head),('win',a.app_repo,a.win_head)]
         for label,repo,head in targets:
             rc,report=judge(repo,base['app' if label in ('mac','win') else label],head);failed|=bool(rc)
+            match=re.search(r'새 커밋 ([0-9]+)개',report);counts.append(int(match.group(1)) if match else -1)
             reports.append('[%s]\n%s'%(label,report))
     except (OSError,ValueError,KeyError) as e:
         reports.append('FAIL: 입력·기준점 읽기 실패: '+str(e));failed=True
-    text='\n\n'.join(reports)+'\n';a.out.parent.mkdir(parents=True,exist_ok=True)
+    warning=zero_input_warning(counts)
+    text='\n\n'.join(reports)+('\n'+warning if warning else '')+'\n';a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(text,encoding='utf-8');print(text,end='');return int(failed)
 
 if __name__=='__main__':sys.exit(main())

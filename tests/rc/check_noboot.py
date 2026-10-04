@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
-"""「부트 점검을 건너뛰는 가짜 Claude」 잡 판정 — check_noboot.py <증거 폴더> [기대값.json]
-증거 폴더에 exit(설치기 종료값)·run.log·marker_absent(표지 없음 확인)·install-state.json 이 있어야 한다. 기대값은 rc4-expect.json 한 곳(잡 기대값 정본).
-종료값: 0 통과 · 1 실패(기대와 다름·exit 1·증거 없음) · 3 기대값 미정(통과로 치지 않는다)."""
+"""가짜 Claude 잡 판정: 스키마에 따라 종료값·상태 및 rc.5 raw status/S08 증거를 검사한다.
+rc.4 고정본은 명시 선택하고 CI는 rc-inputs.json 선언을 따른다."""
 import json, os, sys
+from pathlib import Path
 STEP = "S07_INITIAL_FLEET"
 
-def judge(ev, expect_path):
+def judge(ev, expect_path, schema):
     exp = json.load(open(expect_path, encoding="utf-8"))
+    if schema == "rc5":
+        if exp.get("s07_schema") != "rc5": return 1, "rc.5 스키마 기대값 선언 없음"
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import install_outcomes
+        folder = Path(ev)
+        verdict, reason = install_outcomes.check(folder.parents[1], folder.parent.name, "noboot", schema="rc5")
+        return (0 if verdict == "PASS" else 1), reason
+    if schema != "rc4": return 1, "지원하지 않는 스키마: " + str(schema)
     want, code = exp.get("unconfirmed_exit"), exp.get("diag_code")
     if want is None: return 3, "기대 종료값 미정(rc4-expect.json unconfirmed_exit) — 판정 보류"
     try: got = int(open(os.path.join(ev, "exit"), encoding="utf-8").read().strip())
@@ -28,5 +36,11 @@ def judge(ev, expect_path):
     return 0, "종료값 %d%s 확인" % (got, " · 진단 코드 " + code if code else "")
 
 if __name__ == "__main__":
-    rc, msg = judge(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "rc4-expect.json"))
+    declared = json.loads(Path(__file__).with_name("rc-inputs.json").read_text(encoding="utf-8"))["s07_schema"]
+    schema = sys.argv[3] if len(sys.argv) > 3 else declared
+    if schema != declared:
+        print("[noboot] 러너 입력 스키마와 불일치: %s (rc-inputs.json=%s)" % (schema, declared)); sys.exit(1)
+    default_expect = "install-outcome-expect-rc5.json" if schema == "rc5" else "rc4-expect.json"
+    expect_path = sys.argv[2] if len(sys.argv) > 2 else str(Path(__file__).with_name(default_expect))
+    rc, msg = judge(sys.argv[1], expect_path, schema=schema)
     print("[noboot] %s (rc=%d)" % (msg, rc)); sys.exit(rc)

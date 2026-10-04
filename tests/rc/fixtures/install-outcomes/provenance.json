@@ -115,6 +115,15 @@
       "sha256": "1c7107c341a6b6ae75c115e554842635d3d528e1bb7fa560255b559cb77bca09",
       "copied_at": "2026-10-04T06:26:57.275725+00:00",
       "command": "python3 pathlib read_bytes/write_bytes: rc4 artifact copied without edits"
+    },
+    {
+      "source": "../rc5/녹취_status_three_roles/three-status.stdout",
+      "file": "positive/rc5/cys-status.json",
+      "sha256": "73e0aa3444a1add10123cc20d85b320a76cbb8d9c73ca39fc5d9b3971eb67a95",
+      "recorded_at": "2026-10-04T06:05:54.679459+00:00",
+      "command": "cys status --json (captured stdout bytes copied without editing)",
+      "binary": "c1c4969f969ea32c7cf4c74db30311943232611e",
+      "note": "rc.5 S07/S08 cross-source checker fixture; raw response source also has captured SHA provenance"
     }
   ]
 }

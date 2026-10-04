@@ -1,4 +1,37 @@
 {
-  "normal": {"exit": 0, "stages": {"S07": ["passed", 0], "S08": ["passed", 0], "S09": ["passed", 0]}},
-  "noboot": {"exit": 2, "stages": {"S07": ["failed", 2], "S08": ["pending", null], "S09": ["pending", null]}}
+  "normal": {
+    "exit": 0,
+    "stages": {
+      "S07": [
+        "passed",
+        0
+      ],
+      "S08": [
+        "passed",
+        0
+      ],
+      "S09": [
+        "passed",
+        0
+      ]
+    }
+  },
+  "noboot": {
+    "exit": 2,
+    "stages": {
+      "S07": [
+        "failed",
+        2
+      ],
+      "S08": [
+        "pending",
+        null
+      ],
+      "S09": [
+        "pending",
+        null
+      ]
+    }
+  },
+  "s07_schema": "rc4"
 }

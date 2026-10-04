@@ -8,5 +8,6 @@
   "freeze_baseline_ref": {
     "mac": "v0.1.1",
     "win": "fa4c12b8"
-  }
+  },
+  "s07_schema": "rc5"
 }

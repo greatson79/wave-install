@@ -1,0 +1,51 @@
+{
+  "s07_schema": "rc5",
+  "normal": {
+    "exit": 0,
+    "stages": {
+      "S07": [
+        "passed",
+        0
+      ],
+      "S08": [
+        "passed",
+        0
+      ],
+      "S09": [
+        "passed",
+        0
+      ]
+    }
+  },
+  "noboot": {
+    "exit": 0,
+    "stages": {
+      "S07": [
+        "passed",
+        0
+      ],
+      "S08": [
+        "passed",
+        0
+      ],
+      "S09": [
+        "passed",
+        0
+      ]
+    },
+    "S07_observed": {
+      "fleet_started": true,
+      "seats": 3,
+      "roles": [
+        "master",
+        "cso",
+        "worker"
+      ],
+      "master_marker_present": false,
+      "launch_complete": 3
+    },
+    "S08_observed": {
+      "master_awake": "unconfirmed"
+    }
+  }
+}

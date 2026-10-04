@@ -32,7 +32,7 @@ if cmd and role != "none":
 if role == "master":
     import shutil
     if os.name != "nt":
-        # 회귀 관측: round/ 의 *_TODO.md 가 어떤 run 은 0개(회귀 관측)·4개(회귀 관측)·1개(회귀 관측: CSO 만)로 달랐다 — 생성·삭제 순서를 0.3초 간격으로 기록한다(부트 시작 전부터 180초)
+        # 회귀 관측: round/ 의 *_TODO.md 가 어떤 run 은 0개(run-A)·4개(run-B)·1개(run-C: CSO 만)로 달랐다 — 생성·삭제 순서를 0.3초 간격으로 기록한다(부트 시작 전부터 180초)
         _w = ("import os,time,glob,subprocess\n"
               "d=os.path.expanduser('~/.cys/pack/round');pv=os.path.expanduser('~/.cys/pack.prev/round');mk=os.path.expanduser('~/.cys/.gui-onboarded');o=os.path.expanduser('~/.wave/rc/todo_watch.txt');prev=None;t0=time.time()\n"
               "def ls(x): return sorted(os.path.basename(f) for f in glob.glob(x+'/*_TODO.md'))\n"

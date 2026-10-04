@@ -1,5 +1,5 @@
-"""rc4 가짜 Claude(부트 건너뜀) — 합성 master 스위치와 판정 스크립트 시험. 실행: python3 -m unittest tests.rc.test_noboot"""
-import json, os, subprocess, sys, tempfile, time, unittest
+"""rc.4 호환 판정과 rc.5 가짜 Claude(부트 건너뜀) 계약 시험. 실행: python3 -m unittest tests.rc.test_noboot"""
+import json, os, pathlib, subprocess, sys, tempfile, time, unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import check_noboot, check_first_run
@@ -12,7 +12,7 @@ class Judge(unittest.TestCase):
             open(os.path.join(d, "run.log"), "w").write(log)
             if state is not None: open(os.path.join(d, "install-state.json"), "w").write(json.dumps({"steps": {"S07_INITIAL_FLEET": {"observed": state}}}))
             open(os.path.join(d, "e.json"), "w").write(json.dumps(exp))
-            return check_noboot.judge(d, os.path.join(d, "e.json"))[0]
+            return check_noboot.judge(d, os.path.join(d, "e.json"), schema="rc4")[0]
     def test_undecided_is_not_pass(self): self.assertEqual(self.run_case({"unconfirmed_exit": None}), 3)
     def test_match(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}), 0)
     def test_exit1_fails(self): self.assertEqual(self.run_case({"unconfirmed_exit": 7}, exit_txt="1"), 1)
@@ -24,9 +24,9 @@ class Judge(unittest.TestCase):
             open(os.path.join(d, "exit"), "w").write("2\n"); open(os.path.join(d, "marker_absent"), "w").write("")
             open(os.path.join(d, "run.log"), "w").write("J-VER-04"); open(os.path.join(d, "run.log.err"), "w").write("Wave installer failed (exit 2).")
             open(os.path.join(d, "e.json"), "w").write(json.dumps({"unconfirmed_exit": 2}))
-            self.assertEqual(check_noboot.judge(d, os.path.join(d, "e.json"))[0], 1)
+            self.assertEqual(check_noboot.judge(d, os.path.join(d, "e.json"), schema="rc4")[0], 1)
             open(os.path.join(d, "run.log.err"), "w").write("")
-            self.assertEqual(check_noboot.judge(d, os.path.join(d, "e.json"))[0], 0)
+            self.assertEqual(check_noboot.judge(d, os.path.join(d, "e.json"), schema="rc4")[0], 0)
     def test_observed_values(self):
         exp = {"unconfirmed_exit": 7, "observed": {"fleet_state": "alive_unconfirmed", "fleet_started": False, "seats_alive": 3}}
         ok = {"fleet_state": "alive_unconfirmed", "fleet_started": False, "seats_alive": 3, "j_code": "J-VER-04"}
@@ -34,6 +34,20 @@ class Judge(unittest.TestCase):
         self.assertEqual(self.run_case(exp, state=dict(ok, fleet_started=True)), 1)
         self.assertEqual(self.run_case(exp, state=dict(ok, seats_alive=2)), 1)
         self.assertEqual(self.run_case(exp), 1)   # install-state.json 없음
+    def test_rc5_profile_rejects_rc4_unconfirmed_exit(self):
+        with tempfile.TemporaryDirectory() as d:
+            exp={"schema":"rc5","installer_exit":0,"observed":{"fleet_started":True,"master_marker_present":False,"launch_complete":3}}
+            state={"fleet_started":True,"master_marker_present":False,"launch_complete":3}
+            root=pathlib.Path(d)
+            (root/'exit').write_text('2\n');(root/'marker_absent').write_text('')
+            (root/'run.log').write_text('');(root/'install-state.json').write_text(json.dumps({"steps":{"S07_INITIAL_FLEET":{"observed":state}}}))
+            (root/'e.json').write_text(json.dumps(exp))
+            self.assertEqual(check_noboot.judge(str(root),str(root/'e.json'),schema='rc5')[0],1)
+    def test_cli_defaults_to_declared_rc5_profile(self):
+        with tempfile.TemporaryDirectory() as d:
+            base=pathlib.Path(d)/'mac/noboot';base.mkdir(parents=True)
+            r=subprocess.run([sys.executable,os.path.join(HERE,'check_noboot.py'),str(base)],text=True,capture_output=True)
+            self.assertEqual(r.returncode,1);self.assertIn('증거 없음·형식 오류',r.stdout);self.assertNotIn('rc.5 스키마 기대값 선언 없음',r.stdout)
     def test_real_expect_file_is_exit_2(self):
         exp = json.load(open(os.path.join(HERE, "rc4-expect.json")))
         self.assertEqual((exp["unconfirmed_exit"], exp["diag_code"]), (2, "J-VER-04"))

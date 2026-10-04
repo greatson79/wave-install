@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# macOS 러너 rc4: 부트 점검을 건너뛰는 합성 Claude 로 시험 릴리스 한 줄을 실행한다 — 기대 = 설치기의 「세 칸 생존 · 확인 미완」 별도 종료값(판정 = check_noboot.py · 기대값 rc4-expect.json)
+# rc.5 계약: 표지 없는 합성 Claude도 S07~S09 통과; 원문 status·S08 미확인 안내를 evidence로 보존한다
 #  mac-noboot.sh <rc-release.json> <CA pem> <증거 루트>      (증거 루트/mac/noboot/ 에 쓴다)
 set -u
 RCJ="$1"; CA="$2"; EV="$3/mac/noboot"; HERE="$(cd "$(dirname "$0")" && pwd)"; mkdir -p "$EV"
@@ -12,7 +12,8 @@ for rcf in "$HOME/.zshenv" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile
 python3 "$HERE/run_to.py" 1500 "$EV/run.log" -- bash -c "cd \"\$HOME\" && $ONE"; echo $? > "$EV/exit"
 [ -e "$HOME/.cys/.master-bootstrapped" ] || : > "$EV/marker_absent"
 cp "$HOME/.wave/install-state.json" "$EV/install-state.json" 2>/dev/null
+cp "$HOME/.wave/fleet/status.json" "$EV/cys-status.json" 2>/dev/null
 bash "$HERE/collect-fleet.sh" "$EV"   # install.log · fleet/ · 표지(있으면)
 cp -R "$HOME/.wave/rc" "$EV/rc-synthetic-logs" 2>/dev/null
 python3 "$HERE/surface_list.py" "$EV/surface_list.json" || true   # surface.list 원본 응답(증거만)
-[ -s "$EV/exit" ] && [ -s "$EV/install-state.json" ]
+[ -s "$EV/exit" ] && [ -s "$EV/install-state.json" ] && [ -s "$EV/cys-status.json" ]

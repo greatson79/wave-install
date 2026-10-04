@@ -478,6 +478,23 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true   # 증거가 없으면 판정 표가 미측정으로 보여 준다(잡 실패는 아래 needs 검사가 잡는다)
         with: { name: 'rc-evidence-freeze-${{ github.run_id }}', path: evidence }
+      - name: All job artifacts for the raw exit table (separate directories, never merged into judge input)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: rc-evidence-*-${{ github.run_id }}
+          path: raw-evidence
+          merge-multiple: false
+      - name: Raw installer exits and S07-S09 states (all jobs)
+        if: always()
+        run: python3 tests/rc/install_outcomes.py raw-evidence --raw-table "종료값표_${{ github.run_id }}.txt"
+      - name: Synthetic no-boot outcomes must match exit 2 and S07-S09 states
+        if: always()
+        run: |
+          rc=0
+          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-mac-noboot-${{ github.run_id }}" --noboot mac || rc=1
+          python3 tests/rc/install_outcomes.py "raw-evidence/rc-evidence-win-noboot-${{ github.run_id }}" --noboot win || rc=1
+          exit "$rc"
       - name: Judge input must be pure (no other job's evidence mixed in)
         run: python3 tests/rc/check_evidence_mix.py evidence
       - name: G9 real-device evidence must carry installer exit and fleet_state (gate.py does not read them)
@@ -486,13 +503,13 @@ jobs:
         run: |
           set -u
           mkdir -p evidence/common evidence/win; cp tests/rc/warn_allowlist.json evidence/common/
-          python3 gateref/tools/gate/gate.py evidence | tee "$GITHUB_STEP_SUMMARY"
-          python3 gateref/tools/gate/gate.py evidence --json > gate-result.json || true
+          python3 tests/rc/install_outcomes.py evidence --gate gateref/tools/gate/gate.py | tee "$GITHUB_STEP_SUMMARY"
+          python3 tests/rc/install_outcomes.py evidence --gate gateref/tools/gate/gate.py --json > gate-result.json || true
           # 한글·공백 계정 표는 매 RC 고정 항목(테오 1057) — 잡이 일찍 죽어 증거가 없어도 표를 항상 출력(미측정으로)한다
           mkdir -p evidence-kr/common evidence-kr/win; cp -R evidence/common/. evidence-kr/common/ 2>/dev/null || true
           [ -d evidence/winkr ] && cp -R evidence/winkr/. evidence-kr/win/
-          { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 gateref/tools/gate/gate.py evidence-kr; } | tee -a "$GITHUB_STEP_SUMMARY" || true
-          python3 gateref/tools/gate/gate.py evidence-kr --json > gate-result-kr.json || true
+          { echo; echo "### Windows — space+Hangul standard user (Kyle U+CD5C), fixed item every RC"; python3 tests/rc/install_outcomes.py evidence-kr --gate gateref/tools/gate/gate.py --platforms win --gates G1; } | tee -a "$GITHUB_STEP_SUMMARY" || true
+          python3 tests/rc/install_outcomes.py evidence-kr --gate gateref/tools/gate/gate.py --platforms win --gates G1 --json > gate-result-kr.json || true
       - name: The gate table must have no FAIL (unmeasured cells are fine) — gate.py exits 1 on unmeasured, so its exit code is not usable here
         if: always()
         run: python3 tests/rc/check_gate_table.py gate-result.json gate-result-kr.json
@@ -506,6 +523,8 @@ jobs:
         with:
           name: rc-gate-table-${{ github.run_id }}
           path: |
+            종료값표_*.txt
+            raw-evidence
             gate-result.json
             gate-result-kr.json
             evidence

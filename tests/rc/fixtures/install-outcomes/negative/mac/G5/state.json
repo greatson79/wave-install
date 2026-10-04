@@ -1,0 +1,237 @@
+{
+  "schema": "wave-install.state.v1",
+  "product": "Wave Terminal",
+  "installer_version": "0.1.3",
+  "status": "complete",
+  "created_at": null,
+  "updated_at": "2026-10-03T15:54:21Z",
+  "current_step": null,
+  "required_steps_passed": true,
+  "exceptions": [],
+  "paths": {
+    "state": "/Users/runner/.wave/install-state.json",
+    "log": "/Users/runner/.wave/install.log",
+    "wave_home": "/Users/runner/.wave",
+    "pack": "/Users/runner/.cys/pack"
+  },
+  "options": {
+    "daemon": true,
+    "codex": false,
+    "antigravity": false
+  },
+  "release": {
+    "repository": "greatson79/wave-terminal",
+    "version": "0.1.0",
+    "asset": null,
+    "asset_sha256": null,
+    "minisig": null,
+    "verified_at": null,
+    "s2_release_resolved": false
+  },
+  "steps": {
+    "S00_PREFLIGHT": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:19Z",
+      "completed_at": "2026-10-03T15:52:44Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "os": "macos",
+        "shell": "zsh",
+        "free_kb": 98582084,
+        "user_path": true
+      },
+      "error_id": null
+    },
+    "S01_CLAUDE_INSTALL": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:19Z",
+      "completed_at": "2026-10-03T15:52:44Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "claude_version": "2.1.300 (Claude Code)",
+        "installed": false,
+        "updated": false
+      },
+      "error_id": null
+    },
+    "S02_CLAUDE_LOGIN": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:19Z",
+      "completed_at": "2026-10-03T15:52:45Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "authenticated": true,
+        "account_recorded": false
+      },
+      "error_id": null
+    },
+    "S03_DOWNLOAD_VERIFY": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:20Z",
+      "completed_at": "2026-10-03T15:53:10Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "platform": "macos_arm64",
+        "asset": "wave-terminal-0.2.0-macos-arm64.dmg",
+        "sha256": "30df7ab24b08cb28f9fb05bcde9762775c1daeea1913a6765f6eac0639b38088",
+        "codesign_verified": true,
+        "cdhash": "24fc341cd7c075bcca0526912550519fbf0b50a4"
+      },
+      "error_id": null
+    },
+    "S04_INSTALL_LINK": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:25Z",
+      "completed_at": "2026-10-03T15:53:17Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "cys": true,
+        "cysd": true,
+        "cysd_check": "file+executable+symlink+copy-match",
+        "shell_link": true,
+        "admin_required": false
+      },
+      "error_id": null
+    },
+    "S05_DAEMON_REGISTER": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:26Z",
+      "completed_at": "2026-10-03T15:53:19Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "registered": true,
+        "daemon_ready": true,
+        "registration": "cys daemon install"
+      },
+      "error_id": null
+    },
+    "S06_PACK_INSTALL": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:27Z",
+      "completed_at": "2026-10-03T15:53:19Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "pack_installed": true,
+        "pack_provider": "cys init-pack",
+        "embedded_directives_verified": true,
+        "pending_new": 0,
+        "cys_dept": "linked"
+      },
+      "error_id": null
+    },
+    "S07_INITIAL_FLEET": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:27Z",
+      "completed_at": "2026-10-03T15:54:19Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "seats": 3,
+        "roles": [
+          "master",
+          "cso",
+          "worker"
+        ],
+        "fleet_started": true,
+        "master_marker_verified": true,
+        "master_reused": false,
+        "master_ref": "surface:1",
+        "master_source": "created"
+      },
+      "error_id": null
+    },
+    "S08_VERIFY": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:28Z",
+      "completed_at": "2026-10-03T15:54:20Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "original_match": true,
+        "new_file_count": 0,
+        "roles": {
+          "directives/CEO_TEMPLATE.md": {
+            "pack_sha256": "cc2512b6137c117298cef7155b1a413e31fa04911f39e6054c076c4e5f033e3d",
+            "pack_bytes": 3482
+          },
+          "directives/CSO_DIRECTIVE.md": {
+            "pack_sha256": "170e24993e92201520a7498b4b97040439a10c61d5e6994d8737fff417096a5a",
+            "pack_bytes": 7491
+          },
+          "directives/MASTER_DIRECTIVE.md": {
+            "pack_sha256": "5be46486c3072560d18bea99628538c521f3319f331c225fbce2a286cd87d9c3",
+            "pack_bytes": 34086
+          },
+          "directives/REVIEWER_DIRECTIVE.md": {
+            "pack_sha256": "3309068cb0906a0d8fe39c07d65c0f7aecf5f06530030b7b74389548ecc0f2a4",
+            "pack_bytes": 5612
+          },
+          "directives/RSI_LEARNING_DIRECTIVE.md": {
+            "pack_sha256": "a652ce791755b93e2ef9bacaa22a758e35fa9e31abe89860c40ffaea5e9bee20",
+            "pack_bytes": 11196
+          },
+          "directives/WORKER_DIRECTIVE.md": {
+            "pack_sha256": "fa347fae643cba03661cd2f331618f5775cd9745f315078d37864157003b2aac",
+            "pack_bytes": 15141
+          }
+        },
+        "injected_bytes": null,
+        "injection_reason": "RC 러너 G3_inject.json 판정",
+        "source": "app-manifest+installed-pack",
+        "fleet_verified": true,
+        "master_awake": "unconfirmed"
+      },
+      "error_id": null
+    },
+    "S09_COMPLETE": {
+      "status": "passed",
+      "exit_code": 0,
+      "started_at": "2026-10-03T15:52:30Z",
+      "completed_at": "2026-10-03T15:54:21Z",
+      "version": "0.2.0",
+      "checks": [
+        "exit_code=0"
+      ],
+      "observed": {
+        "required_steps_passed": true,
+        "start_here": true,
+        "silent_completion": false
+      },
+      "error_id": null
+    }
+  }
+}

@@ -1,0 +1,216 @@
+﻿{
+    "schema":  "wave-install.state.v1",
+    "product":  "Wave Terminal",
+    "installer_version":  "0.3.0",
+    "status":  "running",
+    "created_at":  null,
+    "updated_at":  "2026-10-04T08:30:11Z",
+    "current_step":  "S07_INITIAL_FLEET",
+    "required_steps_passed":  false,
+    "exceptions":  [
+
+                   ],
+    "paths":  {
+                  "state":  "C:\\Users\\waverc91493\\.wave\\install-state.json",
+                  "log":  "C:\\Users\\waverc91493\\.wave\\install.log",
+                  "wave_home":  "C:\\Users\\waverc91493\\.wave",
+                  "pack":  "C:\\Users\\waverc91493\\.cys\\pack"
+              },
+    "options":  {
+                    "daemon":  true,
+                    "codex":  false,
+                    "antigravity":  false
+                },
+    "release":  {
+                    "repository":  "greatson79/wave-terminal",
+                    "version":  "0.1.0",
+                    "asset":  null,
+                    "asset_sha256":  null,
+                    "minisig":  null,
+                    "verified_at":  null,
+                    "s2_release_resolved":  false
+                },
+    "steps":  {
+                  "S00_PREFLIGHT":  {
+                                        "status":  "passed",
+                                        "exit_code":  0,
+                                        "started_at":  "2026-10-04T08:16:50Z",
+                                        "completed_at":  "2026-10-04T08:21:52Z",
+                                        "version":  "0.2.0",
+                                        "checks":  [
+                                                       "exit_code=0"
+                                                   ],
+                                        "observed":  {
+                                                         "os":  "windows",
+                                                         "powershell":  "5.1.26100.33438",
+                                                         "free_bytes":  32704319488,
+                                                         "user_path":  true
+                                                     },
+                                        "error_id":  null
+                                    },
+                  "S01_CLAUDE_INSTALL":  {
+                                             "status":  "passed",
+                                             "exit_code":  0,
+                                             "started_at":  "2026-10-04T08:16:50Z",
+                                             "completed_at":  "2026-10-04T08:21:52Z",
+                                             "version":  "0.2.0",
+                                             "checks":  [
+                                                            "exit_code=0"
+                                                        ],
+                                             "observed":  {
+                                                              "claude_version":  "2.1.300 (Claude Code)"
+                                                          },
+                                             "error_id":  null
+                                         },
+                  "S02_CLAUDE_LOGIN":  {
+                                           "status":  "passed",
+                                           "exit_code":  0,
+                                           "started_at":  "2026-10-04T08:17:16Z",
+                                           "completed_at":  "2026-10-04T08:21:52Z",
+                                           "version":  "0.2.0",
+                                           "checks":  [
+                                                          "exit_code=0"
+                                                      ],
+                                           "observed":  {
+                                                            "authenticated":  true,
+                                                            "account_recorded":  false
+                                                        },
+                                           "error_id":  null
+                                       },
+                  "S03_DOWNLOAD_VERIFY":  {
+                                              "status":  "passed",
+                                              "exit_code":  0,
+                                              "started_at":  "2026-10-04T08:21:52Z",
+                                              "completed_at":  "2026-10-04T08:21:54Z",
+                                              "version":  "0.2.0",
+                                              "checks":  [
+                                                             "exit_code=0"
+                                                         ],
+                                              "observed":  {
+                                                               "platform":  "windows_x64",
+                                                               "asset":  "wave-terminal-0.2.0-windows-x64-setup.exe",
+                                                               "sha256":  "2ba2d9246f8cf2e375defbaf67cb31ba6d02b4a682597aaf58b2f32d0de83f2a",
+                                                               "authenticode_checked":  true,
+                                                               "signature_status":  "NotSigned"
+                                                           },
+                                              "error_id":  null
+                                          },
+                  "S04_INSTALL_LINK":  {
+                                           "status":  "passed",
+                                           "exit_code":  0,
+                                           "started_at":  "2026-10-04T08:21:54Z",
+                                           "completed_at":  "2026-10-04T08:22:52Z",
+                                           "version":  "0.2.0",
+                                           "checks":  [
+                                                          "exit_code=0"
+                                                      ],
+                                           "observed":  {
+                                                            "cys":  true,
+                                                            "cys_version_observed":  "cys 0.2.0",
+                                                            "cysd":  true,
+                                                            "shell_link":  true,
+                                                            "shell_scope":  "process",
+                                                            "install_dir":  "C:\\Users\\waverc91493\\.wave\\bin",
+                                                            "installer_exit":  0,
+                                                            "verified_installer_sha256":  "2ba2d9246f8cf2e375defbaf67cb31ba6d02b4a682597aaf58b2f32d0de83f2a",
+                                                            "web_mark":  "none",
+                                                            "cli_sha256":  "d410a812c8a6ca0b3453a254fefdea285a776f6528f6f404568e636766d8d8ec",
+                                                            "daemon_sha256":  "48bbffd3e04f823bd13ae44c7ed27a83ca0480c8db3898c59c86678ceec5804d",
+                                                            "app_sha256":  "28a29c839700e451442db9846c4dd7132c999d7124160912067dba9591aa49b8",
+                                                            "daemon_verification":  "PE-x64-and-observed-SHA256",
+                                                            "daemon_started":  false,
+                                                            "admin_required":  false
+                                                        },
+                                           "error_id":  null
+                                       },
+                  "S05_DAEMON_REGISTER":  {
+                                              "status":  "passed",
+                                              "exit_code":  0,
+                                              "started_at":  "2026-10-04T08:23:06Z",
+                                              "completed_at":  "2026-10-04T08:23:11Z",
+                                              "version":  "0.2.0",
+                                              "checks":  [
+                                                             "exit_code=0"
+                                                         ],
+                                              "observed":  {
+                                                               "registered":  true,
+                                                               "daemon_ready":  true,
+                                                               "direct_fallback":  true,
+                                                               "registration":  "cys daemon install"
+                                                           },
+                                              "error_id":  null
+                                          },
+                  "S06_PACK_INSTALL":  {
+                                           "status":  "passed",
+                                           "exit_code":  0,
+                                           "started_at":  "2026-10-04T08:22:52Z",
+                                           "completed_at":  "2026-10-04T08:23:06Z",
+                                           "version":  "0.2.0",
+                                           "checks":  [
+                                                          "exit_code=0"
+                                                      ],
+                                           "observed":  {
+                                                            "pack_installed":  true,
+                                                            "legacy_backed_up":  [
+
+                                                                                 ],
+                                                            "directive_count":  6,
+                                                            "directive_mismatches":  [
+
+                                                                                     ],
+                                                            "new_files":  0,
+                                                            "directive_bytes_match":  true,
+                                                            "cys_dept":  "linked"
+                                                        },
+                                           "error_id":  null
+                                       },
+                  "S07_INITIAL_FLEET":  {
+                                            "status":  "failed",
+                                            "exit_code":  2,
+                                            "started_at":  "2026-10-04T08:23:11Z",
+                                            "completed_at":  "2026-10-04T08:30:11Z",
+                                            "version":  "0.2.0",
+                                            "checks":  [
+                                                           "exit_code=2"
+                                                       ],
+                                            "observed":  {
+                                                             "fleet_started":  false,
+                                                             "fleet_state":  "alive_unconfirmed",
+                                                             "seats_alive":  3,
+                                                             "roles_alive":  "cso,master,worker",
+                                                             "launch_complete":  3,
+                                                             "j_code":  "J-VER-04",
+                                                             "source":  "cys status --json"
+                                                         },
+                                            "error_id":  "WT-S07-FLEET"
+                                        },
+                  "S08_VERIFY":  {
+                                     "status":  "pending",
+                                     "exit_code":  null,
+                                     "started_at":  null,
+                                     "completed_at":  null,
+                                     "version":  null,
+                                     "checks":  [
+
+                                                ],
+                                     "observed":  {
+
+                                                  },
+                                     "error_id":  null
+                                 },
+                  "S09_COMPLETE":  {
+                                       "status":  "pending",
+                                       "exit_code":  null,
+                                       "started_at":  null,
+                                       "completed_at":  null,
+                                       "version":  null,
+                                       "checks":  [
+
+                                                  ],
+                                       "observed":  {
+
+                                                    },
+                                       "error_id":  null
+                                   }
+              }
+}

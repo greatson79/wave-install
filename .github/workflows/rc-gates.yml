@@ -470,6 +470,9 @@ jobs:
         run: |
           $py = (Get-Command python).Source
           ./tests/rc/win-driver.ps1 -Mode main -Cwd evidence -RcDir "$env:RUNNER_TEMP\rcrel" -Evidence "$env:RUNNER_TEMP\ev" -Repo "$PWD" -Py $py
+      - name: Non-home first install must exit 0 and pass S07-S09
+        shell: bash
+        run: python3 tests/rc/check_first_run.py "$RUNNER_TEMP/ev/win/run.exit" "$RUNNER_TEMP/ev/win/G1_state.json"
       - name: Seats must be in the user home after the install and after the reinstall
         shell: bash
         run: python tests/rc/check_seat_cwd.py "$RUNNER_TEMP/ev/identity.json" "$RUNNER_TEMP/ev/win/G4_status.json" "$RUNNER_TEMP/ev/win/G6/G4_status.json"

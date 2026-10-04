@@ -1,0 +1,6 @@
+{
+  "comment": "수강생이 치는 설치 한 줄의 기계 계약 정본. CI·RC 는 README 가 아니라 이 파일에서 한 줄을 읽고, 줄 안의 public_base 만 시험 서버 주소로 바꾼다.",
+  "public_base": "https://github.com/greatson79/wave-install/releases/download/v0.3.0/",
+  "mac": "curl -fsSL https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.sh -o \"$HOME/install-wave.sh\" && bash \"$HOME/install-wave.sh\"",
+  "win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.3.0/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1')\""
+}

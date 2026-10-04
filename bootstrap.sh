@@ -487,10 +487,10 @@ step_s03() {
     return 1
   fi
   hdiutil detach "$mp" >/dev/null 2>&1 || true
-  STEP_OBSERVED="$(python3 - "$RELEASE_PLATFORM" "$RELEASE_ASSET_NAME" "$actual" "$got_cdhash" <<'PY'
+  STEP_OBSERVED="$(python3 - "$RELEASE_PLATFORM" "$RELEASE_ASSET_NAME" "$actual" "$got_cdhash" "$ARTIFACT_PATH" <<'PY'
 import json, sys
 print(json.dumps({"platform": sys.argv[1], "asset": sys.argv[2], "sha256": sys.argv[3], "codesign_verified": True,
-                  "cdhash": sys.argv[4]}))
+                  "cdhash": sys.argv[4], "bytes": __import__("os").path.getsize(sys.argv[5])}))
 PY
 )"
 }
@@ -547,13 +547,53 @@ installed_app_matches_pin() {
   done
 }
 
+# 옛 기록에 크기가 없으면 S03을 다시 실행한다. SHA256 핀은 항상 현재 설정에서 읽는다.
+verified_download_matches_pin() {
+  set_release_context || return 1
+  python3 - "$STATE_FILE" "$ARTIFACT_PATH" "$RELEASE_VERSION" "$RELEASE_EXPECTED_SHA256" <<'PY_DOWNLOAD'
+import hashlib, json, sys
+from pathlib import Path
+try:
+    entry = json.load(open(sys.argv[1]))['steps']['S03_DOWNLOAD_VERIFY']
+    observed = entry.get('observed') or {}
+    path = Path(sys.argv[2])
+    size = observed.get('bytes')
+    valid = (entry.get('status') == 'passed' and entry.get('exit_code') == 0 and not entry.get('error_id')
+             and entry.get('version') == sys.argv[3] and observed.get('codesign_verified') is True
+             and type(size) is int and size > 0 and path.stat().st_size == size
+             and hashlib.sha256(path.read_bytes()).hexdigest() == sys.argv[4])
+except (OSError, ValueError, KeyError, TypeError):
+    valid = False
+sys.exit(0 if valid else 1)
+PY_DOWNLOAD
+}
+
+record_resume_observation() {
+  local id="$1" fingerprint
+  case "$id" in
+    S03_DOWNLOAD_VERIFY) fingerprint="$RELEASE_EXPECTED_SHA256" ;;
+    S04_INSTALL_LINK) fingerprint="$(release_cdhash_pin)" || return 1 ;;
+    *) return 1 ;;
+  esac
+  python3 - "$STATE_FILE" "$id" "$fingerprint" <<'PY_RESUME'
+import json, sys
+from datetime import datetime, timezone
+from pathlib import Path
+path = Path(sys.argv[1]); state = json.loads(path.read_text())
+state['steps'][sys.argv[2]].setdefault('observed', {}).update(skipped_by_resume=True, resume_fingerprint=sys.argv[3])
+state['updated_at'] = datetime.now(timezone.utc).isoformat()
+path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n')
+PY_RESUME
+}
+
 can_resume_step() {
   local id="$1" status="$2"
   [[ "$RESUME" == 1 && "$REINSTALL" != 1 && ( "$status" == passed || "$status" == skipped ) ]] || return 1
   case "$id" in
-    S09_COMPLETE|S05_DAEMON_REGISTER|S06_PACK_INSTALL|S07_INITIAL_FLEET|S08_VERIFY) return 1 ;;
+    S00_PREFLIGHT|S01_CLAUDE_INSTALL|S02_CLAUDE_LOGIN|S09_COMPLETE|S05_DAEMON_REGISTER|S06_PACK_INSTALL|S07_INITIAL_FLEET|S08_VERIFY) return 1 ;;
+    S03_DOWNLOAD_VERIFY) [[ "$status" == passed ]] && verified_download_matches_pin ;;
     S04_INSTALL_LINK) [[ "$status" == passed ]] && installed_app_matches_pin ;;
-    *) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -593,6 +633,10 @@ step_s04() {
     fi
     return 1
   fi
+  # S03 뒤 파일이 바뀌거나 이어받기가 S04로 돌아와도 변조된 DMG를 열지 않는다.
+  local actual
+  actual="$(shasum -a 256 "$ARTIFACT_PATH" | awk '{print $1}')" || return 1
+  [[ "$actual" == "$RELEASE_EXPECTED_SHA256" ]] || fail_message "SHA256 불일치(설치 직전 재검사)" || return 1
   hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$ARTIFACT_PATH" >/dev/null || return 1
   app="$(find "$mountpoint" -maxdepth 2 -type d -name '*.app' -print -quit)"
   [[ -n "$app" ]] || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; fail_message "DMG 안에 앱이 없음"; return 1; }
@@ -1270,6 +1314,7 @@ main() {
     HELP_STEP="$((idx + 1))/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
     if can_resume_step "$id" "$status"; then
+      record_resume_observation "$id" || return 1
       log "[$HELP_STEP] $title — 이미 완료 — 건너뜀"
       help_progress end
       continue

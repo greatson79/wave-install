@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -839,6 +840,7 @@ $reason = [string]$Recorded.reason
 Write-Host ('BYTES=' + [Text.Encoding]::UTF8.GetByteCount($reason))
 Write-Host ('REASON=' + $reason.Substring([Math]::Max(0, $reason.Length - 200)).Replace("`n", ' '))
 Write-Host ('HEAD=' + $reason.Substring(0, 3))
+Write-Host ('FIXTURE_HOME=' + $env:USERPROFILE)
 Write-Host ('POSITION_HAS_HOME=' + ([string]$Recorded.position).Contains($env:USERPROFILE))
 Write-Host ('LOG_FULL=' + $logged.Contains('SECRETTOKENVALUE') + '/' + ($logged.Length -gt 200000))
 ''')
@@ -848,7 +850,8 @@ Write-Host ('LOG_FULL=' + $logged.Contains('SECRETTOKENVALUE') + '/' + ($logged.
                 self.assertIn('at ', values['REASON'])
                 self.assertNotIn('alicesmith', values['REASON'])
                 if with_lib:
-                    self.assertIn('/Users/<USER>/', values['REASON'])
+                    expected_home = re.sub(r'^/(?:Users|home)/[^/]+', '/Users/<USER>', values['FIXTURE_HOME'])
+                    self.assertIn((expected_home + '/<USER>/log')[-180:], values['REASON'])
                 else:
                     self.assertNotIn('.g8r1-win-', values['REASON'])
                     self.assertEqual(values['POSITION_HAS_HOME'], 'False')

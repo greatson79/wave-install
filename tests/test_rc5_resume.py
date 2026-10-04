@@ -64,6 +64,9 @@ class MacResume(unittest.TestCase):
         self.assertEqual(r.returncode,0,r.stderr)
         self.assertNotIn('RAN=S04_INSTALL_LINK',r.stdout)
         self.assertIn('RAN=S07_INITIAL_FLEET',r.stdout)
+        observed=json.loads((self.wave/'install-state.json').read_text())['steps']['S04_INSTALL_LINK']['observed']
+        self.assertIs(observed['skipped_by_resume'],True)
+        self.assertEqual(observed['resume_fingerprint'],self.config['release']['cdhash']['macos_arm64'])
         for platform in ('macos_arm64','macos_x64'): self.config['release']['cdhash'][platform]='0'*40
         self.steps.write_text(json.dumps(self.config))
         r=self.run_sh(harness)

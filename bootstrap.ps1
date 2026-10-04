@@ -270,6 +270,17 @@ function Test-StepComplete([string]$Id) {
   return $true
 }
 
+function Save-ResumeObservation([string]$Id) {
+  $entry = $State.steps.$Id
+  $observed = $entry.observed
+  $fingerprint = if ($Id -eq 'S03_DOWNLOAD_VERIFY') { $WaveWinSha256 } else {
+    [ordered]@{ installer_sha256 = $WaveWinSha256; cli_sha256 = (Get-StateField $observed 'cli_sha256'); daemon_sha256 = (Get-StateField $observed 'daemon_sha256'); app_sha256 = (Get-StateField $observed 'app_sha256') }
+  }
+  $observed | Add-Member -NotePropertyName skipped_by_resume -NotePropertyValue $true -Force
+  $observed | Add-Member -NotePropertyName resume_fingerprint -NotePropertyValue $fingerprint -Force
+  Save-State
+}
+
 function Save-InstallDone {
   Read-ReleasePins
   if ($State.status -ne 'complete' -or -not $State.required_steps_passed) {
@@ -1674,7 +1685,7 @@ $actions = @{
 }
 foreach ($step in ($Config.steps | Sort-Object index)) {
   $id = [string]$step.id
-  if (Test-StepComplete $id) { Say-Step $step '이미 완료 — 건너뜀'; Send-Progress $CurrentStep 'end'; continue }
+  if (Test-StepComplete $id) { Save-ResumeObservation $id; Say-Step $step '이미 완료 — 건너뜀'; Send-Progress $CurrentStep 'end'; continue }
   if ($id -eq "S09_COMPLETE") { Mark-RequiredComplete }
   Say-Step $step '시작'
   Invoke-Step $id $actions[$id]

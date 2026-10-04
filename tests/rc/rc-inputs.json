@@ -1,10 +1,10 @@
 {
-  "mac_run_id": "37120607115",
+  "mac_run_id": "37181483082",
   "app_repo": "greatson79/wave-terminal",
   "gate_ref": "feat/p3-gate",
   "text_ref": "feat/w4-release-text",
-  "win_run_id": "37130986526",
-  "installer_sha": "7eef0d2",
+  "win_run_id": "37181481541",
+  "installer_sha": "e23fc3035ed9cadeb73292d55b87a8689fccd6ac",
   "freeze_baseline_ref": {
     "mac": "v0.1.1",
     "win": "fa4c12b8"

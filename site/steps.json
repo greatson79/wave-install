@@ -19,8 +19,8 @@
     },
     "bytes": {"windows_x64": 128895805},
     "sha256": {
-      "macos_arm64": "885e7db701649c935c929ad17d7333e83df0b3e8d83811800f151354170f92e3",
-      "macos_x64": "885e7db701649c935c929ad17d7333e83df0b3e8d83811800f151354170f92e3",
+      "macos_arm64": "aeaa6c64ba05d03ce87adc469d3e2394756926ff0f1c9541075620df38a5cde5",
+      "macos_x64": "aeaa6c64ba05d03ce87adc469d3e2394756926ff0f1c9541075620df38a5cde5",
       "windows_x64": "f6ec20b05a96a68fc8202cb7af378efb88e977669d764607546c6e16cd014c99"
     },
     "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.1/SHA256SUMS",
@@ -33,8 +33,8 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "1611815188029baf43cdde05ddbbb872004b6fdb",
-      "macos_x64": "1611815188029baf43cdde05ddbbb872004b6fdb"
+      "macos_arm64": "c16aef02b3647be1a0cfeee360c8c1f5651d079b",
+      "macos_x64": "c16aef02b3647be1a0cfeee360c8c1f5651d079b"
     }
   },
   "reinstall": {

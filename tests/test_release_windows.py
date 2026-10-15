@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Windows release assets are self-contained and pinned by the published bootstrap."""
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -12,6 +13,26 @@ BASE = 'https://github.com/greatson79/wave-install/releases/download/v0.3.0'
 
 
 class WindowsReleaseTests(unittest.TestCase):
+    def test_wave_terminal_assembly_includes_pinned_windows_entry(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            (out / 'app-asset').write_bytes(b'fixture')
+            result = subprocess.run(['bash', str(ROOT / 'scripts/assemble-wave-terminal-release.sh'),
+                                     'greatson79/wave-terminal', '0.2.3', folder], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for name in ('bootstrap.ps1', 'win-start.ps1', 'wave-install-0.3.0.zip', 'steps.json'):
+                self.assertTrue((out / name).is_file(), name)
+            start = (out / 'win-start.ps1').read_text(encoding='utf-8-sig')
+            self.assertIn('https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/bootstrap.ps1', start)
+            self.assertIn(hashlib.sha256((out / 'bootstrap.ps1').read_bytes()).hexdigest(), start)
+            self.assertNotIn('__WAVE_BOOTSTRAP_', start)
+            with zipfile.ZipFile(out / 'wave-install-0.3.0.zip') as archive:
+                self.assertEqual(archive.read('wave-install-0.3.0/steps.json'), (out / 'steps.json').read_bytes())
+            self.assertEqual(json.loads((out / 'steps.json').read_text())['release']['asset_name']['windows_x64'],
+                             'wave-terminal-0.2.3-windows-x64-setup.exe')
+            check = subprocess.run(['shasum', '-a', '256', '-c', 'SHA256SUMS'], cwd=out, capture_output=True, text=True)
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
+
     def test_zip_and_powershell_bootstrap_are_pinned(self):
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder)

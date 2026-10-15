@@ -10,21 +10,21 @@
     "asset_name": {
       "macos_arm64": "wave-terminal-0.2.3-macos-arm64.dmg",
       "macos_x64": "wave-terminal-0.2.3-macos-arm64.dmg",
-      "windows_x64": "wave-terminal-0.2.0-windows-x64-setup.exe"
+      "windows_x64": "wave-terminal-0.2.3-windows-x64-setup.exe"
     },
     "asset_url": {
       "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/wave-terminal-0.2.3-macos-arm64.dmg",
       "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/wave-terminal-0.2.3-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/wave-terminal-0.2.0-windows-x64-setup.exe"
+      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/wave-terminal-0.2.3-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 128895805},
+    "bytes": {"windows_x64": 128923148},
     "sha256": {
       "macos_arm64": "7bd46ec422a0b6ae737d565648f6c1a25239172e347f3446645e233fbec753ac",
       "macos_x64": "7bd46ec422a0b6ae737d565648f6c1a25239172e347f3446645e233fbec753ac",
-      "windows_x64": "f6ec20b05a96a68fc8202cb7af378efb88e977669d764607546c6e16cd014c99"
+      "windows_x64": "10bb94e6ac9d38f08e59a3ec20f34cb747f6ca38e0edd8d02bd3bf873a16a108"
     },
     "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,
@@ -40,7 +40,7 @@
   "reinstall": {
     "command": {
       "macos": "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall",
-      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
+      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-terminal/releases/download/v0.2.3/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
     },
     "description": "설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일 전체 삭제는 하지 않습니다."
   },

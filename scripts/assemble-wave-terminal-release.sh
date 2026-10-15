@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# 배포 장소 하나(wave-terminal 릴리스)용 맥 자산 조립 — 발행·push 는 하지 않는다.
+# 배포 장소 하나(wave-terminal 릴리스)용 설치 자산 조립 — 발행·push 는 하지 않는다.
 # 사용: scripts/assemble-wave-terminal-release.sh <owner/repo> <앱 판 X.Y.Z> <art 폴더>
 #   art 폴더 = 앱 쪽 자산(DMG · .app.tar.gz · .sig · latest.json)이 이미 든 곳. 여기에 설치기 쪽
-#   (bootstrap.sh · 설치팩 tar.gz · steps.json)을 더하고 전 자산 SHA256SUMS 를 쓴다.
+#   (bootstrap.sh/.ps1 · 설치팩 tar.gz/zip · win-start.ps1 · steps.json)을 더하고 전 자산 SHA256SUMS 를 쓴다.
 #   <owner/repo> 가 greatson79/wave-terminal 이 아니면(시험 저장소) steps.json·bootstrap.sh 안
 #   저장소 이름만 바꾼 사본으로 만든다(공개 기본값 = 저장소 파일은 그대로).
-# 윈도우 자산(bootstrap.ps1 · zip · win-start.ps1)은 넣지 않는다 — 이번 판 /win 은 rc.4 그대로.
 set -euo pipefail
 REPO="${1:?owner/repo}"; V="${2:?app version}"; ART="${3:?art dir}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -28,7 +27,18 @@ fi
 [[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["release"]["version"])' "$STAGE/src/steps.json")" == "$V" ]] \
   || { echo "steps.json release.version != $V" >&2; exit 1; }
 bash "$STAGE/src/scripts/make-release.sh" "$IV" "https://github.com/$REPO/releases/download/v$V" "$STAGE/out" >/dev/null
-cp "$STAGE/out/bootstrap.sh" "$STAGE/out/wave-install-$IV.tar.gz" "$ART/"
+cp "$STAGE/out/bootstrap.sh" "$STAGE/out/bootstrap.ps1" "$STAGE/out/wave-install-$IV.tar.gz" "$STAGE/out/wave-install-$IV.zip" "$ART/"
 cp "$STAGE/src/steps.json" "$ART/steps.json"
+python3 - "$STAGE/src/win-start.ps1" "$ART/win-start.ps1" "https://github.com/$REPO/releases/download/v$V/bootstrap.ps1" "$ART/bootstrap.ps1" <<'PY'
+from pathlib import Path
+import hashlib, sys
+source, target, bootstrap = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[4])
+url = sys.argv[3]
+text = source.read_text(encoding='utf-8-sig')
+for marker, value in [('__WAVE_BOOTSTRAP_URL__', url), ('__WAVE_BOOTSTRAP_SHA256__', hashlib.sha256(bootstrap.read_bytes()).hexdigest())]:
+    assert text.count(marker) == 1, marker
+    text = text.replace(marker, value)
+target.write_text(text, encoding='utf-8-sig')
+PY
 ( cd "$ART" && shasum -a 256 $(ls | sort) > "$STAGE/sums" && mv "$STAGE/sums" SHA256SUMS )
 echo "조립 끝: $ART ($REPO v$V · 설치기 $IV)"; cat "$ART/SHA256SUMS"

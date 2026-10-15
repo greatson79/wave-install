@@ -433,17 +433,24 @@ PY
 )"
 }
 
+claude_seat_auth() {
+  local config_dir="${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}"
+  # 앱은 CLAUDE.md·settings.json 이 없을 때만 채우므로 폴더를 먼저 만들어도 충돌하지 않는다.
+  mkdir -p "$config_dir" || return 1
+  if ! CLAUDE_CONFIG_DIR="$config_dir" claude auth status >/dev/null 2>&1; then
+    log "Claude 작업 칸 로그인이 필요합니다. 아래 안내대로 브라우저에서 승인하고, 코드가 나오면 이 창에 붙여넣으세요."
+    if { : </dev/tty; } 2>/dev/null; then
+      CLAUDE_CONFIG_DIR="$config_dir" claude auth login </dev/tty >/dev/tty 2>&1 || true
+    else
+      CLAUDE_CONFIG_DIR="$config_dir" claude auth login || true
+    fi
+    CLAUDE_CONFIG_DIR="$config_dir" claude auth status >/dev/null 2>&1 || { log "작업 칸 로그인을 확인하지 못했습니다. 같은 설치 명령을 다시 실행하면 이어서 진행합니다."; return 1; }
+  fi
+}
+
 step_s02() {
   PATH="$PATH:$HOME/.local/bin"
-  if ! claude auth status >/dev/null 2>&1; then
-    log "Claude 로그인이 필요합니다. 아래 안내대로 브라우저에서 승인하고, 코드가 나오면 이 창에 붙여넣으세요."
-    if { : </dev/tty; } 2>/dev/null; then
-      claude auth login </dev/tty >/dev/tty 2>&1 || true
-    else
-      claude auth login || true
-    fi
-    claude auth status >/dev/null 2>&1 || { log "로그인을 확인하지 못했습니다. 같은 명령을 다시 실행하면 이어서 진행합니다."; return 1; }
-  fi
+  claude_seat_auth || return 1
   mkdir -p "$WAVE_HOME/auth"
   : > "$WAVE_HOME/auth/claude-authenticated"
   STEP_OBSERVED='{"authenticated":true,"account_recorded":false}'
@@ -702,6 +709,8 @@ PY_VERIFY
 
 # master 는 앱 계약대로 `cys launch-agent --role master` 로 띄운다(앱이 agent 정보를 기록하고 MASTER 지침을 주입한다).
 step_s07() {
+  PATH="$PATH:$HOME/.local/bin"
+  claude_seat_auth || return 1
   mkdir -p "$WAVE_HOME/fleet"
   local ref started deadline remaining existing reused=false restored= master_source=created
   # 이번 시도의 시작 — S05 데몬 시작 직후 자동복원이 S07 진입 전(같은 초 경계 안팎)에 만든 cso·worker 도 이 시도의 좌석이다
@@ -774,6 +783,11 @@ PY_EXISTING
   fi
   local tick paused=0 reported=$SECONDS
   while (( SECONDS < deadline )); do
+    if ! CLAUDE_CONFIG_DIR="${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" claude auth status >/dev/null 2>&1; then
+      STEP_OBSERVED='{"fleet_started":false,"j_code":"J-LOGIN-03","source":"seat-config claude auth status"}'
+      log "J-LOGIN-03 — 작업 칸 로그인이 풀렸습니다. Wave 작업 칸에서 /login 한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      return 3
+    fi
     tick=$SECONDS
     remaining=$((deadline - SECONDS))
     (( remaining > 5 )) && remaining=5
@@ -1119,7 +1133,7 @@ run_step() {
   cat "$stderr_file" >> "$LOG_FILE"
   set -e
   if [[ "$rc" -ne 0 ]]; then
-    if [[ "$rc" -eq 2 ]]; then help_progress fail J-VER-04; else help_progress fail J-UNK-00; fi   # 2 = 세 칸 생존·확인 미완(S07) — 전용 코드만 알리고 도움 요청은 보내지 않는다
+    if [[ "$rc" -eq 2 ]]; then help_progress fail J-VER-04; elif [[ "$rc" -eq 3 ]]; then help_progress fail J-LOGIN-03; else help_progress fail J-UNK-00; fi
     # 상태 파일에는 가린 뒤 자른 stderr 끝부분(최대 4KB)만 남긴다. 원문 전체는 install.log 에만 있다.
     STEP_OBSERVED="$(python3 - "$STEP_OBSERVED" "$stderr_file" "$rc" "$SCRIPT_DIR/lib" <<'PY_REASON'
 import json, os, re, sys

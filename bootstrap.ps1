@@ -419,6 +419,16 @@ $HelpRulesJson = @'
     "sample": "Invalid authentication code"
   },
   {
+    "code": "J-LOGIN-03",
+    "symptom": "작업 칸 로그인 해제",
+    "pattern": "작업 칸 로그인이 풀렸습니다",
+    "action1": "Wave 작업 칸에서 /login을 진행하세요.",
+    "action2": "같은 설치 명령을 다시 실행하세요. 토큰은 보내지 마세요.",
+    "case": "S07 작업 칸 설정 폴더 인증 상태 재확인",
+    "os": "all",
+    "sample": "작업 칸 로그인이 풀렸습니다"
+  },
+  {
     "code": "J-HOME-01",
     "symptom": "허용되지 않는 작업 폴더",
     "pattern": "사용자 프로필 밖 경로|W-HOME",
@@ -730,14 +740,26 @@ function Run-S01 {
   $script:StepObserved = [ordered]@{ claude_version = $version }
 }
 
-function Run-S02 {
-  & claude auth status *> $null
-  if ($LASTEXITCODE -ne 0) {
-    & claude auth login
-    if ($LASTEXITCODE -ne 0) { throw 'Claude 로그인 실패' }
+function Confirm-SeatClaudeAuth {
+  $configDir = if ($env:CYS_ACCOUNT_DIR) { $env:CYS_ACCOUNT_DIR } else { Join-Path $env:USERPROFILE '.cys\claude' }
+  New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+  $previous = $env:CLAUDE_CONFIG_DIR
+  try {
+    $env:CLAUDE_CONFIG_DIR = $configDir
     & claude auth status *> $null
-    if ($LASTEXITCODE -ne 0) { throw 'Claude 로그인 재확인 실패' }
+    if ($LASTEXITCODE -ne 0) {
+      & claude auth login
+      if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 실패' }
+      & claude auth status *> $null
+      if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 재확인 실패' }
+    }
+  } finally {
+    $env:CLAUDE_CONFIG_DIR = $previous
   }
+}
+
+function Run-S02 {
+  Confirm-SeatClaudeAuth
   $auth = Join-Path $WaveHome "auth"
   New-Item -ItemType Directory -Force -Path $auth | Out-Null
   New-Item -ItemType File -Force -Path (Join-Path $auth "claude-authenticated") | Out-Null
@@ -1171,6 +1193,7 @@ function Show-FirstRunGateNotice([object]$Status) {
 }
 
 function Run-S07 {
+  Confirm-SeatClaudeAuth
   $clock = [Diagnostics.Stopwatch]::StartNew()
   Start-WaveApp
   Wait-GuiOnboarded $clock
@@ -1205,6 +1228,18 @@ function Run-S07 {
   }
   $lastReportMs = $clock.ElapsedMilliseconds
   while ((Get-AwakeningBudgetMs $clock.ElapsedMilliseconds) -gt 0) {
+    $configDir = if ($env:CYS_ACCOUNT_DIR) { $env:CYS_ACCOUNT_DIR } else { Join-Path $env:USERPROFILE '.cys\claude' }
+    $previous = $env:CLAUDE_CONFIG_DIR
+    try {
+      $env:CLAUDE_CONFIG_DIR = $configDir
+      & claude auth status *> $null
+      if ($LASTEXITCODE -ne 0) {
+        $script:StepObserved = [ordered]@{ fleet_started = $false; j_code = 'J-LOGIN-03'; source = 'seat-config claude auth status' }
+        throw '작업 칸 로그인이 풀렸습니다. Wave 작업 칸에서 /login 한 뒤 같은 설치 명령을 다시 실행해 주세요.'
+      }
+    } finally {
+      $env:CLAUDE_CONFIG_DIR = $previous
+    }
     $tickStart = $clock.ElapsedMilliseconds
     if ($tickStart - $lastReportMs -ge 30000) { $lastReportMs = $tickStart; Write-WaitingFor $status }
     $status = Get-LiveFleet (Get-AwakeningBudgetMs $clock.ElapsedMilliseconds)

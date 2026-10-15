@@ -11,7 +11,8 @@ REPO="${1:?owner/repo}"; V="${2:?app version}"; ART="${3:?art dir}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 IV="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$ROOT/steps.json")"
 [[ -d "$ART" ]] || { echo "art 폴더 없음: $ART" >&2; exit 2; }
-STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
+[[ ! -e "$ART/SHA256SUMS" ]] || { echo "✗ $ART 에 이미 SHA256SUMS — 새 폴더로 다시 조립(지우지 않음)" >&2; exit 1; }
+STAGE="$(mktemp -d)"   # 임시 폴더는 지우지 않는다(변수 rm 금지 · OS 임시 정리에 맡김)
 mkdir -p "$STAGE/src" && git -C "$ROOT" archive HEAD | tar -x -C "$STAGE/src"   # 커밋된 것만(작업 트리 찌꺼기 0)
 if [[ "$REPO" != "greatson79/wave-terminal" ]]; then
   # 시험 사본: 저장소 이름 한 곳만(github.com/greatson79/wave-terminal/releases → <repo>/releases)
@@ -29,5 +30,5 @@ fi
 bash "$STAGE/src/scripts/make-release.sh" "$IV" "https://github.com/$REPO/releases/download/v$V" "$STAGE/out" >/dev/null
 cp "$STAGE/out/bootstrap.sh" "$STAGE/out/wave-install-$IV.tar.gz" "$ART/"
 cp "$STAGE/src/steps.json" "$ART/steps.json"
-( cd "$ART" && rm -f SHA256SUMS && shasum -a 256 $(ls | sort) > "$STAGE/sums" && mv "$STAGE/sums" SHA256SUMS )
+( cd "$ART" && shasum -a 256 $(ls | sort) > "$STAGE/sums" && mv "$STAGE/sums" SHA256SUMS )
 echo "조립 끝: $ART ($REPO v$V · 설치기 $IV)"; cat "$ART/SHA256SUMS"

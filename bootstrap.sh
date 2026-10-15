@@ -126,7 +126,7 @@ help_request() {
 # steps.json·wave-pack 이 옆에 없으면(= curl 한 파일만 받은 경우) 고정 SHA256 tarball 을 받아 풀고 그 안에서 재실행한다.
 ensure_pack() {
   [[ -f "$SCRIPT_DIR/steps.json" && -d "$SCRIPT_DIR/wave-pack" ]] && return 0
-  local url="$WAVE_TARBALL_URL" want="$WAVE_TARBALL_SHA256" src="$WAVE_HOME/src" tgz proto got
+  local url="$WAVE_TARBALL_URL" want="$WAVE_TARBALL_SHA256" src="$WAVE_HOME/src" tgz proto got dev
   [[ "$url" == __*__ || "$want" == __*__ ]] && fail_message "설치팩 URL·SHA256 이 릴리스 때 채워지지 않음" && return 1
   [[ "$want" =~ ^[0-9a-f]{64}$ ]] || fail_message "설치팩 SHA256 형식 오류" || return 1
   case "$url" in https://*) proto='=https' ;; file://*) proto='=file' ;; *) fail_message "설치팩 URL은 https:// 여야 함"; return 1 ;; esac
@@ -142,8 +142,15 @@ ensure_pack() {
   [[ -f "$src/pack/bootstrap.sh" && -f "$src/pack/steps.json" && -d "$src/pack/wave-pack" ]] || fail_message "설치팩 구성이 올바르지 않음" || return 1
   log "설치팩 확인 완료 — $src/pack 에서 다시 시작합니다."
   # 표준입력(파이프)으로 시작했다면 다시 시작하는 쪽은 표준입력이 터미널이 아니다 — 터미널이 있으면 그것을 물려준다(로그인·도움 처방 표시가 대화형으로 동작).
-  if [[ "$FROM_STDIN" == 1 && ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
-    exec bash "$src/pack/bootstrap.sh" "$@" </dev/tty
+  if [[ "$FROM_STDIN" == 1 && ! -t 0 ]]; then
+    dev="/dev/$(ps -o tty= -p $$ 2>/dev/null | tr -d ' ')"
+    if [[ ! -c "$dev" || ! -r "$dev" ]]; then
+      dev=/dev/tty
+      log "터미널 장치를 확인하지 못해 /dev/tty로 다시 시작합니다."
+    fi
+    if { : <"$dev"; } 2>/dev/null; then
+      exec bash "$src/pack/bootstrap.sh" "$@" <"$dev"
+    fi
   fi
   exec bash "$src/pack/bootstrap.sh" "$@"
 }

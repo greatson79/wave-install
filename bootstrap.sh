@@ -434,15 +434,24 @@ PY
 }
 
 claude_seat_auth() {
-  local config_dir="${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}"
+  local config_dir="${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}" dev
   # 앱은 CLAUDE.md·settings.json 이 없을 때만 채우므로 폴더를 먼저 만들어도 충돌하지 않는다.
   mkdir -p "$config_dir" || return 1
   if ! CLAUDE_CONFIG_DIR="$config_dir" claude auth status >/dev/null 2>&1; then
     log "Claude 작업 칸 로그인이 필요합니다. 아래 안내대로 브라우저에서 승인하고, 코드가 나오면 이 창에 붙여넣으세요."
-    if { : </dev/tty; } 2>/dev/null; then
-      CLAUDE_CONFIG_DIR="$config_dir" claude auth login </dev/tty >/dev/tty 2>&1 || true
-    else
+    if [ -t 0 ]; then
       CLAUDE_CONFIG_DIR="$config_dir" claude auth login || true
+    else
+      dev="/dev/$(ps -o tty= -p $$ 2>/dev/null | tr -d ' ')"
+      if [ ! -c "$dev" ] || [ ! -r "$dev" ]; then
+        dev=/dev/tty
+        log "터미널 장치를 확인하지 못해 /dev/tty로 로그인을 시도합니다."
+      fi
+      if { : <"$dev"; } 2>/dev/null; then
+        CLAUDE_CONFIG_DIR="$config_dir" claude auth login <"$dev" >"$dev" 2>&1 || true
+      else
+        CLAUDE_CONFIG_DIR="$config_dir" claude auth login || true
+      fi
     fi
     CLAUDE_CONFIG_DIR="$config_dir" claude auth status >/dev/null 2>&1 || { log "작업 칸 로그인을 확인하지 못했습니다. 같은 설치 명령을 다시 실행하면 이어서 진행합니다."; return 1; }
   fi

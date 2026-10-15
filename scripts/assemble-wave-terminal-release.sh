@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# 배포 장소 하나(wave-terminal 릴리스)용 맥 자산 조립 — 발행·push 는 하지 않는다.
+# 사용: scripts/assemble-wave-terminal-release.sh <owner/repo> <앱 판 X.Y.Z> <art 폴더>
+#   art 폴더 = 앱 쪽 자산(DMG · .app.tar.gz · .sig · latest.json)이 이미 든 곳. 여기에 설치기 쪽
+#   (bootstrap.sh · 설치팩 tar.gz · steps.json)을 더하고 전 자산 SHA256SUMS 를 쓴다.
+#   <owner/repo> 가 greatson79/wave-terminal 이 아니면(시험 저장소) steps.json·bootstrap.sh 안
+#   저장소 이름만 바꾼 사본으로 만든다(공개 기본값 = 저장소 파일은 그대로).
+# 윈도우 자산(bootstrap.ps1 · zip · win-start.ps1)은 넣지 않는다 — 이번 판 /win 은 rc.4 그대로.
+set -euo pipefail
+REPO="${1:?owner/repo}"; V="${2:?app version}"; ART="${3:?art dir}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+IV="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$ROOT/steps.json")"
+[[ -d "$ART" ]] || { echo "art 폴더 없음: $ART" >&2; exit 2; }
+STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/src" && git -C "$ROOT" archive HEAD | tar -x -C "$STAGE/src"   # 커밋된 것만(작업 트리 찌꺼기 0)
+if [[ "$REPO" != "greatson79/wave-terminal" ]]; then
+  # 시험 사본: 저장소 이름 한 곳만(github.com/greatson79/wave-terminal/releases → <repo>/releases)
+  sed -i '' "s#github.com/greatson79/wave-terminal/releases#github.com/$REPO/releases#g" "$STAGE/src/steps.json" "$STAGE/src/bootstrap.sh"
+  python3 - "$STAGE/src/steps.json" "$REPO" <<'PY'
+import json, sys
+p, repo = sys.argv[1:]; s = json.load(open(p, encoding="utf-8"))
+assert s["release"]["repository"] == "greatson79/wave-terminal"
+txt = open(p, encoding="utf-8").read().replace('"repository": "greatson79/wave-terminal"', f'"repository": "{repo}"', 1)
+open(p, "w", encoding="utf-8").write(txt)
+PY
+fi
+[[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["release"]["version"])' "$STAGE/src/steps.json")" == "$V" ]] \
+  || { echo "steps.json release.version != $V" >&2; exit 1; }
+bash "$STAGE/src/scripts/make-release.sh" "$IV" "https://github.com/$REPO/releases/download/v$V" "$STAGE/out" >/dev/null
+cp "$STAGE/out/bootstrap.sh" "$STAGE/out/wave-install-$IV.tar.gz" "$ART/"
+cp "$STAGE/src/steps.json" "$ART/steps.json"
+( cd "$ART" && rm -f SHA256SUMS && shasum -a 256 $(ls | sort) > "$STAGE/sums" && mv "$STAGE/sums" SHA256SUMS )
+echo "조립 끝: $ART ($REPO v$V · 설치기 $IV)"; cat "$ART/SHA256SUMS"

@@ -9,21 +9,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = ROOT / "steps.json"
-BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4"
-WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4"  # 앱 자산은 설치기 RC 프리릴리스에 동봉
-MAC = "wave-terminal-0.2.0-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
+BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.2.1"
+WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4"  # 윈도우는 이번 판에서 안 바꿈(/win = rc.4 그대로)
+MAC = "wave-terminal-0.2.1-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
 WIN = "wave-terminal-0.2.0-windows-x64-setup.exe"
-MAC_SHA = "599e406c4ba11e6f6de2eb4e03f87d7e786ddb0453e298ed0f16d4e08a3d7897"
-CDHASH = "24fc341cd7c075bcca0526912550519fbf0b50a4"
+MAC_SHA = "885e7db701649c935c929ad17d7333e83df0b3e8d83811800f151354170f92e3"
+CDHASH = "1611815188029baf43cdde05ddbbb872004b6fdb"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:
     release = json.loads(STEPS.read_text(encoding="utf-8"))["release"]
 
     # macos_x64 는 별도 빌드가 없어 arm64 자산을 그대로 가리킨다(RC 러너 rc_release.py 와 같은 매핑).
-    assert release["repository"] == "greatson79/wave-install"
-    assert release["version"] == "0.2.0"
-    assert release["macos_version"] == "0.2.0"
+    assert release["repository"] == "greatson79/wave-terminal"
+    assert release["version"] == "0.2.1"
+    assert release["macos_version"] == "0.2.1"
     assert release["asset_name"] == {"macos_arm64": MAC, "macos_x64": MAC, "windows_x64": WIN}
     assert release["asset_url"] == {
         "macos_arm64": f"{BASE}/{MAC}",
@@ -42,6 +42,10 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
     assert release["sha256sums_url"] == f"{BASE}/SHA256SUMS"
     assert release["windows_sha256sums_url"] == f"{WIN_BASE}/SHA256SUMS"
     assert release["minisign_public_key"] == "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI"
+    # 「다시 설치」: 맥 = 공개 입구 그대로 · 윈도우 = 지금 있는 rc.4 bootstrap.ps1(옛 v0.3.0 주소는 404).
+    steps = json.loads(STEPS.read_text(encoding="utf-8"))
+    assert steps["reinstall"]["command"]["macos"] == "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall"
+    assert "wave-install/releases/download/v0.3.0-rc.4/bootstrap.ps1" in steps["reinstall"]["command"]["windows"]
 
 
 if __name__ == "__main__":

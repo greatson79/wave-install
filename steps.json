@@ -5,25 +5,25 @@
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",
-    "macos_version": "0.2.1",
-    "version": "0.2.1",
+    "macos_version": "0.2.2",
+    "version": "0.2.2",
     "asset_name": {
-      "macos_arm64": "wave-terminal-0.2.1-macos-arm64.dmg",
-      "macos_x64": "wave-terminal-0.2.1-macos-arm64.dmg",
+      "macos_arm64": "wave-terminal-0.2.2-macos-arm64.dmg",
+      "macos_x64": "wave-terminal-0.2.2-macos-arm64.dmg",
       "windows_x64": "wave-terminal-0.2.0-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.1/wave-terminal-0.2.1-macos-arm64.dmg",
-      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.1/wave-terminal-0.2.1-macos-arm64.dmg",
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.2/wave-terminal-0.2.2-macos-arm64.dmg",
+      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.2/wave-terminal-0.2.2-macos-arm64.dmg",
       "windows_x64": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/wave-terminal-0.2.0-windows-x64-setup.exe"
     },
     "bytes": {"windows_x64": 128895805},
     "sha256": {
-      "macos_arm64": "aeaa6c64ba05d03ce87adc469d3e2394756926ff0f1c9541075620df38a5cde5",
-      "macos_x64": "aeaa6c64ba05d03ce87adc469d3e2394756926ff0f1c9541075620df38a5cde5",
+      "macos_arm64": "106793df9835fb45f8ea8fe5f4c98401734e253b87a40dcf5ac675414bfeb399",
+      "macos_x64": "106793df9835fb45f8ea8fe5f4c98401734e253b87a40dcf5ac675414bfeb399",
       "windows_x64": "f6ec20b05a96a68fc8202cb7af378efb88e977669d764607546c6e16cd014c99"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.1/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.2/SHA256SUMS",
     "windows_sha256sums_url": "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
@@ -33,8 +33,8 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "c16aef02b3647be1a0cfeee360c8c1f5651d079b",
-      "macos_x64": "c16aef02b3647be1a0cfeee360c8c1f5651d079b"
+      "macos_arm64": "94c06f72267efbe99b11bbb154f31b4d05bed1cf",
+      "macos_x64": "94c06f72267efbe99b11bbb154f31b4d05bed1cf"
     }
   },
   "reinstall": {

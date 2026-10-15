@@ -9,12 +9,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = ROOT / "steps.json"
-BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.2.1"
+BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.2.2"
 WIN_BASE = "https://github.com/greatson79/wave-install/releases/download/v0.3.0-rc.4"  # 윈도우는 이번 판에서 안 바꿈(/win = rc.4 그대로)
-MAC = "wave-terminal-0.2.1-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
+MAC = "wave-terminal-0.2.2-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
 WIN = "wave-terminal-0.2.0-windows-x64-setup.exe"
-MAC_SHA = "885e7db701649c935c929ad17d7333e83df0b3e8d83811800f151354170f92e3"
-CDHASH = "1611815188029baf43cdde05ddbbb872004b6fdb"
+MAC_SHA = "106793df9835fb45f8ea8fe5f4c98401734e253b87a40dcf5ac675414bfeb399"
+CDHASH = "94c06f72267efbe99b11bbb154f31b4d05bed1cf"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:
@@ -22,8 +22,8 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
 
     # macos_x64 는 별도 빌드가 없어 arm64 자산을 그대로 가리킨다(RC 러너 rc_release.py 와 같은 매핑).
     assert release["repository"] == "greatson79/wave-terminal"
-    assert release["version"] == "0.2.1"
-    assert release["macos_version"] == "0.2.1"
+    assert release["version"] == "0.2.2"
+    assert release["macos_version"] == "0.2.2"
     assert release["asset_name"] == {"macos_arm64": MAC, "macos_x64": MAC, "windows_x64": WIN}
     assert release["asset_url"] == {
         "macos_arm64": f"{BASE}/{MAC}",

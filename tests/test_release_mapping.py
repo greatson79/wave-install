@@ -13,8 +13,8 @@ BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.2.4"
 WIN_BASE = BASE
 MAC = "wave-terminal-0.2.4-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
 WIN = "wave-terminal-0.2.4-windows-x64-setup.exe"
-MAC_SHA = "8050262e26577f6a61dd5faea7b85a5752e8968fe2f8cb1c45fc3186602f2a06"
-CDHASH = "f2d4970218d1f8b51276981cbac8c4ce7de6d26a"
+MAC_SHA = "7f0edd11c11fdb84814aa67f30058c1d134f28f1a7b8590a31d62ac2aeaa0279"
+CDHASH = "fb70a52b9145955af5a5e2d89ba91e02952ba78a"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:
@@ -33,9 +33,9 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
     assert release["sha256"] == {
         "macos_arm64": MAC_SHA,
         "macos_x64": MAC_SHA,
-        "windows_x64": "4d075b88b277b1ee019e64acc3b341e4415de6cb555df8c9c041168d12efe908",
+        "windows_x64": "2d26963964dc87e00741abb620e4e76dac2cf36bd740a8b0242b39247a075e16",
     }
-    assert release["bytes"] == {"windows_x64": 128960090}
+    assert release["bytes"] == {"windows_x64": 128955941}
     # minisign 은 설치기가 더 이상 쓰지 않는다(SHA256 + codesign/CDHash · Authenticode).
     assert release["minisig_url"] == {"macos_arm64": None, "macos_x64": None, "windows_x64": None}
     assert release["cdhash"] == {"macos_arm64": CDHASH, "macos_x64": CDHASH}

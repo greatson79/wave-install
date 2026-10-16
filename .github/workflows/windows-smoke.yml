@@ -58,6 +58,19 @@ jobs:
             $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
           }
+      - name: Windows S06/G3 preservation tests (PS 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:PWSH = (Get-Command powershell).Source
+          @'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.loadTestsFromNames(['tests.test_windows_g3', 'tests.test_windows_w12'])
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          print(f'Windows S06/G3: {result.testsRun} tests, {len(result.skipped)} skipped')
+          sys.exit(0 if result.wasSuccessful() and result.testsRun == 2 and not result.skipped else 1)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows S06/G3 preservation tests failed or skipped' }
       - name: Native Windows PowerShell 5.1 parsing and helper behavior
         if: runner.os == 'Windows'
         shell: powershell

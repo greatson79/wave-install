@@ -240,7 +240,7 @@
       "id": "S08_VERIFY",
       "index": 8,
       "total": 10,
-      "title": "master·cso·worker 재확인 · 주입=팩 원본/.new 0",
+      "title": "master·cso·worker 재확인 · 수정 지침 보존 확인",
       "command": {
         "macos": "cys status --json; master 부트 표지 대조",
         "windows": "cys status --json; master 부트 표지 대조"
@@ -249,23 +249,11 @@
         {
           "kind": "exit_code",
           "equals": 0
-        },
-        {
-          "kind": "json_path",
-          "path": "~/.wave/install-state.json",
-          "json_path": "steps.S08_VERIFY.observed.original_match",
-          "equals": true
-        },
-        {
-          "kind": "json_path",
-          "path": "~/.wave/install-state.json",
-          "json_path": "steps.S08_VERIFY.observed.new_file_count",
-          "equals": 0
         }
       ],
       "on_fail": {
         "error_id": "WT-S08-VERIFY",
-        "message": "주입 지침과 앱 원본 불일치 또는 .new 잔여는 실패입니다. 실제 주입 증거가 없으면 미측정으로 기록합니다.",
+        "message": "각성·팩 지침 확인 실패는 설치 실패입니다. 사용자 수정 파일과 .new는 보존하고 병합을 안내합니다.",
         "next": "stop"
       },
       "optional": false

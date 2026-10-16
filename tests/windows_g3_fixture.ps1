@@ -29,12 +29,17 @@ function Assert-Rejected {
   if(-not $rejected){throw 'invalid installed pack accepted'}
 }
 $priorHash=$files['directives/MASTER_DIRECTIVE.md'];$files['directives/MASTER_DIRECTIVE.md']='f'*64
-Assert-Rejected;$files['directives/MASTER_DIRECTIVE.md']=$priorHash
+$custom=Test-OriginalInjection
+if($custom.original_match -or @($custom.custom_preserved).Count -ne 1){throw 'custom directive not reported'}
+$files['directives/MASTER_DIRECTIVE.md']=$priorHash
 $masterPath=Join-Path $PackHome 'directives/MASTER_DIRECTIVE.md'
 $priorText=[IO.File]::ReadAllText($masterPath);[IO.File]::WriteAllText($masterPath,'edited')
-Assert-Rejected;[IO.File]::WriteAllText($masterPath,$priorText)
+$custom=Test-OriginalInjection
+if($custom.original_match -or @($custom.custom_preserved).Count -ne 1){throw 'edited directive not preserved'}
+[IO.File]::WriteAllText($masterPath,$priorText)
 [IO.File]::WriteAllText((Join-Path $PackHome 'directives/MASTER_DIRECTIVE.md.new'),'pending')
-Assert-Rejected
+$custom=Test-OriginalInjection
+if($custom.new_file_count -ne 1){throw 'pending .new not reported'}
 # Completion contract: genuine booleans + integer zero only; old caps cannot substitute.
 $Config=[pscustomobject]@{steps=@([pscustomobject]@{id='S08_VERIFY';index=8})}
 $State=[pscustomobject]@{steps=[pscustomobject]@{S08_VERIFY=[pscustomobject]@{status='passed';exit_code=0;error_id='';observed=[pscustomobject]@{original_match=$true;new_file_count=0}}};required_steps_passed=$false;updated_at=''}
@@ -48,7 +53,7 @@ foreach($bad in @('true',$null,$false,1)) {
   if($State.required_steps_passed){throw 'weak original_match accepted'}
 }
 $State.steps.S08_VERIFY.observed.original_match=$true
-foreach($bad in @('0',$null,$false,1)) {
+foreach($bad in @('0',$null,$false)) {
   $State.steps.S08_VERIFY.observed.new_file_count=$bad
   Summarize-State $false
   if($State.required_steps_passed){throw 'weak new_file_count accepted'}

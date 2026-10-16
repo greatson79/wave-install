@@ -923,7 +923,11 @@ function Run-S06 {
   $seedOnceNew = Join-Path $PackHome 'preflight-product-profile.json.new'
   $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -ErrorAction Stop | Where-Object { $_.FullName -ne $seedOnceNew })
   $script:StepObserved = [ordered]@{ pack_installed = $true; legacy_backed_up = $moved; directive_count = $directives.Count; directive_mismatches = $mismatches; new_files = $pending.Count; directive_bytes_match = ($mismatches.Count -eq 0) }
-  if ($mismatches.Count -or $pending.Count) { throw "원본 지침 대조 실패: mismatch=$($mismatches.Count), .new=$($pending.Count); 사용자 파일은 보존했습니다" }
+  if ($mismatches.Count -or $pending.Count) {
+    $names = @($mismatches) + @($pending | ForEach-Object { $_.FullName.Substring($PackHome.Length + 1) -replace '\.new$', '' }) | Select-Object -Unique
+    Say "직접 고치신 파일 $($names.Count)개는 그대로 두었습니다 · 새 판은 옆에 .new · 합치려면 cys pack-merge"
+    Write-Log ("병합 대기: " + ($names -join ", "))
+  }
   # cys-dept는 init-pack이 까는 팩 bash 스크립트다. preflight C11b가 기대하는 그 런처(cys 옆 cys-dept.cmd,
   # 같은 본문)를 둔다. 내용이 다른 기존 파일은 사용자 파일로 보고 덮지 않는다(macOS 심링크와 같은 규약).
   $deptSrc = Join-Path $PackHome 'bin\cys-dept'
@@ -1378,20 +1382,22 @@ function Test-OriginalInjection {
     if ($null -eq (Get-StateField $files ('directives/'+$role+'_DIRECTIVE.md'))) { throw 'G3 manifest missing required directives' }
   }
   $verified = [ordered]@{}
+  $custom = @()
   foreach ($entry in $files.PSObject.Properties) {
     $rel = $entry.Name
     if (-not ($rel.StartsWith('directives/') -and $rel.EndsWith('.md'))) { continue }
     if ($rel.Split('/') -contains '..' -or $rel.Contains('\')) { throw 'G3 invalid directive path' }
     $target = Join-Path $PackHome $rel
     $file = Get-Item -LiteralPath $target -Force -ErrorAction Stop
-    if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -le 0 -or (Get-ArtifactHash $target) -cne $entry.Value) { throw "G3 installed original mismatch: $rel" }
-    $verified[$rel] = [ordered]@{ pack_sha256 = $entry.Value; pack_bytes = $file.Length }
+    if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $file.Length -le 0) { throw "G3 missing/linked original: $rel" }
+    $actual = Get-ArtifactHash $target
+    if ($actual -cne $entry.Value) { $custom += $rel }
+    $verified[$rel] = [ordered]@{ pack_sha256 = $actual; pack_bytes = $file.Length }
   }
   # S06 과 같은 예외: 사용자 소유 제품 프로필의 병치본만 제외한다.
   $seedOnceNew = Join-Path $PackHome 'preflight-product-profile.json.new'
   $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -Force -ErrorAction Stop | Where-Object { $_.FullName -ne $seedOnceNew })
-  if ($pending.Count -ne 0) { throw "G3 병합 대기 .new 파일 $($pending.Count)건" }
-  return [ordered]@{ original_match = $true; new_file_count = 0; roles = $verified; injected_bytes = $null; injection_reason = 'RC 러너 G3_inject.json 판정'; source = 'app-manifest+installed-pack' }
+  return [ordered]@{ original_match = ($custom.Count -eq 0); custom_preserved = $custom; new_file_count = $pending.Count; roles = $verified; injected_bytes = $null; injection_reason = 'RC 러너 G3_inject.json 판정'; source = 'app-manifest+installed-pack' }
 }
 
 # 각성 증거(3갈래: 확인 / 미확인 카드 / 실패=생존·주입 검증). master 좌석 Claude 세션 기록(jsonl)에 답 레코드 ≥1.
@@ -1486,8 +1492,9 @@ function Summarize-State([bool]$Final) {
       if ($step.id -eq "S08_VERIFY") {
         $original = Get-StateField $observed 'original_match'
         $newCount = Get-StateField $observed 'new_file_count'
-        if ($original -isnot [bool] -or -not $original) { $reasons += 'original_injection_unverified' }
-        if (-not (Test-ByteCount $newCount) -or $newCount -ne 0) { $reasons += 'pending_new_unverified' }
+        $custom = Get-StateField $observed 'custom_preserved'
+        if ($original -isnot [bool] -or (-not $original -and ($custom -isnot [array] -or $custom.Count -eq 0))) { $reasons += 'original_injection_unverified' }
+        if (-not (Test-ByteCount $newCount)) { $reasons += 'pending_new_unverified' }
       }
     }
     foreach ($reason in $reasons) { $exceptions += [ordered]@{ step_id = $step.id; reason = $reason } }

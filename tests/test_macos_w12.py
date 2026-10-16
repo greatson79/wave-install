@@ -18,7 +18,8 @@ class W12Tests(unittest.TestCase):
             (pack/'directives/MASTER_DIRECTIVE.md').write_text('custom')
             cli.write_text('#!/bin/sh\ncase "$1" in\ninit-pack) :;;\npack-manifest) printf \'{"files":{"directives/MASTER_DIRECTIVE.md":"'+sha+'"}}\';;\nesac\n')
             result=subprocess.run(['bash','-c','source "$1"; SCRIPT_DIR="$2"; step_s06','test',str(lib),str(ROOT)],env=env,capture_output=True,text=True)
-            self.assertNotEqual(result.returncode,0)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('직접 고치신 파일 1개는 그대로 두었습니다',result.stdout)
             self.assertEqual((pack/'directives/MASTER_DIRECTIVE.md').read_text(),'custom')
     def test_three_live_roles_and_master_marker_without_reviewer(self):
         import time

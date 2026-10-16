@@ -695,18 +695,21 @@ files = json.loads(manifest.read_text())['files']
 directives = {k:v for k,v in files.items() if k.startswith('directives/') and k.endswith('.md')}
 if not directives:
     raise SystemExit('embedded directive manifest empty')
+custom = []
 for rel, expected in directives.items():
     path = pack / rel
     if '..' in Path(rel).parts or path.is_symlink() or not path.is_file():
         raise SystemExit('invalid/missing directive: '+rel)
     if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-        raise SystemExit('custom/mismatched directive preserved; merge required: '+rel)
+        custom.append(rel)
 # preflight-product-profile.json is seed-once and user-owned in the app (written only when missing, never
 # overwritten). A user edit/revert is a legitimate state, so its sidecar never blocks the install; the
 # installer leaves both files untouched. Every other .new still means a pending merge.
 SEED_ONCE = {'preflight-product-profile.json.new'}
-if [p for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() not in SEED_ONCE]:
-    raise SystemExit('pending .new files: merge required')
+pending = [p.relative_to(pack).as_posix() for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() not in SEED_ONCE]
+if custom or pending:
+    print(f"직접 고치신 파일 {len({name.removesuffix('.new') for name in custom + pending})}개는 그대로 두었습니다 · 새 판은 옆에 .new · 합치려면 cys pack-merge")
+    print('병합 대기: ' + ', '.join(sorted(set(custom + pending))), file=sys.stderr)
 PY_VERIFY
   # cys-dept는 앱 번들 바이너리가 아니라 init-pack이 까는 팩 스크립트다. preflight C11b가 보는 그 자리
   # (cys 옆 $WAVE_HOME/bin)에 심링크한다. 사용자 실파일은 덮지 않는다(preflight와 같은 규약).
@@ -720,7 +723,7 @@ PY_VERIFY
       dept_state="link_failed"
     fi
   fi
-  STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","embedded_directives_verified":true,"pending_new":0,"cys_dept":"'"$dept_state"'"}'
+  STEP_OBSERVED='{"pack_installed":true,"pack_provider":"cys init-pack","cys_dept":"'"$dept_state"'"}'
 }
 
 # master 는 앱 계약대로 `cys launch-agent --role master` 로 띄운다(앱이 agent 정보를 기록하고 MASTER 지침을 주입한다).
@@ -982,19 +985,20 @@ directives={k:v for k,v in files.items() if k.startswith('directives/') and k.en
 if not required.issubset(directives):
     raise SystemExit('G3 manifest missing required directives')
 result={}
+custom=[]
 for rel, expected in directives.items():
     source=pack/rel
     if '..' in Path(rel).parts or source.is_symlink() or not source.is_file():
         raise SystemExit('G3 missing/linked original: '+rel)
     data=source.read_bytes(); actual=hashlib.sha256(data).hexdigest()
-    if not data or actual != expected:
-        raise SystemExit('G3 installed original mismatch: '+rel)
+    if not data:
+        raise SystemExit('G3 empty directive: '+rel)
+    if actual != expected:
+        custom.append(rel)
     result[rel]=dict(pack_sha256=actual,pack_bytes=len(data))
-# Same seed-once exception as S06 (user-owned product profile); any other .new fails.
-if [p for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() != 'preflight-product-profile.json.new']:
-    raise SystemExit('G3 pending .new files')
-print(json.dumps(dict(original_match=True,new_file_count=0,roles=result,
-    injected_bytes=None,injection_reason='RC 러너 G3_inject.json 판정',
+pending=[p.relative_to(pack).as_posix() for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() != 'preflight-product-profile.json.new']
+print(json.dumps(dict(original_match=not custom,new_file_count=len(pending),custom_preserved=custom,
+    roles=result,injected_bytes=None,injection_reason='RC 러너 G3_inject.json 판정',
     source='app-manifest+installed-pack',fleet_verified=True)))
 PY_G3
 }
@@ -1077,10 +1081,11 @@ for step in config["steps"]:
         if step_id == "S07_INITIAL_FLEET" and observed.get("fleet_started") is not True:
             reasons.append("fleet_unmeasured")
         if step_id == "S08_VERIFY":
-            if observed.get("original_match") is not True:
+            custom = observed.get("custom_preserved")
+            if observed.get("original_match") is not True and not (observed.get("original_match") is False and isinstance(custom, list) and bool(custom)):
                 reasons.append("injection_original_unverified")
             count = observed.get("new_file_count")
-            if type(count) is not int or count != 0:
+            if type(count) is not int or count < 0:
                 reasons.append("pending_new_unverified")
     for reason in reasons:
         exceptions.append({"step_id": step_id, "reason": reason})

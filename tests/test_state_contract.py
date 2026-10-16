@@ -124,7 +124,7 @@ try {
                         'mark_required_complete; step_s09; state_patch S09_COMPLETE passed 0 "" "$STEP_OBSERVED"; mark_install_complete',
                         "Mark-RequiredComplete; Run-S09; Update-Step 'S09_COMPLETE' 'passed' 0 '' $StepObserved; Complete-State")
                     self.assertEqual(proc.returncode, 0, proc.stderr)
-                    clean = mutation == "clean"
+                    clean = mutation in ("clean", "pending_new")
                     self.assertEqual(result["required_steps_passed"], clean)
                     self.assertEqual(result["status"], "complete" if clean else "complete_with_exceptions")
                     self.assertEqual(bool(result.get("exceptions")), not clean)
@@ -147,9 +147,7 @@ try {
         s08 = next(step for step in steps["steps"] if step["id"] == "S08_VERIFY")
         self.assertFalse(any(item['kind']=='bytes_lte' for item in s08['pass']))
         self.assertNotIn('max_injected_bytes_per_seat',steps['tooling'])
-        conditions={v.get('json_path'):v.get('equals') for v in s08['pass']}
-        self.assertIs(conditions['steps.S08_VERIFY.observed.original_match'],True)
-        self.assertEqual(conditions['steps.S08_VERIFY.observed.new_file_count'],0)
+        self.assertEqual(s08['pass'], [{'kind':'exit_code','equals':0}])
         self.assertEqual((ROOT / "steps.json").read_bytes(), (ROOT / "site/steps.json").read_bytes())
 
 

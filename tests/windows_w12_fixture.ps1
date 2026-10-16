@@ -43,10 +43,9 @@ function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
  if($Arguments[0] -eq 'init-pack'){[IO.File]::WriteAllText(($target+'.new'),'new original');return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout=''}}
  return [pscustomobject]@{timed_out=$false;exit_code=0;stderr='';stdout=('{"files":{"directives/MASTER_DIRECTIVE.md":"'+$script:Hash+'"}}')}
 }
-$blocked=$false
-try {Run-S06} catch {$blocked=$true}
-if(-not $blocked -or [IO.File]::ReadAllText($target) -ne 'custom user text'){throw 'custom preservation fail'}
-Write-Host 'PASS stale marker rejected; custom directive preserved; mismatch/new blocked'
+Run-S06
+if([IO.File]::ReadAllText($target) -ne 'custom user text' -or $StepObserved.new_files -ne 1){throw 'custom preservation fail'}
+Write-Host 'PASS stale marker rejected; custom directive preserved; mismatch/new reported'
 
 if((Get-AwakeningBudgetMs 0) -ne 5000){throw 'initial status budget wrong'}
 if((Get-AwakeningBudgetMs 419999) -ne 1){throw 'remaining budget not enforced'}

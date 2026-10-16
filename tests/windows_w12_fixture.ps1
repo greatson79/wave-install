@@ -1,10 +1,11 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 $t=$null;$errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'),[ref]$t,[ref]$errors)
 if($errors.Count){$errors|Out-String|Write-Host;exit 1}
 $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst]},$false) | ForEach-Object {Invoke-Expression $_.Extent.Text}
 $env:USERPROFILE=$env:W12_FIXTURE_HOME
 $WaveHome=Join-Path $env:USERPROFILE '.wave';$PackHome=Join-Path $env:USERPROFILE '.cys/pack';$ScriptDir=Join-Path $env:USERPROFILE 'bundle'
+$LogFile=Join-Path $WaveHome 'install.log'
 $script:AwakeningStartedAt=$null
 New-Item -ItemType Directory -Force (Join-Path $ScriptDir 'wave-pack/directives'),(Join-Path $PackHome 'directives')|Out-Null
 $stub=Join-Path $ScriptDir 'wave-pack/directives/MASTER_DIRECTIVE.md';$target=Join-Path $PackHome 'directives/MASTER_DIRECTIVE.md'
@@ -45,6 +46,7 @@ function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
 }
 Run-S06
 if([IO.File]::ReadAllText($target) -ne 'custom user text' -or $StepObserved.new_files -ne 1){throw 'custom preservation fail'}
+if(-not ((Get-Content -LiteralPath $LogFile -Raw -Encoding UTF8) -match '직접 고치신 파일 .+개는 그대로 두었습니다 · 새 판은 옆에 \.new · 합치려면 cys pack-merge')){throw 'S06 preservation notice missing from install.log'}
 Write-Host 'PASS stale marker rejected; custom directive preserved; mismatch/new reported'
 
 if((Get-AwakeningBudgetMs 0) -ne 5000){throw 'initial status budget wrong'}

@@ -47,8 +47,8 @@ function Invoke-BoundedCheck($FilePath,$Arguments,$Name,$TimeoutMs){
 Run-S06
 if([IO.File]::ReadAllText($target) -ne 'custom user text' -or $StepObserved.new_files -ne 1){throw 'custom preservation fail'}
 if(-not ((Get-Content -LiteralPath $LogFile -Raw -Encoding UTF8) -match '직접 고치신 파일 .+개는 그대로 두었습니다 · 새 판은 옆에 \.new · 합치려면 cys pack-merge')){throw 'S06 preservation notice missing from install.log'}
-$mergeLog = Get-Content -LiteralPath $LogFile -Raw -Encoding UTF8
-if(-not $mergeLog.Contains('병합 대기: directives/MASTER_DIRECTIVE.md') -or $mergeLog.Contains('MASTER_DIRECTIVE.md.new')){throw 'S06 merge log duplicated or truncated path'}
+$mergeLine = Get-Content -LiteralPath $LogFile -Encoding UTF8 | Where-Object { $_ -like '*병합 대기:*' } | Select-Object -Last 1
+if(-not $mergeLine -or ([regex]::Matches($mergeLine, 'MASTER_DIRECTIVE\.md')).Count -ne 1 -or $mergeLine.Contains('\')){throw 'S06 merge log duplicated or truncated path'}
 Write-Host 'PASS stale marker rejected; custom directive preserved; mismatch/new reported'
 
 if((Get-AwakeningBudgetMs 0) -ne 5000){throw 'initial status budget wrong'}

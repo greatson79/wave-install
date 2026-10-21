@@ -9,12 +9,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STEPS = ROOT / "steps.json"
-BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.2.4"
+BASE = "https://github.com/greatson79/wave-terminal/releases/download/v0.2.5"
 WIN_BASE = BASE
-MAC = "wave-terminal-0.2.4-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
-WIN = "wave-terminal-0.2.4-windows-x64-setup.exe"
-MAC_SHA = "7f0edd11c11fdb84814aa67f30058c1d134f28f1a7b8590a31d62ac2aeaa0279"
-CDHASH = "fb70a52b9145955af5a5e2d89ba91e02952ba78a"
+MAC = "wave-terminal-0.2.5-macos-arm64.dmg"  # ad-hoc 재서명 DMG (tests/rc/mac-resign.sh 와 같은 절차)
+WIN = "wave-terminal-0.2.5-windows-x64-setup.exe"
+MAC_SHA = "b66ee4d6e971345b4b1d29c62c911b91c6563455c6acd6436fb7446ea8815425"
+CDHASH = "6fef92c4d18f20cfad9997df78c9007f89789b3a"
 
 
 def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> None:
@@ -22,8 +22,8 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
 
     # macos_x64 는 별도 빌드가 없어 arm64 자산을 그대로 가리킨다(RC 러너 rc_release.py 와 같은 매핑).
     assert release["repository"] == "greatson79/wave-terminal"
-    assert release["version"] == "0.2.4"
-    assert release["macos_version"] == "0.2.4"
+    assert release["version"] == "0.2.5"
+    assert release["macos_version"] == "0.2.5"
     assert release["asset_name"] == {"macos_arm64": MAC, "macos_x64": MAC, "windows_x64": WIN}
     assert release["asset_url"] == {
         "macos_arm64": f"{BASE}/{MAC}",
@@ -33,9 +33,9 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
     assert release["sha256"] == {
         "macos_arm64": MAC_SHA,
         "macos_x64": MAC_SHA,
-        "windows_x64": "2d26963964dc87e00741abb620e4e76dac2cf36bd740a8b0242b39247a075e16",
+        "windows_x64": "eba9fe50ebf2d1d7eaeb2b84e84a238628ed4b00c250f0e1edffe29c99d039ae",
     }
-    assert release["bytes"] == {"windows_x64": 128955941}
+    assert release["bytes"] == {"windows_x64": 128953793}
     # minisign 은 설치기가 더 이상 쓰지 않는다(SHA256 + codesign/CDHash · Authenticode).
     assert release["minisig_url"] == {"macos_arm64": None, "macos_x64": None, "windows_x64": None}
     assert release["cdhash"] == {"macos_arm64": CDHASH, "macos_x64": CDHASH}
@@ -45,7 +45,7 @@ def test_resolved_release_maps_each_macos_asset_to_its_hash_and_signature() -> N
     # 「다시 설치」: 맥 = 공개 입구 그대로 · 윈도우 = 앱 릴리스 bootstrap.ps1.
     steps = json.loads(STEPS.read_text(encoding="utf-8"))
     assert steps["reinstall"]["command"]["macos"] == "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall"
-    assert "wave-terminal/releases/download/v0.2.4/bootstrap.ps1" in steps["reinstall"]["command"]["windows"]
+    assert "wave-terminal/releases/download/v0.2.5/bootstrap.ps1" in steps["reinstall"]["command"]["windows"]
 
 
 if __name__ == "__main__":

@@ -924,7 +924,11 @@ function Run-S06 {
   $pending = @(Get-ChildItem -LiteralPath $PackHome -Filter '*.new' -Recurse -File -ErrorAction Stop | Where-Object { $_.FullName -ne $seedOnceNew })
   $script:StepObserved = [ordered]@{ pack_installed = $true; legacy_backed_up = $moved; directive_count = $directives.Count; directive_mismatches = $mismatches; new_files = $pending.Count; directive_bytes_match = ($mismatches.Count -eq 0) }
   if ($mismatches.Count -or $pending.Count) {
-    $names = @($mismatches) + @($pending | ForEach-Object { $_.FullName.Substring($PackHome.Length + 1) -replace '\.new$', '' }) | Select-Object -Unique
+    $prefix = (Get-Item -LiteralPath $PackHome).FullName + [IO.Path]::DirectorySeparatorChar
+    $names = @($mismatches) + @($pending | ForEach-Object {
+      if (-not $_.FullName.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw '병합 대기 경로가 팩 밖입니다' }
+      $_.FullName.Substring($prefix.Length) -replace '\.new$', ''
+    }) | Select-Object -Unique
     Say "직접 고치신 파일 $($names.Count)개는 그대로 두었습니다 · 새 판은 옆에 .new · 합치려면 cys pack-merge"
     Write-Log ("병합 대기: " + ($names -join ", "))
   }

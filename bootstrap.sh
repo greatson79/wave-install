@@ -708,8 +708,9 @@ for rel, expected in directives.items():
 SEED_ONCE = {'preflight-product-profile.json.new'}
 pending = [p.relative_to(pack).as_posix() for p in pack.rglob('*.new') if p.relative_to(pack).as_posix() not in SEED_ONCE]
 if custom or pending:
-    print(f"직접 고치신 파일 {len({name.removesuffix('.new') for name in custom + pending})}개는 그대로 두었습니다 · 새 판은 옆에 .new · 합치려면 cys pack-merge")
-    print('병합 대기: ' + ', '.join(sorted(set(custom + pending))), file=sys.stderr)
+    names = sorted({name.removesuffix('.new') for name in custom + pending})
+    print(f"직접 고치신 파일 {len(names)}개는 그대로 두었습니다 · 새 판은 옆에 .new · 합치려면 cys pack-merge")
+    print('병합 대기: ' + ', '.join(names), file=sys.stderr)
 PY_VERIFY
   # cys-dept는 앱 번들 바이너리가 아니라 init-pack이 까는 팩 스크립트다. preflight C11b가 보는 그 자리
   # (cys 옆 $WAVE_HOME/bin)에 심링크한다. 사용자 실파일은 덮지 않는다(preflight와 같은 규약).

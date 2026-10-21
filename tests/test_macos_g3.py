@@ -12,6 +12,8 @@ class OriginalTests(unittest.TestCase):
             result=subprocess.run(['bash','-c',command,'fixture',str(lib),td],env=dict(os.environ,HOME=td,WAVE_HOME=str(wave),G3_FIXTURE_MANIFEST=str(manifest)),text=True,capture_output=True,timeout=5)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(result.stdout.count('직접 고치신 파일 1개는 그대로 두었습니다'),2)
+            self.assertEqual(result.stderr.count('병합 대기: directives/MASTER_DIRECTIVE.md\n'),2)
+            self.assertNotIn('MASTER_DIRECTIVE.md.new',result.stderr)
             self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(),before)
             self.assertEqual(len(list(pack.rglob('*.new'))),1)
 

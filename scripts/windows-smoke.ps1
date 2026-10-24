@@ -50,6 +50,14 @@ if ($WaveVersion -cne $env:WAVE_TERMINAL_TAG.Substring(1) -or $WaveWinSha256 -cn
 Run-S03
 Run-S04
 if ($StepObserved.installer_exit -ne 0 -or -not $StepObserved.cys -or -not $StepObserved.cysd) { throw '설치 관측값 불일치' }
+$links = @((Join-Path ([Environment]::GetFolderPath('Programs')) 'Wave Terminal.lnk'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'Wave Terminal\Wave Terminal.lnk'))
+if (-not (($links | Where-Object { Test-Path -LiteralPath $_ }).Count)) { throw '시작 메뉴 Wave Terminal 바로가기 없음' }
+$desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Wave Terminal.lnk'
+if (-not (Test-Path -LiteralPath $desktopLink)) { throw '바탕화면 Wave Terminal 바로가기 없음' }
+$shell = New-Object -ComObject WScript.Shell
+foreach ($link in @(($links | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1), $desktopLink)) {
+  if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath((Join-Path $env:WAVE_HOME 'bin\cys-app.exe'))) { throw "바로가기 대상 불일치: $link" }
+}
 [ordered]@{ status = 'completed'; scope = 'S03/S04 Windows runner smoke'; terminal_version = $ReleaseVersion; asset = $ReleaseAssetName; sha256 = $ReleaseExpectedSha256; observed = $StepObserved; exclusions = @('S02 실로그인 미검증','실기기 미검증','10단계 전량 PASS 아님') } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'windows-smoke-evidence.json') -Encoding utf8NoBOM
 '@
 ($parts[0] + "`n" + $tail) | Set-Content -LiteralPath $harness -Encoding utf8NoBOM

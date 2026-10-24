@@ -113,6 +113,7 @@ class FailureAndDaemonGateTests(unittest.TestCase):
         script = r'''
 set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }
 hdiutil() { return 0; }
+wave_show_app() { :; }
 ditto() {
   cp -R "$1" "$2" || return 1
   if [[ "$TEST_MODE" == corrupt ]]; then
@@ -122,7 +123,7 @@ ditto() {
 ln() {
   command ln "$@" || return 1
   if [[ "$TEST_MODE" == wronglink && "$*" == *'/bin/cysd'* ]]; then
-    cp "$WAVE_HOME/apps/Wave Terminal.app/Contents/MacOS/cysd" "$HOME/wrong-cysd"
+    cp "$HOME/Applications/Wave Terminal.app/Contents/MacOS/cysd" "$HOME/wrong-cysd"
     command ln -sfn "$HOME/wrong-cysd" "$WAVE_HOME/bin/cysd"
   fi
 }

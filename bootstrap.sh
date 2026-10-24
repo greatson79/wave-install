@@ -551,17 +551,132 @@ wave_bundle_in_use() {
   return 1
 }
 
+wave_visible_app() {
+  local saved="$WAVE_HOME/install/app-path" old="$WAVE_HOME/apps/Wave Terminal.app" target
+  if [[ -f "$saved" ]]; then
+    IFS= read -r target < "$saved"
+    case "$target" in "/Applications/Wave Terminal.app"|"$HOME/Applications/Wave Terminal.app") printf '%s\n' "$target"; return ;; esac
+    fail_message "기록된 앱 경로가 올바르지 않습니다: $saved"; return 1
+  fi
+  if [[ -L "$old" ]]; then
+    target="$(readlink "$old")"
+    case "$target" in "/Applications/Wave Terminal.app"|"$HOME/Applications/Wave Terminal.app") printf '%s\n' "$target"; return ;; esac
+    fail_message "기존 앱 링크가 알 수 없는 경로를 가리킵니다: $old"; return 1
+  fi
+  if [[ "$WAVE_HOME" != "$HOME/.wave" ]]; then printf '%s\n' "$HOME/Applications/Wave Terminal.app"; return; fi
+  if [[ -d "$HOME/Applications/Wave Terminal.app" ]]; then printf '%s\n' "$HOME/Applications/Wave Terminal.app"; return; fi
+  if [[ -d "/Applications/Wave Terminal.app" ]]; then
+    if [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' '/Applications/Wave Terminal.app/Contents/Info.plist' 2>/dev/null)" == com.waveainetworks.wave-terminal ]]; then
+      printf '%s\n' "/Applications/Wave Terminal.app"
+    else
+      printf '%s\n' "$HOME/Applications/Wave Terminal.app"
+    fi
+    return
+  fi
+  if [[ -w /Applications ]]; then printf '%s\n' "/Applications/Wave Terminal.app"; else printf '%s\n' "$HOME/Applications/Wave Terminal.app"; fi
+}
+
+wave_running_app() {
+  local visible
+  visible="$(wave_visible_app)" || return 1
+  if [[ -d "$visible" ]]; then printf '%s\n' "$visible"; else printf '%s\n' "$WAVE_HOME/apps/Wave Terminal.app"; fi
+}
+
+wave_show_app() {
+  local app_dest="$1" old="$WAVE_HOME/apps/Wave Terminal.app" backup desktop="$HOME/Desktop/Wave Terminal" marker="$WAVE_HOME/install" app_url bookmark_hex
+  [[ -d "$app_dest" && ! -L "$app_dest" ]] || { fail_message "응용 프로그램에 앱이 없습니다: $app_dest"; return 1; }
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_dest/Contents/Info.plist" 2>/dev/null)" == com.waveainetworks.wave-terminal ]] || { fail_message "응용 프로그램의 다른 앱은 연결할 수 없습니다: $app_dest"; return 1; }
+  mkdir -p "$WAVE_HOME/apps" "$WAVE_HOME/backups" "$marker" "$HOME/Applications"
+  if [[ -d "$old" && ! -L "$old" ]]; then
+    backup="$(mktemp -d "$WAVE_HOME/backups/app-visible.XXXXXXXX")" || return 1
+    mv "$old" "$backup/Wave Terminal.app" || return 1
+  fi
+  if [[ -L "$old" ]]; then
+    [[ "$(readlink "$old")" == "$app_dest" ]] || { fail_message "기존 앱 링크가 다른 경로를 가리킵니다: $old"; return 1; }
+  else
+    ln -s "$app_dest" "$old" || return 1
+  fi
+  printf '%s\n' "$app_dest" > "$marker/app-path"
+  if [[ ! -e "$marker/desktop-shortcut" ]]; then
+    if [[ -e "$desktop" || -L "$desktop" ]]; then
+      [[ -L "$desktop" && "$(readlink "$desktop")" == "$app_dest" ]] || { fail_message "바탕화면의 기존 항목을 덮어쓸 수 없습니다: $desktop"; return 1; }
+    else
+      ln -s "$app_dest" "$desktop" || return 1
+    fi
+    touch "$marker/desktop-shortcut"
+  fi
+  if [[ ! -e "$marker/dock-pinned" ]]; then
+    app_url="$(python3 - "$app_dest" <<'PY_URL'
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).as_uri() + '/')
+PY_URL
+)" || return 1
+    if ! defaults export com.apple.dock - 2>/dev/null | python3 -c 'import plistlib,sys; p=plistlib.loads(sys.stdin.buffer.read()); u=sys.argv[1]; sys.exit(0 if any(t.get("tile-data",{}).get("file-data",{}).get("_CFURLString")==u for t in p.get("persistent-apps",[])) else 1)' "$app_url"; then
+      bookmark_hex="$(osascript -l JavaScript -e 'ObjC.import("Foundation"); function run(a) { var u=$.NSURL.fileURLWithPath(a[0]); var root=$.NSURL.fileURLWithPath("/"); return u.bookmarkDataWithOptionsIncludingResourceValuesForKeysRelativeToURLError(0,$.NSArray.alloc.init,root,null).base64EncodedStringWithOptions(0).js; }' "$app_dest" | python3 -c 'import base64,sys; print(base64.b64decode(sys.stdin.read().strip(), validate=True).hex())')" || return 1
+      defaults write com.apple.dock persistent-apps -array-add "{tile-data={book=<$bookmark_hex>;file-data={_CFURLString=\"$app_url\";_CFURLStringType=15;};file-label=\"Wave Terminal\";bundle-identifier=\"com.waveainetworks.wave-terminal\";};tile-type=\"file-tile\";}" || return 1
+      killall Dock 2>/dev/null || true
+    fi
+    touch "$marker/dock-pinned"
+  fi
+}
+
+wave_restore_app() {
+  local app_dest="$1" backup="$2"
+  [[ -n "$backup" && -d "$backup/Wave Terminal.app" ]] || return 0
+  [[ ! -e "$app_dest" ]] || mv "$app_dest" "$backup/failed.app" || return 1
+  mv "$backup/Wave Terminal.app" "$app_dest"
+}
+
+wave_migrate_app() {
+  local app_dest="$1" old="$WAVE_HOME/apps/Wave Terminal.app" backup marker="$WAVE_HOME/install" desktop="$HOME/Desktop/Wave Terminal" marker_name had_desktop=0 existing_markers=' '
+  [[ -d "$old" && ! -L "$old" && ! -e "$app_dest" ]] || return 0
+  local in_use_rc
+  if wave_bundle_in_use "$old"; then in_use_rc=0; else in_use_rc=$?; fi
+  if [[ "$in_use_rc" == 0 ]]; then
+    log "앱은 이미 설치돼 있습니다 — 지금 열린 Wave Terminal 을 그대로 쓰시면 됩니다. 응용 프로그램에 보이게 하려면 앱을 종료한 뒤 같은 명령을 한 번 더 실행하세요. 앱을 닫아도 데몬이 남아 있으면 \"$WAVE_HOME/bin/cys\" daemon uninstall 을 실행하세요."
+    return 2
+  fi
+  [[ "$in_use_rc" == 1 ]] || { fail_message "앱 실행 상태를 확인할 수 없어 이전하지 않았습니다"; return 1; }
+  [[ ! -e "$desktop" && ! -L "$desktop" ]] || had_desktop=1
+  for marker_name in desktop-shortcut dock-pinned app-path; do
+    [[ ! -e "$marker/$marker_name" ]] || existing_markers+="$marker_name "
+  done
+  mkdir -p "$(dirname "$app_dest")" "$WAVE_HOME/backups"
+  backup="$(mktemp -d "$WAVE_HOME/backups/app-visible.XXXXXXXX")" || return 1
+  mv "$old" "$backup/Wave Terminal.app" || return 1
+  ditto "$backup/Wave Terminal.app" "$app_dest" || {
+    [[ ! -e "$app_dest" ]] || mv "$app_dest" "$backup/failed.app"
+    mv "$backup/Wave Terminal.app" "$old"
+    return 1
+  }
+  if ! wave_show_app "$app_dest"; then
+    if [[ "$had_desktop" == 0 && -L "$desktop" && "$(readlink "$desktop")" == "$app_dest" ]]; then mv "$desktop" "$backup/failed-desktop-link"; fi
+    [[ ! -L "$old" ]] || mv "$old" "$backup/failed-old-link"
+    for marker_name in desktop-shortcut dock-pinned app-path; do
+      [[ "$existing_markers" == *" $marker_name "* || ! -e "$marker/$marker_name" ]] || mv "$marker/$marker_name" "$backup/failed-$marker_name"
+    done
+    [[ ! -e "$app_dest" ]] || mv "$app_dest" "$backup/failed.app"
+    mv "$backup/Wave Terminal.app" "$old"
+    return 1
+  fi
+}
+
 step_s04() {
   require_command hdiutil || return 1
   require_command ditto || return 1
   require_command cmp || return 1
   set_release_context || return 1
   [[ -f "$ARTIFACT_PATH" ]] || fail_message "검증된 artifact 없음" || return 1
-  local mountpoint app_dest app cys_target cysd_target hook in_use_rc
+  local mountpoint app_dest old_app app cys_target cysd_target hook in_use_rc backup
   mountpoint="$WAVE_HOME/mount"
-  mkdir -p "$mountpoint" "$WAVE_HOME/apps" "$WAVE_HOME/bin" "$WAVE_HOME/shell"
-  app_dest="$WAVE_HOME/apps/Wave Terminal.app"
+  mkdir -p "$mountpoint" "$WAVE_HOME/apps" "$WAVE_HOME/bin" "$WAVE_HOME/shell" "$WAVE_HOME/backups"
+  app_dest="$(wave_visible_app)" || return 1
+  old_app="$WAVE_HOME/apps/Wave Terminal.app"
   if wave_bundle_in_use "$app_dest"; then in_use_rc=0; else in_use_rc=$?; fi
+  if [[ "$in_use_rc" == 1 && -d "$old_app" && ! -L "$old_app" ]]; then
+    if wave_bundle_in_use "$old_app"; then in_use_rc=0; else in_use_rc=$?; fi
+  fi
   if [[ "$in_use_rc" -ne 1 ]]; then
     STEP_OBSERVED='{"reinstall":"waiting_for_app_exit"}'
     # launchd 소유 데몬이 아니면(소켓만 살아 있거나, 데몬은 이미 없는데 그 자식만 남음) daemon uninstall 은 소용없다.
@@ -575,36 +690,49 @@ step_s04() {
       # 앱이 직접 띄운 데몬(앱 경로)·bin/cys 링크로 뜬 데몬(명령줄이 링크 경로)·데몬의 자식인 오피스 브리지(javis_hud_bridge.py)와
       # 그 이벤트 구독 클라이언트(cys events — 데몬이 죽어도 재연결 루프로 남아 앱 번들 cys 를 연 채 설치를 막는다)를 모두 덮는다.
       # 이 설치본 경로로 시작하는 명령줄만 고른다(다른 설치본·그 경로를 인자로만 가진 프로세스 제외).
-      local esc escp stop_pattern
+      local esc escp escd stop_pattern
       esc="$(printf '%s' "$WAVE_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
       escp="$(printf '%s' "$PACK_HOME" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
-      stop_pattern="^$esc/(apps/Wave Terminal\\.app/Contents/MacOS|bin)/(cysd|cys events)( |\$)|^.*[pP]ython[0-9.]* $escp/bin/javis_hud_bridge\\.py( |\$)"
-      fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$stop_pattern' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      escd="$(printf '%s' "$app_dest" | sed 's/[][\\.*^$+?(){}|]/\\&/g')"
+      stop_pattern="^($esc/apps/Wave Terminal\\.app|$escd)/Contents/MacOS/(cysd|cys events|cys-app)( |\$)|^$esc/bin/cys(d| events)( |\$)|^.*[pP]ython[0-9.]* $escp/bin/javis_hud_bridge\\.py( |\$)"
+      fail_message "앱은 이미 설치돼 있습니다 — 응용 프로그램에서 Wave Terminal 을 여세요. Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: pkill -f '$stop_pattern' . 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     elif [[ -x "$WAVE_HOME/bin/cys" ]]; then
-      fail_message "Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      fail_message "앱은 이미 설치돼 있습니다 — 응용 프로그램에서 Wave Terminal 을 여세요. Wave Terminal 앱을 종료한 뒤 다음 한 줄을 터미널에서 실행해 주세요: \"$WAVE_HOME/bin/cys\" daemon uninstall. 현재 좌석도 종료될 수 있습니다. 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     else
-      fail_message "Wave Terminal의 실행 상태를 확인할 수 없습니다. 앱을 종료하고 설치된 제어 명령을 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      fail_message "앱은 이미 설치돼 있습니다 — 응용 프로그램에서 Wave Terminal 을 여세요. Wave Terminal의 실행 상태를 확인할 수 없습니다. 앱을 종료하고 설치된 제어 명령을 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
     fi
     return 1
   fi
   hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$ARTIFACT_PATH" >/dev/null || return 1
   app="$(find "$mountpoint" -maxdepth 2 -type d -name '*.app' -print -quit)"
   [[ -n "$app" ]] || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; fail_message "DMG 안에 앱이 없음"; return 1; }
-  rm -rf -- "$app_dest" || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; fail_message "기존 앱을 지울 수 없습니다"; return 1; }
-  ditto "$app" "$app_dest" || { hdiutil detach "$mountpoint" >/dev/null 2>&1 || true; return 1; }
+  mkdir -p "$(dirname "$app_dest")"
+  if [[ -e "$app_dest" || -L "$app_dest" ]]; then
+    [[ -d "$app_dest" && ! -L "$app_dest" ]] || { fail_message "응용 프로그램의 기존 항목을 덮어쓸 수 없습니다: $app_dest"; return 1; }
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_dest/Contents/Info.plist" 2>/dev/null)" == com.waveainetworks.wave-terminal ]] || { fail_message "응용 프로그램의 다른 앱을 덮어쓸 수 없습니다: $app_dest"; return 1; }
+    backup="$(mktemp -d "$WAVE_HOME/backups/app-visible.XXXXXXXX")" || return 1
+    mv "$app_dest" "$backup/Wave Terminal.app" || return 1
+  fi
+  ditto "$app" "$app_dest" || {
+    hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
+    wave_restore_app "$app_dest" "${backup:-}"
+    return 1
+  }
   # 검증된 DMG의 원본과 복사본을 대조한다. cysd는 S04에서 실행하지 않는다.
   cmp -s "$app/Contents/MacOS/cysd" "$app_dest/Contents/MacOS/cysd" || {
     hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
+    wave_restore_app "$app_dest" "${backup:-}"
     fail_message "cysd 복사본 무결성 불일치"
     return 1
   }
   hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
   cys_target="$app_dest/Contents/MacOS/cys"
   cysd_target="$app_dest/Contents/MacOS/cysd"
-  [[ -f "$cys_target" && -x "$cys_target" && -f "$cysd_target" && -x "$cysd_target" ]] || fail_message "cys/cysd 실행 파일 없음" || return 1
+  [[ -f "$cys_target" && -x "$cys_target" && -f "$cysd_target" && -x "$cysd_target" ]] || { wave_restore_app "$app_dest" "${backup:-}"; fail_message "cys/cysd 실행 파일 없음"; return 1; }
   ln -sfn "$cys_target" "$WAVE_HOME/bin/cys" || return 1
   ln -sfn "$cysd_target" "$WAVE_HOME/bin/cysd" || return 1
   [[ -L "$WAVE_HOME/bin/cysd" && "$(readlink "$WAVE_HOME/bin/cysd")" == "$cysd_target" && -f "$WAVE_HOME/bin/cysd" && -x "$WAVE_HOME/bin/cysd" ]] || fail_message "cysd 심링크 검증 실패" || return 1
+  wave_show_app "$app_dest" || return 1
   hook="$WAVE_HOME/shell/wave-terminal.zsh"
   printf 'export PATH="%s:$PATH"\n' "$WAVE_HOME/bin" > "$hook"
   touch "$HOME/.zprofile"
@@ -651,7 +779,7 @@ step_s05() {
   done
   if [[ "$ready" != true ]]; then
     # GUI owns the daemon lifecycle; do not leave an installer-owned background server.
-    open "$WAVE_HOME/apps/Wave Terminal.app" || true
+    open "$(wave_running_app)" || true
     for attempt in 1 2 3; do
       if [[ "$(bounded_cys ping 2>/dev/null)" == pong ]]; then ready=true; break; fi
       sleep 1
@@ -737,7 +865,7 @@ step_s07() {
   # (진입 시각의 초 버림값을 쓰면 그 좌석이 created_at < since 로 영영 배제되어 420초 대기). 이전 실행의 좌석은 여전히 시작보다 앞이라 배제된다.
   started="$RUN_STARTED"
   deadline=$((SECONDS + ${WAVE_AWAKENING_SECONDS:-420}))   # 환경변수는 시험 전용(실사용 420초)
-  awakening_command "$deadline" open "$WAVE_HOME/apps/Wave Terminal.app" || return 1
+  awakening_command "$deadline" open "$(wave_running_app)" || return 1
   wait_gui_onboarded "$deadline" || return 1
   seed_claude_trust || return 1
   awakening_command "$deadline" "$WAVE_HOME/bin/cys" status --json > "$WAVE_HOME/fleet/before.json" || return 1
@@ -1230,12 +1358,29 @@ main() {
   show_permission_notice
   init_state
   attempt_start
+  local visible_app previous_version migration_pending=0 migration_rc
+  visible_app="$(wave_visible_app)" || return 1
+  previous_version="$(json_value "$STATE_FILE" 'steps.S04_INSTALL_LINK.version' 2>/dev/null)" || previous_version=
+  if [[ "$(json_value "$STATE_FILE" 'steps.S04_INSTALL_LINK.status' 2>/dev/null)" == passed && "$previous_version" == "$(json_value "$STEPS_FILE" 'release.version')" ]]; then
+    if wave_migrate_app "$visible_app"; then
+      if [[ -d "$visible_app" && ! -L "$visible_app" ]]; then wave_show_app "$visible_app" || return 1; fi
+      mkdir -p "$WAVE_HOME/install" "$WAVE_HOME/backups"
+      [[ ! -e "$WAVE_HOME/install/app-visible-waiting" ]] || mv "$WAVE_HOME/install/app-visible-waiting" "$WAVE_HOME/backups/app-visible-waiting.$(date +%s)"
+    else
+      migration_rc=$?
+      [[ "$migration_rc" == 2 ]] || return "$migration_rc"
+      migration_pending=1
+      mkdir -p "$WAVE_HOME/install"
+      printf '%s\n' '앱 종료 후 설치 명령 재실행' > "$WAVE_HOME/install/app-visible-waiting"
+    fi
+  fi
   # 화면 진행 표시는 Windows Say-Step 과 같은 꼴: [index+1/10] title — 메시지 (steps.json index·title)
   local id idx title status step_rc
   while IFS=$'\t' read -r id idx title; do
     HELP_STEP="$((idx + 1))/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
-    if [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
+    if [[ "$id" == S04_INSTALL_LINK && "$status" == passed && "$previous_version" == "$(json_value "$STEPS_FILE" 'release.version')" && ( "$migration_pending" == 1 || ( -d "$visible_app" && ! -L "$visible_app" ) ) ]] ||
+       [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
       log "[$HELP_STEP] $title — 이미 완료 — 건너뜀"
       help_progress end
       continue

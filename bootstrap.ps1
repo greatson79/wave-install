@@ -796,6 +796,42 @@ function Run-S03 {
   $script:StepObserved = [ordered]@{ platform = $ReleasePlatform; asset = $ReleaseAssetName; sha256 = $actual; authenticode_checked = $true; signature_status = [string]$signature.Status }
 }
 
+function Ensure-WaveShortcuts {
+  if ($env:OS -ne 'Windows_NT') { return }
+  $target = Join-Path $WaveHome 'bin\cys-app.exe'
+  if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw 'Wave Terminal 앱 실행 파일이 없습니다' }
+  $programs = [Environment]::GetFolderPath('Programs')
+  $desktop = [Environment]::GetFolderPath('Desktop')
+  $start = Join-Path $programs 'Wave Terminal.lnk'
+  $nested = Join-Path (Join-Path $programs 'Wave Terminal') 'Wave Terminal.lnk'
+  $desktopMarker = Join-Path $WaveHome 'install\desktop-shortcut'
+  if (Test-Path -LiteralPath $nested) { $start = $nested }
+  $shell = New-Object -ComObject WScript.Shell
+  foreach ($link in @($start)) {
+    if (-not (Test-Path -LiteralPath $link)) {
+      $shortcut = $shell.CreateShortcut($link)
+      $shortcut.TargetPath = $target
+      $shortcut.Save()
+    }
+    if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath($target)) {
+      throw "Wave Terminal 바로가기 대상이 다릅니다: $link"
+    }
+  }
+  if (-not (Test-Path -LiteralPath $desktopMarker)) {
+    $link = Join-Path $desktop 'Wave Terminal.lnk'
+    if (-not (Test-Path -LiteralPath $link)) {
+      $shortcut = $shell.CreateShortcut($link)
+      $shortcut.TargetPath = $target
+      $shortcut.Save()
+    }
+    if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath($target)) {
+      throw "Wave Terminal 바로가기 대상이 다릅니다: $link"
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path $desktopMarker) | Out-Null
+    New-Item -ItemType File -Path $desktopMarker -Force | Out-Null
+  }
+}
+
 function Run-S04 {
   Release-Context
   if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) { throw "검증된 artifact 없음" }
@@ -834,6 +870,7 @@ function Run-S04 {
   $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
   $resolved = Get-Command cys.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1
   if ([IO.Path]::GetFullPath($resolved.Source) -ne [IO.Path]::GetFullPath($cys)) { throw "cys 셸 경로 불일치" }
+  Ensure-WaveShortcuts
   $script:StepObserved = [ordered]@{ cys = $true; cys_version_observed = $cliVersion; cysd = $true; shell_link = $true; shell_scope = "process"; install_dir = $bin; installer_exit = $process.ExitCode; verified_installer_sha256 = $actual; web_mark = $webMark; cli_sha256 = (Get-ArtifactHash $cys); daemon_sha256 = $daemonSha; daemon_verification = "PE-x64-and-observed-SHA256"; daemon_started = $false; admin_required = $false }
 }
 
@@ -1623,6 +1660,7 @@ if ($DryRun) {
 }
 Assert-UserPath $WaveHome
 if (Test-RecentInstallDone) {
+  Ensure-WaveShortcuts
   Say '[10/10] 이미 끝나 있습니다 — 10분 이내 같은 릴리스 재실행입니다.'
   exit 0
 }
@@ -1652,7 +1690,10 @@ $actions = @{
 }
 foreach ($step in ($Config.steps | Sort-Object index)) {
   $id = [string]$step.id
-  if (Test-StepComplete $id) { Say-Step $step '이미 완료 — 건너뜀'; Send-Progress $CurrentStep 'end'; continue }
+  if (Test-StepComplete $id) {
+    if ($id -eq 'S04_INSTALL_LINK') { Ensure-WaveShortcuts }
+    Say-Step $step '이미 완료 — 건너뜀'; Send-Progress $CurrentStep 'end'; continue
+  }
   if ($id -eq "S09_COMPLETE") { Mark-RequiredComplete }
   Say-Step $step '시작'
   Invoke-Step $id $actions[$id]

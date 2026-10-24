@@ -54,6 +54,7 @@ function Start-Process {
   }
   return [pscustomobject]@{ ExitCode = [int]$env:TEST_CODE }
 }
+function Ensure-WaveShortcuts { } # NSIS itself is replaced above; real shortcuts are checked by windows-smoke.ps1.
 try { Run-S04 6>$null; $StepObserved | ConvertTo-Json; exit 0 }
 catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
 ''')

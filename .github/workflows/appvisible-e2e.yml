@@ -39,7 +39,7 @@ jobs:
           export PATH="$RUNNER_TEMP/appvisible-bin:$PATH"
           cat > "$RUNNER_TEMP/appvisible-s04-gate.bash" <<'SH'
           set -T
-          trap 'if [[ "$0" == "$WAVE_HOME/src/pack/bootstrap.sh" && "${id:-}" == S06_PACK_INSTALL && "$BASH_COMMAND" == log* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-next-step next_step=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" "$id" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
+          trap 'if [[ "$0" == "$WAVE_HOME/src/pack/bootstrap.sh" && "${id:-}" == S05_DAEMON_REGISTER && "$BASH_COMMAND" == run_step* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-S05 next_step=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" "$id" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
           SH
           export BASH_ENV="$RUNNER_TEMP/appvisible-s04-gate.bash"
           printf 'uname -m: '; uname -m | tee "$EVIDENCE/architecture.txt"
@@ -105,9 +105,11 @@ jobs:
           [[ "$(readlink "$WAVE_HOME/apps/Wave Terminal.app")" == "$app" ]]
           [[ "$(readlink "$HOME/Desktop/Wave Terminal")" == "$app" ]]
           mdutil -s / > "$EVIDENCE/mdutil-status.txt" 2>&1 || true
-          mdimport "$app" 2>&1 | tee "$EVIDENCE/mdimport.log"
+          printf '%s\n' "$app" | tee "$EVIDENCE/app-path.txt"
+          mdimport -f "$app" 2>&1 | tee "$EVIDENCE/mdimport.log"
+          mdls -name kMDItemCFBundleIdentifier "$app" | tee "$EVIDENCE/mdls-bundle-id.txt"
           for _ in {1..15}; do
-            mdfind "kMDItemCFBundleIdentifier == 'com.waveainetworks.wave-terminal'" > "$EVIDENCE/mdfind.txt"
+            mdfind -onlyin "$HOME" "kMDItemCFBundleIdentifier == 'com.waveainetworks.wave-terminal'" > "$EVIDENCE/mdfind.txt"
             grep -Fxq "$app" "$EVIDENCE/mdfind.txt" && break
             sleep 2
           done
@@ -177,13 +179,13 @@ jobs:
           Start-Transcript -Path "$env:RUNNER_TEMP\windows-smoke.log"
           try {
             $base = "https://github.com/$env:RELEASE_REPO/releases/download/$env:RELEASE_TAG"
-            $sums = (Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS").Content
+            $sumsPath = Join-Path $env:RUNNER_TEMP 'SHA256SUMS'
+            Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS" -OutFile $sumsPath
             $asset = 'wave-terminal-0.2.5-windows-x64-setup.exe'
-            $pin = $sums -split "`r?`n" | ForEach-Object {
-              $fields = $_.Trim() -split '\s+', 2
-              if ($fields.Count -eq 2 -and $fields[0] -match '^[0-9a-f]{64}$' -and $fields[1].TrimStart('*') -eq $asset) { $fields[0] }
-            } | Select-Object -First 1
-            if (-not $pin) { throw 'test release SHA256SUMS lacks Windows setup pin' }
+            $assetLine = Get-Content -LiteralPath $sumsPath | Where-Object { $_ -match ('^[0-9a-f]{64}\s+\*?' + [regex]::Escape($asset) + '\s*$') } | Select-Object -First 1
+            if (-not $assetLine) { throw 'test release SHA256SUMS lacks Windows setup pin' }
+            $pin = ($assetLine -split '\s+', 2)[0]
+            Write-Host "SHA256SUMS matched $asset ($pin)"
             ./scripts/windows-smoke.ps1 -Repo $env:RELEASE_REPO -Tag $env:RELEASE_TAG -ExpectedInstallerSha256 $pin
           } finally { Stop-Transcript }
       - uses: actions/upload-artifact@v4

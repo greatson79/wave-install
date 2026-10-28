@@ -109,7 +109,7 @@ jobs:
           mdimport -f "$app" 2>&1 | tee "$EVIDENCE/mdimport.log"
           mdls -name kMDItemCFBundleIdentifier "$app" | tee "$EVIDENCE/mdls-bundle-id.txt"
           for _ in {1..15}; do
-            mdfind -onlyin "$HOME" "kMDItemCFBundleIdentifier == 'com.waveainetworks.wave-terminal'" > "$EVIDENCE/mdfind.txt"
+            mdfind -onlyin "$HOME" -name 'Wave Terminal.app' > "$EVIDENCE/mdfind.txt"
             grep -Fxq "$app" "$EVIDENCE/mdfind.txt" && break
             sleep 2
           done

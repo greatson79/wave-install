@@ -4,6 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SIM="$(mktemp -d /tmp/wave-v02-sim.XXXXXX)"; H="$SIM/home"; ST="$SIM/stubs"; FK="$SIM/fake"
+case "${AITERM_SOCKET:-}" in ""|"$SIM"/*) ;; *) echo "운영 소켓 격리 실패: AITERM_SOCKET=$AITERM_SOCKET" >&2; exit 2 ;; esac
 mkdir -p "$H" "$ST" "$FK" "$SIM/rel/wave-install-0.3.0"
 # 가짜 릴리스 산출물
 cp -R "$ROOT/bootstrap.sh" "$ROOT/steps.json" "$ROOT/install-state.json" "$ROOT/wave-pack" "$SIM/rel/wave-install-0.3.0/"
@@ -36,7 +37,11 @@ chmod +x "$ST"/*
 # 실행: 한 줄 명령이 받는 파일 하나만 홈에 둔다
 cp "$ROOT/bootstrap.sh" "$H/install-wave.sh"
 set +e
-HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 WAVE_NO_PROGRESS=1 \
+env -u AITERM_SOCKET -u CYS_SOCKET -u CYS_ROLE -u CYS_PACK_DIR -u CYS_SURFACE -u CYS_ACCOUNT_DIR -u CLAUDE_CONFIG_DIR \
+  -u CYS_SURFACE_ID -u JAVIS_SURFACE_ID -u AITERM_SURFACE_ID -u CYS_SURFACE_REF -u JAVIS_SURFACE_REF -u AITERM_SURFACE_REF \
+  HOME="$H" WAVE_HOME="$H/.wave" FAKE="$FK" PATH="$ST:/usr/bin:/bin:/usr/sbin:/sbin" WAVE_ENABLE_DAEMON=0 WAVE_NO_PROGRESS=1 \
+  CYS_SOCKET="$SIM/cys.sock" JAVIS_SOCKET="$SIM/cys.sock" AITERM_SOCKET="$SIM/cys.sock" \
+  CYS_PACK_DIR="$H/.cys/pack" JAVIS_PACK_DIR="$H/.cys/pack" AITERM_PACK_DIR="$H/.cys/pack" AITERM_JARVIS_DIR="$H/.cys/pack" CYS_CONFIG_DIR="$H/.cys/claude" CYS_ACCOUNT_DIR="$H/.cys/claude" CLAUDE_CONFIG_DIR="$H/.cys/claude" \
   WAVE_INSTALL_TARBALL_URL="file://$SIM/wave-install-0.3.0.tar.gz" WAVE_INSTALL_TARBALL_SHA256="$TSHA" \
   bash "$H/install-wave.sh" 2>&1 | tee "$SIM/run.log"
 echo "SIM_DIR=$SIM"

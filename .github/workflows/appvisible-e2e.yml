@@ -22,7 +22,7 @@ jobs:
           [[ "$RELEASE_REPO" == "greatson79/wave-terminal-test" && "$RELEASE_TAG" =~ ^v0\.2\.5-appvisible$ ]] || { echo 'test release only'; exit 2; }
           [[ "$(uname -m)" == arm64 ]] || { uname -a; echo 'macOS runner is not arm64'; exit 2; }
           EVIDENCE="$RUNNER_TEMP/appvisible-evidence"
-          TEST_HOME="$RUNNER_TEMP/appvisible-home"
+          TEST_HOME="$(mktemp -d "$HOME/appvisible-home.XXXXXX")"
           mkdir -p "$RUNNER_TEMP/appvisible-artifact"
           trap 'mkdir -p "$RUNNER_TEMP/appvisible-artifact"; [[ ! -d "$EVIDENCE" ]] || cp -R "$EVIDENCE" "$RUNNER_TEMP/appvisible-artifact/"' EXIT
           mkdir -p "$EVIDENCE" "$TEST_HOME/Desktop" "$TEST_HOME/.cys/pack" "$RUNNER_TEMP/appvisible-bin"

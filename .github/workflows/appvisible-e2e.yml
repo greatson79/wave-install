@@ -1,0 +1,189 @@
+name: App visible install smoke (test release only)
+on:
+  push:
+    branches: [fix/v0.2.6-appvisible]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos-app-visible:
+    runs-on: macos-14
+    timeout-minutes: 25
+    env:
+      RELEASE_REPO: greatson79/wave-terminal-test
+      RELEASE_TAG: v0.2.5-appvisible
+      WAVE_NO_PROGRESS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actual app from the test release
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_REPO" == "greatson79/wave-terminal-test" && "$RELEASE_TAG" =~ ^v0\.2\.5-appvisible$ ]] || { echo 'test release only'; exit 2; }
+          [[ "$(uname -m)" == arm64 ]] || { uname -a; echo 'macOS runner is not arm64'; exit 2; }
+          EVIDENCE="$RUNNER_TEMP/appvisible-evidence"
+          TEST_HOME="$RUNNER_TEMP/appvisible-home"
+          mkdir -p "$RUNNER_TEMP/appvisible-artifact"
+          trap 'mkdir -p "$RUNNER_TEMP/appvisible-artifact"; [[ ! -d "$EVIDENCE" ]] || cp -R "$EVIDENCE" "$RUNNER_TEMP/appvisible-artifact/"' EXIT
+          mkdir -p "$EVIDENCE" "$TEST_HOME/Desktop" "$TEST_HOME/.cys/pack" "$RUNNER_TEMP/appvisible-bin"
+          export HOME="$TEST_HOME" WAVE_HOME="$TEST_HOME/.wave"
+          unset CYS_ACCOUNT_DIR CLAUDE_CONFIG_DIR AITERM_SOCKET CYS_SOCKET JAVIS_SOCKET || true
+          cat > "$RUNNER_TEMP/appvisible-bin/killall" <<'SH'
+          #!/bin/bash
+          [[ "$#" == 1 && "$1" == Dock ]] || exit 2
+          while IFS= read -r dock_pid; do
+            [[ "$dock_pid" =~ ^[0-9]+$ ]] && kill -TERM "$dock_pid" 2>/dev/null || true
+          done < <(pgrep -x Dock || true)
+          SH
+          chmod 755 "$RUNNER_TEMP/appvisible-bin/killall"
+          export PATH="$RUNNER_TEMP/appvisible-bin:$PATH"
+          cat > "$RUNNER_TEMP/appvisible-s04-gate.bash" <<'SH'
+          set -T
+          trap 'if [[ "$0" == "$WAVE_HOME/src/pack/bootstrap.sh" && "${id:-}" == S05_DAEMON_REGISTER && "$BASH_COMMAND" == log* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-S05\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
+          SH
+          export BASH_ENV="$RUNNER_TEMP/appvisible-s04-gate.bash"
+          printf 'uname -m: '; uname -m | tee "$EVIDENCE/architecture.txt"
+          base="https://github.com/$RELEASE_REPO/releases/download/$RELEASE_TAG"
+          curl -fsSL "$base/SHA256SUMS" -o "$EVIDENCE/SHA256SUMS"
+          curl -fsSL "$base/bootstrap.sh" -o "$RUNNER_TEMP/appvisible-bootstrap.sh"
+          expected="$(awk '$2 == "bootstrap.sh" {print $1}' "$EVIDENCE/SHA256SUMS")"
+          actual="$(shasum -a 256 "$RUNNER_TEMP/appvisible-bootstrap.sh" | awk '{print $1}')"
+          [[ "$expected" =~ ^[0-9a-f]{64}$ && "$expected" == "$actual" ]] || { echo 'bootstrap SHA256 mismatch'; exit 1; }
+          cp install-state.json "$WAVE_HOME-seed-template.json"
+          python3 - "$WAVE_HOME-seed-template.json" "$WAVE_HOME" "$HOME" <<'PY'
+          import json, sys
+          from pathlib import Path
+          path, wave_home, home = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+          state = json.loads(path.read_text())
+          now = '2026-10-28T00:00:00Z'
+          state['status'] = 'running'
+          state['created_at'] = now
+          state['updated_at'] = now
+          state['current_step'] = 'S02_CLAUDE_LOGIN'
+          state['paths']['state'] = str(wave_home / 'install-state.json')
+          state['paths']['log'] = str(wave_home / 'install.log')
+          state['paths']['wave_home'] = str(wave_home)
+          state['paths']['pack'] = str(home / '.cys' / 'pack')
+          for step_id in ('S00_PREFLIGHT', 'S01_CLAUDE_INSTALL', 'S02_CLAUDE_LOGIN'):
+              entry = state['steps'][step_id]
+              entry.update(status='passed', exit_code=0, started_at=now, completed_at=now,
+                           version='0.2.5', checks=['exit_code=0'], observed={'runner_seed': True}, error_id=None)
+          (wave_home).mkdir(parents=True, exist_ok=True)
+          (wave_home / 'install-state.json').write_text(json.dumps(state, indent=2) + '\n')
+          PY
+          cp "$WAVE_HOME/install-state.json" "$EVIDENCE/seeded-state.json"
+          cat "$EVIDENCE/seeded-state.json" | tee "$EVIDENCE/seeded-state.log"
+          run_installer() {
+            local phase="$1" logfile="$EVIDENCE/$1.log" pid start deadline
+            export APPVISIBLE_PHASE="$phase" APPVISIBLE_CHECKPOINT="$RUNNER_TEMP/appvisible-$phase.checkpoint"
+            bash "$RUNNER_TEMP/appvisible-bootstrap.sh" --resume > "$logfile" 2>&1 &
+            pid=$!
+            start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            deadline=$((SECONDS + 900))
+            while (( SECONDS < deadline )); do
+              if [[ -f "$APPVISIBLE_CHECKPOINT" ]]; then
+                if [[ "$phase" == rerun ]] && ! grep -Fq '[5/10] 사용자 폴더 설치·cys/cysd 셸 연결 — 이미 완료 — 건너뜀' "$logfile"; then sleep 0.2; continue; fi
+                cat "$APPVISIBLE_CHECKPOINT" | tee -a "$EVIDENCE/stop-record.txt"
+                printf '%s phase=%s installer_pid=%s started_at=%s stopped_at=%s stop_signal=TERM\n' "$phase" "$pid" "$start" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$EVIDENCE/stop-record.txt"
+                kill -TERM "$pid" 2>/dev/null || true
+                wait "$pid" 2>/dev/null || true
+                return 0
+              fi
+              if ! kill -0 "$pid" 2>/dev/null; then cat "$logfile"; echo "installer exited before S04 ($phase)"; return 1; fi
+              sleep 0.2
+            done
+            printf '%s phase=%s installer_pid=%s stopped_at=%s stage=timeout\n' "$start" "$phase" "$pid" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$EVIDENCE/stop-record.txt"
+            kill -TERM "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            cat "$logfile"
+            return 1
+          }
+          run_installer first
+          cat "$EVIDENCE/first.log"
+          app="$(cat "$WAVE_HOME/install/app-path")"
+          [[ -d "$app" && ! -L "$app" ]] || { echo 'actual app bundle missing'; exit 1; }
+          [[ "$(readlink "$WAVE_HOME/apps/Wave Terminal.app")" == "$app" ]]
+          [[ "$(readlink "$HOME/Desktop/Wave Terminal")" == "$app" ]]
+          mdimport "$app" 2>&1 | tee "$EVIDENCE/mdimport.log"
+          mdfind "kMDItemCFBundleIdentifier == 'com.waveainetworks.wave-terminal'" | tee "$EVIDENCE/mdfind.txt"
+          grep -Fxq "$app" "$EVIDENCE/mdfind.txt"
+          defaults export com.apple.dock - | python3 -c 'import plistlib,sys; p=plistlib.load(sys.stdin.buffer); u=sys.argv[1]; n=sum(1 for t in p.get("persistent-apps",[]) if t.get("tile-data",{}).get("file-data",{}).get("_CFURLString")==u); print(f"Dock Wave Terminal entries={n}"); sys.exit(0 if n==1 else 1)' "$(python3 -c 'from pathlib import Path;import sys;print(Path(sys.argv[1]).as_uri()+"/")' "$app")" | tee "$EVIDENCE/dock-count.txt"
+          open "$HOME/Desktop"
+          sleep 2
+          screencapture -x "$EVIDENCE/desktop.png"
+          run_installer rerun
+          cat "$EVIDENCE/rerun.log"
+          grep -F '[5/10] 사용자 폴더 설치·cys/cysd 셸 연결 — 이미 완료 — 건너뜀' "$EVIDENCE/rerun.log" | tee "$EVIDENCE/rerun-s04-skip.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appvisible-macos-${{ github.run_id }}
+          path: ${{ runner.temp }}/appvisible-artifact
+          if-no-files-found: warn
+
+  windows-app-visible:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      RELEASE_REPO: greatson79/wave-terminal-test
+      RELEASE_TAG: v0.2.5-appvisible
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native Windows PowerShell 5.1 parser
+        shell: powershell
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP\windows-ps51-parser.log"
+          try {
+            if ($env:RELEASE_REPO -ne 'greatson79/wave-terminal-test' -or $env:RELEASE_TAG -ne 'v0.2.5-appvisible') { throw 'test release only' }
+            foreach ($file in @('bootstrap.ps1', 'reinstall.ps1', 'reset.ps1', 'scripts/windows-smoke.ps1')) {
+              $tokens = $null; $errors = $null
+              $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors)
+              if ($errors.Count) { throw ($errors | Out-String) }
+            }
+            Write-Host 'PASS: Windows PowerShell 5.1 parsed all four scripts'
+          } finally { Stop-Transcript }
+      - name: Documented one-line install contract (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP\windows-one-line.log"
+          try {
+            $ErrorActionPreference = 'Continue'
+            $contract = Get-Content -Raw -Encoding UTF8 scripts/ci/install-lines.json | ConvertFrom-Json
+            $line = $contract.win
+            if (-not $line -or -not $contract.public_base -or -not $line.Contains($contract.public_base)) { throw 'install-lines.json Windows one-line command invalid' }
+            $srv = Start-Process python -ArgumentList '-m','http.server','8765','--bind','127.0.0.1' -PassThru -WindowStyle Hidden
+            Start-Sleep -Seconds 3
+            try {
+              $local = $line.Replace($contract.public_base, 'http://127.0.0.1:8765/')
+              $out = (Invoke-Expression $local 2>&1 | Out-String)
+              Write-Host $out
+              if ($out -match 'ParserError|ExpectedExpression|At line:1 char:19') { throw 'documented one-line command hits a parser error' }
+              if ($out -notmatch 'ZIP URL') { throw 'documented one-line command did not reach the pack self-fetch step' }
+              $global:LASTEXITCODE = 0
+            } finally { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
+          } finally { Stop-Transcript }
+      - name: Windows signed install and same-version rerun smoke
+        shell: pwsh
+        env:
+          RELEASE_REPO: greatson79/wave-terminal-test
+          RELEASE_TAG: v0.2.5-appvisible
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP\windows-smoke.log"
+          try {
+            $base = "https://github.com/$env:RELEASE_REPO/releases/download/$env:RELEASE_TAG"
+            $sums = (Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS").Content
+            $asset = 'wave-terminal-0.2.5-windows-x64-setup.exe'
+            $match = [regex]::Match($sums, '(?m)^([0-9a-f]{64}) [ *]' + [regex]::Escape($asset) + '$')
+            if (-not $match.Success) { throw 'test release SHA256SUMS lacks Windows setup pin' }
+            ./scripts/windows-smoke.ps1 -Repo $env:RELEASE_REPO -Tag $env:RELEASE_TAG -ExpectedInstallerSha256 $match.Groups[1].Value
+          } finally { Stop-Transcript }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appvisible-windows-${{ github.run_id }}
+          path: |
+            windows-smoke-evidence.json
+            ${{ runner.temp }}/windows-smoke.log
+            ${{ runner.temp }}/windows-ps51-parser.log
+            ${{ runner.temp }}/windows-one-line.log
+          if-no-files-found: warn

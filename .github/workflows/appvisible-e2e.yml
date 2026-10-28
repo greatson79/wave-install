@@ -26,7 +26,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/appvisible-artifact"
           trap 'mkdir -p "$RUNNER_TEMP/appvisible-artifact"; [[ ! -d "$EVIDENCE" ]] || cp -R "$EVIDENCE" "$RUNNER_TEMP/appvisible-artifact/"' EXIT
           mkdir -p "$EVIDENCE" "$TEST_HOME/Desktop" "$TEST_HOME/.cys/pack" "$RUNNER_TEMP/appvisible-bin"
-          export HOME="$TEST_HOME" WAVE_HOME="$TEST_HOME/.wave"
+          export HOME="$TEST_HOME" WAVE_HOME="$TEST_HOME/wave"
           unset CYS_ACCOUNT_DIR CLAUDE_CONFIG_DIR AITERM_SOCKET CYS_SOCKET JAVIS_SOCKET || true
           cat > "$RUNNER_TEMP/appvisible-bin/killall" <<'SH'
           #!/bin/bash
@@ -39,7 +39,7 @@ jobs:
           export PATH="$RUNNER_TEMP/appvisible-bin:$PATH"
           cat > "$RUNNER_TEMP/appvisible-s04-gate.bash" <<'SH'
           set -T
-          trap 'if [[ "$0" == "$WAVE_HOME/src/pack/bootstrap.sh" && "${id:-}" == S05_DAEMON_REGISTER && "$BASH_COMMAND" == run_step* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-S05 next_step=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" "$id" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
+          trap 'if [[ "$0" == "$WAVE_HOME/src/pack/bootstrap.sh" && "${id:-}" == S06_PACK_INSTALL && "$BASH_COMMAND" == run_step* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-S06 next_step=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" "$id" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
           SH
           export BASH_ENV="$RUNNER_TEMP/appvisible-s04-gate.bash"
           printf 'uname -m: '; uname -m | tee "$EVIDENCE/architecture.txt"

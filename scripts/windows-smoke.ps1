@@ -53,6 +53,7 @@ $parts = @($text.Substring(0, $idx), $text.Substring($idx + $marker.Length))
 $harness = Join-Path $run 'signed-install-smoke.ps1'
 $tail = @'
 Load-Config
+Release-Context
 if ($WaveVersion -cne $ReleaseVersion -or $env:WAVE_TERMINAL_TAG -notmatch ('^v' + [regex]::Escape($ReleaseVersion) + '(?:-[0-9A-Za-z.-]+)?$') -or $WaveWinSha256 -cne $env:WAVE_TERMINAL_SHA256) { throw '요청 자산과 커밋된 Windows 핀 불일치' }
 Run-S03
 Run-S04

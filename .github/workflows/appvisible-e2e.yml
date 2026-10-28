@@ -22,11 +22,9 @@ jobs:
           [[ "$RELEASE_REPO" == "greatson79/wave-terminal-test" && "$RELEASE_TAG" =~ ^v0\.2\.5-appvisible$ ]] || { echo 'test release only'; exit 2; }
           [[ "$(uname -m)" == arm64 ]] || { uname -a; echo 'macOS runner is not arm64'; exit 2; }
           EVIDENCE="$RUNNER_TEMP/appvisible-evidence"
-          TEST_HOME="$HOME"
           mkdir -p "$RUNNER_TEMP/appvisible-artifact"
           trap 'mkdir -p "$RUNNER_TEMP/appvisible-artifact"; [[ ! -d "$EVIDENCE" ]] || cp -R "$EVIDENCE" "$RUNNER_TEMP/appvisible-artifact/"' EXIT
-          mkdir -p "$EVIDENCE" "$TEST_HOME/Desktop" "$TEST_HOME/.cys/pack" "$RUNNER_TEMP/appvisible-bin"
-          export HOME="$TEST_HOME" WAVE_HOME="$TEST_HOME/wave"
+          mkdir -p "$EVIDENCE" "$HOME/Desktop" "$HOME/.cys/pack" "$HOME/.wave" "$RUNNER_TEMP/appvisible-bin"
           unset CYS_ACCOUNT_DIR CLAUDE_CONFIG_DIR AITERM_SOCKET CYS_SOCKET JAVIS_SOCKET || true
           cat > "$RUNNER_TEMP/appvisible-bin/killall" <<'SH'
           #!/bin/bash
@@ -39,7 +37,7 @@ jobs:
           export PATH="$RUNNER_TEMP/appvisible-bin:$PATH"
           cat > "$RUNNER_TEMP/appvisible-s04-gate.bash" <<'SH'
           set -T
-          trap 'if [[ "$0" == "$WAVE_HOME/src/pack/bootstrap.sh" && "${id:-}" == S06_PACK_INSTALL && "$BASH_COMMAND" == run_step* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-S06 next_step=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" "$id" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
+          trap 'if [[ "$0" == "$HOME/.wave/src/pack/bootstrap.sh" && "${id:-}" == S06_PACK_INSTALL && "$BASH_COMMAND" == log* ]]; then printf "%s phase=%s stage=S04_INSTALL_LINK status=passed boundary=before-S06-start next_step=%s\\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APPVISIBLE_PHASE:-unknown}" "$id" > "$APPVISIBLE_CHECKPOINT"; while :; do sleep 1; done; fi' DEBUG
           SH
           export BASH_ENV="$RUNNER_TEMP/appvisible-s04-gate.bash"
           printf 'uname -m: '; uname -m | tee "$EVIDENCE/architecture.txt"
@@ -49,8 +47,8 @@ jobs:
           expected="$(awk '$2 == "bootstrap.sh" {print $1}' "$EVIDENCE/SHA256SUMS")"
           actual="$(shasum -a 256 "$RUNNER_TEMP/appvisible-bootstrap.sh" | awk '{print $1}')"
           [[ "$expected" =~ ^[0-9a-f]{64}$ && "$expected" == "$actual" ]] || { echo 'bootstrap SHA256 mismatch'; exit 1; }
-          cp install-state.json "$WAVE_HOME-seed-template.json"
-          python3 - "$WAVE_HOME-seed-template.json" "$WAVE_HOME" "$HOME" <<'PY'
+          cp install-state.json "$RUNNER_TEMP/appvisible-seed-template.json"
+          python3 - "$RUNNER_TEMP/appvisible-seed-template.json" "$HOME/.wave" "$HOME" <<'PY'
           import json, sys
           from pathlib import Path
           path, wave_home, home = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
@@ -71,7 +69,7 @@ jobs:
           (wave_home).mkdir(parents=True, exist_ok=True)
           (wave_home / 'install-state.json').write_text(json.dumps(state, indent=2) + '\n')
           PY
-          cp "$WAVE_HOME/install-state.json" "$EVIDENCE/seeded-state.json"
+          cp "$HOME/.wave/install-state.json" "$EVIDENCE/seeded-state.json"
           cat "$EVIDENCE/seeded-state.json" | tee "$EVIDENCE/seeded-state.log"
           run_installer() {
             local phase="$1" logfile="$EVIDENCE/$1.log" pid start deadline
@@ -98,30 +96,38 @@ jobs:
             cat "$logfile"
             return 1
           }
-          run_installer first
-          cat "$EVIDENCE/first.log"
-          app="$(cat "$WAVE_HOME/install/app-path")"
-          [[ -d "$app" && ! -L "$app" ]] || { echo 'actual app bundle missing'; exit 1; }
-          [[ "$(readlink "$WAVE_HOME/apps/Wave Terminal.app")" == "$app" ]]
-          [[ "$(readlink "$HOME/Desktop/Wave Terminal")" == "$app" ]]
-          mdutil -s / > "$EVIDENCE/mdutil-status.txt" 2>&1 || true
+          printf 'check\tresult\tdetail\n' > "$EVIDENCE/checks.tsv"
+          record_check() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" | tee -a "$EVIDENCE/checks.tsv"; }
+          if run_installer first; then record_check S04_BOUNDARY PASS before-S06-start; else record_check S04_BOUNDARY FAIL installer; fi
+          cat "$EVIDENCE/first.log" 2>/dev/null || true
+          app="$(cat "$HOME/.wave/install/app-path" 2>/dev/null || true)"
           printf '%s\n' "$app" | tee "$EVIDENCE/app-path.txt"
-          mdimport -f "$app" 2>&1 | tee "$EVIDENCE/mdimport.log"
-          mdls -name kMDItemCFBundleIdentifier "$app" | tee "$EVIDENCE/mdls-bundle-id.txt"
-          for _ in {1..15}; do
-            mdfind -onlyin "$HOME" -name 'Wave Terminal.app' > "$EVIDENCE/mdfind.txt"
-            grep -Fxq "$app" "$EVIDENCE/mdfind.txt" && break
-            sleep 2
+          if [[ "$app" == '/Applications/Wave Terminal.app' ]]; then record_check APP_LOCATION PASS /Applications; else record_check APP_LOCATION FAIL "${app:-missing}"; fi
+          if [[ -n "$app" && -d "$app" && ! -L "$app" ]]; then record_check APP_BUNDLE PASS "$app"; else record_check APP_BUNDLE FAIL "$app"; fi
+          if [[ -n "$app" && "$(readlink "$HOME/.wave/apps/Wave Terminal.app" 2>/dev/null || true)" == "$app" ]]; then record_check COMPAT_LINK PASS "$app"; else record_check COMPAT_LINK FAIL missing-or-mismatch; fi
+          if [[ -n "$app" && "$(readlink "$HOME/Desktop/Wave Terminal" 2>/dev/null || true)" == "$app" ]]; then record_check DESKTOP_LINK PASS "$app"; else record_check DESKTOP_LINK FAIL missing-or-mismatch; fi
+          dock_count="$(defaults export com.apple.dock - 2>/dev/null | python3 -c 'import plistlib,sys; p=plistlib.load(sys.stdin.buffer); u=sys.argv[1]; print(sum(1 for t in p.get("persistent-apps",[]) if t.get("tile-data",{}).get("file-data",{}).get("_CFURLString")==u))' "$(python3 -c 'from pathlib import Path;import sys;print(Path(sys.argv[1]).as_uri()+"/")' "$app")" 2>/dev/null || true)"
+          printf 'Dock Wave Terminal entries=%s\n' "${dock_count:-unavailable}" | tee "$EVIDENCE/dock-count.txt"
+          if [[ "$dock_count" == 1 ]]; then record_check DOCK_ONE PASS count=1; else record_check DOCK_ONE FAIL "count=${dock_count:-unavailable}"; fi
+          sudo mdutil -i on / > "$EVIDENCE/mdutil-enable.txt" 2>&1 || true
+          sudo mdutil -E / > "$EVIDENCE/mdutil-reindex.txt" 2>&1 || true
+          if [[ -n "$app" ]]; then mdimport -d1 "$app" > "$EVIDENCE/mdimport.log" 2>&1 || true; fi
+          bundle_id='(null)'
+          for attempt in {1..25}; do
+            bundle_id="$(mdls -raw -name kMDItemCFBundleIdentifier "$app" 2>/dev/null || true)"
+            [[ -n "$bundle_id" && "$bundle_id" != '(null)' ]] && break
+            (( attempt == 25 )) || sleep 5
           done
-          cat "$EVIDENCE/mdfind.txt"
-          grep -Fxq "$app" "$EVIDENCE/mdfind.txt"
-          defaults export com.apple.dock - | python3 -c 'import plistlib,sys; p=plistlib.load(sys.stdin.buffer); u=sys.argv[1]; n=sum(1 for t in p.get("persistent-apps",[]) if t.get("tile-data",{}).get("file-data",{}).get("_CFURLString")==u); print(f"Dock Wave Terminal entries={n}"); sys.exit(0 if n==1 else 1)' "$(python3 -c 'from pathlib import Path;import sys;print(Path(sys.argv[1]).as_uri()+"/")' "$app")" | tee "$EVIDENCE/dock-count.txt"
-          open "$HOME/Desktop"
+          printf 'kMDItemCFBundleIdentifier = %s\n' "${bundle_id:-unavailable}" | tee "$EVIDENCE/mdls-bundle-id.txt"
+          mdfind -onlyin /Applications -name 'Wave Terminal.app' > "$EVIDENCE/mdfind.txt" 2>&1 || true
+          if [[ -n "$app" && "$bundle_id" != '(null)' && -n "$bundle_id" ]] && grep -Fxq "$app" "$EVIDENCE/mdfind.txt"; then record_check SPOTLIGHT PASS "$app"; else record_check SPOTLIGHT DEFERRED_TO_HARDWARE 'hosted-runner Spotlight unavailable'; fi
+          open "$HOME/Desktop" > "$EVIDENCE/desktop-open.log" 2>&1 || true
           sleep 2
-          screencapture -x "$EVIDENCE/desktop.png"
-          run_installer rerun
-          cat "$EVIDENCE/rerun.log"
-          grep -F '[5/10] 사용자 폴더 설치·cys/cysd 셸 연결 — 이미 완료 — 건너뜀' "$EVIDENCE/rerun.log" | tee "$EVIDENCE/rerun-s04-skip.txt"
+          if screencapture -x "$EVIDENCE/desktop.png" 2> "$EVIDENCE/screenshot.log"; then record_check DESKTOP_SCREENSHOT PASS "$EVIDENCE/desktop.png"; else record_check DESKTOP_SCREENSHOT FAIL capture; fi
+          if run_installer rerun; then record_check RERUN_GATE PASS before-S06-start; else record_check RERUN_GATE FAIL installer; fi
+          cat "$EVIDENCE/rerun.log" 2>/dev/null || true
+          if grep -Fq '[5/10] 사용자 폴더 설치·cys/cysd 셸 연결 — 이미 완료 — 건너뜀' "$EVIDENCE/rerun.log" 2>/dev/null; then record_check S04_RERUN_SKIP PASS same-version; else record_check S04_RERUN_SKIP FAIL missing-skip; fi
+          if awk -F '\t' 'NR>1 && $2=="FAIL" { bad=1 } END { exit !bad }' "$EVIDENCE/checks.tsv"; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

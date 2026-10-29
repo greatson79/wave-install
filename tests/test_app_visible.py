@@ -65,7 +65,7 @@ wave_show_app "$dest"
 
     def test_reinstall_message_starts_with_app_location(self):
         source = (ROOT / 'bootstrap.sh').read_text()
-        self.assertEqual(source.count('fail_message "앱은 이미 설치돼 있습니다 — 응용 프로그램에서 Wave Terminal 을 여세요.'), 3)
+        self.assertEqual(source.count('fail_message "앱은 이미 설치돼 있습니다 — 응용 프로그램에서 Wave Terminal 을 여세요.'), 4)
         self.assertIn('앱은 이미 설치돼 있습니다 — 지금 열린 Wave Terminal 을 그대로 쓰시면 됩니다.', source)
 
     def test_windows_desktop_shortcut_uses_one_time_marker(self):

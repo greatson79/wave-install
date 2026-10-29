@@ -520,6 +520,7 @@ PY
 wave_bundle_in_use() {
   local app_dest="$1" found rc errors processes process daemon_status
   WAVE_HOLD=
+  WAVE_HOLD_PIDS=
   if [[ -e "$app_dest" || -L "$app_dest" ]]; then
     [[ -d "$app_dest" && ! -L "$app_dest" ]] || return 2
     command -v lsof >/dev/null 2>&1 || return 2
@@ -530,7 +531,11 @@ wave_bundle_in_use() {
       return 2
     fi
     rm -f -- "$errors"
-    [[ -n "$found" ]] && return 0
+    if [[ -n "$found" ]]; then
+      [[ "$found" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]] || return 2
+      WAVE_HOLD_PIDS="${found//$'\n'/ }"
+      return 0
+    fi
   fi
   processes="$(ps -axo comm=)" || return 2
   while IFS= read -r process; do
@@ -686,7 +691,9 @@ step_s04() {
       ds="$(env -u CYS_SOCKET -u JAVIS_SOCKET -u AITERM_SOCKET "$WAVE_HOME/bin/cys" daemon status 2>&1)" || ds=
       case "$ds" in *registered=false*loaded=false*) unowned=1 ;; esac
     fi
-    if [[ "$unowned" == 1 ]]; then
+    if [[ "$unowned" == 1 && -n "$WAVE_HOLD_PIDS" ]]; then
+      fail_message "앱은 이미 설치돼 있습니다 — 응용 프로그램에서 Wave Terminal 을 여세요. 앱을 종료한 뒤 다음 한 줄로 앱 번들을 잡고 있는 고아 프로세스를 정리해 주세요: kill $WAVE_HOLD_PIDS . 종료를 확인한 뒤 같은 설치 명령을 다시 실행해 주세요."
+    elif [[ "$unowned" == 1 ]]; then
       # 앱이 직접 띄운 데몬(앱 경로)·bin/cys 링크로 뜬 데몬(명령줄이 링크 경로)·데몬의 자식인 오피스 브리지(javis_hud_bridge.py)와
       # 그 이벤트 구독 클라이언트(cys events — 데몬이 죽어도 재연결 루프로 남아 앱 번들 cys 를 연 채 설치를 막는다)를 모두 덮는다.
       # 이 설치본 경로로 시작하는 명령줄만 고른다(다른 설치본·그 경로를 인자로만 가진 프로세스 제외).

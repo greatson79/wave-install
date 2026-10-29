@@ -1380,7 +1380,7 @@ main() {
     HELP_STEP="$((idx + 1))/10"
     status="$(json_value "$STATE_FILE" "steps.$id.status")"
     if [[ "$id" == S04_INSTALL_LINK && "$status" == passed && "$previous_version" == "$(json_value "$STEPS_FILE" 'release.version')" && ( "$migration_pending" == 1 || ( -d "$visible_app" && ! -L "$visible_app" ) ) ]] ||
-       [[ "$RESUME" == 1 && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
+       [[ "$RESUME" == 1 && "$id" != "S02_CLAUDE_LOGIN" && "$id" != "S09_COMPLETE" && "$id" != "S05_DAEMON_REGISTER" && "$id" != "S06_PACK_INSTALL" && "$id" != "S07_INITIAL_FLEET" && "$id" != "S08_VERIFY" && ( "$status" == "passed" || "$status" == "skipped" ) ]]; then
       log "[$HELP_STEP] $title — 이미 완료 — 건너뜀"
       help_progress end
       continue

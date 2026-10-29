@@ -285,7 +285,7 @@ printf '%s\n' "$STEP_OBSERVED"
         cys.chmod(0o755)
         fakebin = self.home / "fakebin"
         fakebin.mkdir(exist_ok=True)
-        (fakebin / "lsof").write_text("#!/bin/sh\nprintf '4242\\n5151\\n'\n")
+        (fakebin / "lsof").write_text("#!/bin/sh\necho 4242\n")
         (fakebin / "lsof").chmod(0o755)
         env = dict(self.env, PATH=str(fakebin) + os.pathsep + os.environ["PATH"])
         r = subprocess.run(["bash", "-c", 'source "$1"; STEPS_FILE="$TEST_STEPS"; set_release_context() { ARTIFACT_PATH="$HOME/artifact.dmg"; }; '
@@ -293,7 +293,7 @@ printf '%s\n' "$STEP_OBSERVED"
                            env=dict(env, TEST_MODE="ok"), text=True, capture_output=True, timeout=10)
         msg = r.stdout + r.stderr
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("kill 4242 5151", msg)
+        self.assertIn("pkill -f", msg)
         self.assertNotIn("daemon uninstall", msg)
 
     def test_s04_guard_detects_gui_without_daemon(self):

@@ -920,15 +920,19 @@ PY_EXISTING
       send_master_declaration "$deadline" || return 1
     fi
   else
-    # launch-agent 는 준비 표지(❯)·지침 주입까지 기다리므로 30초 상한(awakening_command)보다 길게 준다.
-    remaining=$((deadline - SECONDS)); (( remaining > 120 )) && remaining=120
     # 시작 시각은 launch-agent 전에 기록한다 — 상한에 걸려 ref 를 못 받아도 재실행이 그 좌석을 찾아 복구한다.
     rm -f "$WAVE_HOME/fleet/master-ref" "$WAVE_HOME/fleet/declared"
     printf '%s\n' "$started" > "$WAVE_HOME/fleet/started-at"
+    # CSO·워커 칸을 master 보다 먼저 띄운다 — 뒤늦게 master 가 같은 명령을 불러도 「이미 가동 중 — 건너뜀」으로 끝나
+    # 같은 역할이 동시에 두 번 만들어지는 틈이 생기지 않는다. master 기동 몫(120초 · 예산이 240초 미만이면 절반)은 남겨 둔다.
+    local reserve=120
+    (( deadline - SECONDS < 240 )) && reserve=$(( (deadline - SECONDS) / 2 ))
+    boot_support_seats "$((deadline - reserve))"
+    # launch-agent 는 준비 표지(❯)·지침 주입까지 기다리므로 30초 상한(awakening_command)보다 길게 준다.
+    remaining=$((deadline - SECONDS)); (( remaining > 120 )) && remaining=120
     ref="$(WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys launch-agent --role master --agent claude --cwd "$HOME")" || return 1
     [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
-    boot_support_seats "$deadline"
     send_master_declaration "$deadline" || return 1
   fi
   local tick paused=0 reported=$SECONDS

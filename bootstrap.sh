@@ -26,6 +26,7 @@ WAVE_TARBALL_SHA256="${WAVE_INSTALL_TARBALL_SHA256:-__WAVE_TARBALL_SHA256__}"
 CLAUDE_INSTALL_URL="${WAVE_CLAUDE_INSTALL_URL:-https://claude.ai/install.sh}"
 CLAUDE_DIRECT_BASE_URL="${WAVE_CLAUDE_DIRECT_BASE_URL:-https://downloads.claude.ai/claude-code-releases}"
 REINSTALL=0
+DECLARATION_RESENT=0   # 이 설치 흐름에서 선언을 이미 다시 보냈는가 — S07(재실행)과 S08(응답 대기)이 함께 본다(총 1회)
 RUN_STARTED="$(date +%s)"  # 이번 설치 시도의 시작 — 재설치 때 데몬 시작 직후 자동복원이 만든 master 가 이번 시도 것인지 가르는 기준(attempt_start 가 재개 때 기록값으로 바꾼다)
 RESUME=0
 DRY_RUN=0
@@ -918,6 +919,7 @@ PY_EXISTING
       log "각성 표지가 아직 없어 master($ref)에 선언을 한 번 다시 보냅니다."
       boot_support_seats "$deadline"
       send_master_declaration "$deadline" || return 1
+      DECLARATION_RESENT=1
     fi
   else
     # 시작 시각은 launch-agent 전에 기록한다 — 상한에 걸려 ref 를 못 받아도 재실행이 그 좌석을 찾아 복구한다.
@@ -1153,15 +1155,22 @@ PY_G3
 # Adapted from oogisoogi/jarvis-install bootstrap.sh seat_session_file/seat_session_counts/master_assistant_count (MIT),
 # axis (1) of Confirm-MasterAwake — commit df5efc8a, bootstrap.sh L4092-4127·L4242, bootstrap.ps1 L4808-4857·L5025.
 # Source: https://github.com/oogisoogi/jarvis-install · License: LICENSES/jarvis-install-MIT.txt.
+# 세 번째 인자(선택): 선언 기록 파일 — 있으면 그 수정 시각을 초로 자르지 않고 나노초로 기준 삼는다(같은 초 안의 선언 직전 기록 배제).
 master_awake_state() {
-  python3 - "$WAVE_HOME/fleet/status.json" "$1" "$2" "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}/projects" <<'PY_AWAKE'
-import json, re, sys
+  python3 - "$WAVE_HOME/fleet/status.json" "$1" "$2" "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}/projects" "${3:-}" <<'PY_AWAKE'
+import json, os, re, sys
 from pathlib import Path
 status, ref, since, root = sys.argv[1], sys.argv[2], float(sys.argv[3]), Path(sys.argv[4])
+since_ns = int(since * 10**9)
+if sys.argv[5]:
+    try:
+        since_ns = os.stat(sys.argv[5]).st_mtime_ns
+    except OSError:
+        pass
 try:
     cwd = next(s['cwd'] for s in json.loads(Path(status).read_text())['surfaces'] if s.get('surface_ref') == ref)
     files = (root / re.sub(r'[^A-Za-z0-9]', '-', cwd)).glob('*.jsonl')
-    ok = any(f.stat().st_mtime >= since and b'"type":"assistant"' in f.read_bytes() for f in files)
+    ok = any(f.stat().st_mtime_ns >= since_ns and b'"type":"assistant"' in f.read_bytes() for f in files)
 except (OSError, ValueError, KeyError, TypeError, StopIteration):
     ok = False
 print('confirmed' if ok else 'unconfirmed')
@@ -1173,17 +1182,19 @@ PY_AWAKE
 # 시험 전용 환경변수: WAVE_AWAKE_INTERVAL(기본 30초) · WAVE_AWAKE_RESEND_AT(기본 60초).
 await_master_awake() {
   local ref="$1" since="$2" limit="${WAVE_AWAKE_SECONDS:-120}" step="${WAVE_AWAKE_INTERVAL:-30}" resend_at="${WAVE_AWAKE_RESEND_AT:-60}"
-  local began=$SECONDS waited=0 resent=0 state declared
+  local began=$SECONDS waited=0 resent=0 state
   while :; do
-    declared="$(stat -f %m "$WAVE_HOME/fleet/declared" 2>/dev/null)" && [[ "$declared" =~ ^[0-9]+$ ]] && since="$declared"
-    state="$(master_awake_state "$ref" "$since")"
+    state="$(master_awake_state "$ref" "$since" "$WAVE_HOME/fleet/declared")"
     waited=$((SECONDS - began))
     [[ "$state" == confirmed ]] && break
     (( waited >= limit )) && break
     if (( resent == 0 && waited >= resend_at )); then
       resent=1
-      log "마스터 응답이 아직 없어 선언을 한 번 다시 보냅니다."
-      send_master_declaration "$((SECONDS + 30))" || true
+      if (( DECLARATION_RESENT == 0 )); then
+        DECLARATION_RESENT=1
+        log "마스터 응답이 아직 없어 선언을 한 번 다시 보냅니다."
+        send_master_declaration "$((SECONDS + 30))" || true
+      fi
     fi
     log "마스터 응답 기다리는 중 (${waited}/${limit}초)"
     sleep "$step"

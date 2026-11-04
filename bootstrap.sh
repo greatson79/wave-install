@@ -916,6 +916,7 @@ PY_EXISTING
     cp "$WAVE_HOME/fleet/before.json" "$WAVE_HOME/fleet/status.json"
     if ! verify_live_fleet "$ref" "$started"; then
       log "각성 표지가 아직 없어 master($ref)에 선언을 한 번 다시 보냅니다."
+      boot_support_seats "$deadline"
       send_master_declaration "$deadline" || return 1
     fi
   else
@@ -927,6 +928,7 @@ PY_EXISTING
     ref="$(WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys launch-agent --role master --agent claude --cwd "$HOME")" || return 1
     [[ "$ref" =~ ^surface:[0-9]+$ ]] || return 1
     printf '%s\n' "$ref" > "$WAVE_HOME/fleet/master-ref"
+    boot_support_seats "$deadline"
     send_master_declaration "$deadline" || return 1
   fi
   local tick paused=0 reported=$SECONDS
@@ -1056,12 +1058,23 @@ PY_GATE_SEATS
   return 0
 }
 
+# CSO·워커 칸은 마스터(AI)의 순종에 맡기지 않고 설치기가 직접 띄운다. 실패·상한 초과는 설치 종료값을 바꾸지 않는다
+# (칸이 서는지는 S07 대기 루프가 판정한다). 예산: 남은 시간 · 최대 200초(칸당 최악 약 90초 × 2).
+boot_support_seats() {
+  local remaining=$(( $1 - SECONDS ))
+  (( remaining > 200 )) && remaining=200
+  (( remaining > 0 )) || return 0
+  WAVE_COMMAND_TIMEOUT="$remaining" bounded_cys boot --cwd "$HOME" > "$WAVE_HOME/fleet/boot.log" 2>&1 ||
+    log "CSO·워커 칸을 직접 띄우지 못했습니다 — 마스터 부트에 맡깁니다."
+  return 0
+}
+
 # Claude Code 는 첫 입력 없이 움직이지 않는다 — 예전 wake 파일의 선언 문구를 한 줄로 큐 전달(대상이 조용해지면 자동 Return).
 # 선언 문구·「선언을 받는다」 축: oogisoogi/jarvis-install bootstrap.sh write_wake_file/step_wake (MIT, LICENSES/jarvis-install-MIT.txt).
 # 전달에 성공한 뒤에만 declared 를 기록한다 — 실패 후 재실행이 선언을 다시 보내게.
 send_master_declaration() {
   awakening_command "$1" "$WAVE_HOME/bin/cys" send --queued --to master \
-    "너는 마스터다 — 설치된 팩의 마스터 부트를 수행해 주세요. 이 좌석에서 python3 $PACK_HOME/bin/javis_bootstrap.py 를 실행하고 마지막 JSON 을 인용해 주세요(CSO·작업 워커 소환과 각성 확인이 그 안에 들어 있습니다). 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다." >/dev/null ||
+    "너는 마스터다 — CSO·워커 칸은 설치기가 이미 띄웠습니다. 이 좌석에서 python3 $PACK_HOME/bin/javis_bootstrap.py 를 실행해 각성을 확인하고 마지막 JSON 을 인용해 주세요. 리뷰어 좌석은 설치 완료 조건에 포함하지 않습니다." >/dev/null ||
     fail_message "J-PATH-02 — W-DECLARE: master 좌석에 선언 문구를 전달하지 못했습니다. 같은 설치 명령을 다시 실행하세요." || return 1
   : > "$WAVE_HOME/fleet/declared"
 }
@@ -1151,6 +1164,29 @@ print('confirmed' if ok else 'unconfirmed')
 PY_AWAKE
 }
 
+# 마스터 응답을 한 번만 보지 않고 상한(WAVE_AWAKE_SECONDS, 기본 120초) 안에서 반복해 본다. 기준 시각은 설치 시작이 아니라
+# 선언을 보낸 시각(fleet/declared 의 mtime) — 지침 주입에 대한 첫 답만으로 확인됨이 되지 않게. 끝내 없으면 선언을 정확히 1회만 다시 보낸다.
+# 시험 전용 환경변수: WAVE_AWAKE_INTERVAL(기본 30초) · WAVE_AWAKE_RESEND_AT(기본 60초).
+await_master_awake() {
+  local ref="$1" since="$2" limit="${WAVE_AWAKE_SECONDS:-120}" step="${WAVE_AWAKE_INTERVAL:-30}" resend_at="${WAVE_AWAKE_RESEND_AT:-60}"
+  local began=$SECONDS waited=0 resent=0 state declared
+  while :; do
+    declared="$(stat -f %m "$WAVE_HOME/fleet/declared" 2>/dev/null)" && [[ "$declared" =~ ^[0-9]+$ ]] && since="$declared"
+    state="$(master_awake_state "$ref" "$since")"
+    waited=$((SECONDS - began))
+    [[ "$state" == confirmed ]] && break
+    (( waited >= limit )) && break
+    if (( resent == 0 && waited >= resend_at )); then
+      resent=1
+      log "마스터 응답이 아직 없어 선언을 한 번 다시 보냅니다."
+      send_master_declaration "$((SECONDS + 30))" || true
+    fi
+    log "마스터 응답 기다리는 중 (${waited}/${limit}초)"
+    sleep "$step"
+  done
+  printf '%s\n' "$state"
+}
+
 step_s08() {
   local ref started observed awake
   ref="$(cat "$WAVE_HOME/fleet/master-ref")" || return 1
@@ -1158,7 +1194,7 @@ step_s08() {
   bounded_cys status --json > "$WAVE_HOME/fleet/status.json" || return 1
   verify_live_fleet "$ref" "$started" || return 1
   observed="$(verify_original_injection)" || return 1
-  awake="$(master_awake_state "$ref" "$started")"
+  awake="$(await_master_awake "$ref" "$started")"
   if [[ "$awake" != confirmed ]]; then
     log "각성 미확인: master 좌석은 살아 있지만 Claude 세션 기록에서 답변을 찾지 못했습니다. 설치는 계속합니다. Wave Terminal 의 master 창에서 자비스가 응답하는지 확인해 주세요."
   fi
@@ -1220,6 +1256,10 @@ for step in config["steps"]:
         exceptions.append({"step_id": step_id, "reason": reason})
 state["required_steps_passed"] = not exceptions
 state["exceptions"] = exceptions
+# 상태만 읽는 도구가 마스터 응답 확인됨/안 됨을 구분하는 칸 — status·종료값 규칙은 건드리지 않는다.
+s08 = state["steps"].get("S08_VERIFY")
+awake = ((s08.get("observed") or {}).get("master_awake") if isinstance(s08, dict) else None)
+state["master_awake"] = awake if awake in ("confirmed", "unconfirmed") else "unchecked"
 state["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 if phase == "final":
     state["status"] = "complete_with_exceptions" if exceptions else "complete"
@@ -1241,6 +1281,9 @@ from pathlib import Path
 state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 message = ("필수 단계 검증을 통과했습니다." if state["required_steps_passed"] else
            "설치 절차를 마무리했습니다. 예외·미검증 항목이 있으므로 전체 검증 완료가 아닙니다.")
+s08 = state.get("steps", {}).get("S08_VERIFY") or {}
+if (s08.get("observed") or {}).get("master_awake") == "unconfirmed":
+    message += " 단, 마스터 응답은 확인하지 못했습니다. Wave 창의 master 칸에서 자비스가 답하는지 확인해 주세요."
 Path(sys.argv[2]).write_text("# Wave Terminal 시작하기\n\n" + message +
     "\n\ninstall-state.json의 required_steps_passed·exceptions와 install.log를 확인하세요. "
     "원본 주입 증거가 없거나 .new가 남으면 완료로 처리하지 않습니다.\n", encoding="utf-8")
@@ -1399,6 +1442,9 @@ PY
 )
   mark_install_complete
   log "[10/10] Wave Terminal 설치 상태 $(json_value "$STATE_FILE" 'status') — START-HERE와 exceptions를 확인하세요."
+  if [[ "$(json_value "$STATE_FILE" 'steps.S08_VERIFY.observed.master_awake' 2>/dev/null || true)" == unconfirmed ]]; then
+    log "설치는 끝났지만 마스터 응답은 확인하지 못했습니다. Wave 창의 마스터 칸에서 자비스가 답하는지 보세요."
+  fi
 }
 
 main "$@"

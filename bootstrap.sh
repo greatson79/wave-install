@@ -1155,22 +1155,53 @@ PY_G3
 # Adapted from oogisoogi/jarvis-install bootstrap.sh seat_session_file/seat_session_counts/master_assistant_count (MIT),
 # axis (1) of Confirm-MasterAwake — commit df5efc8a, bootstrap.sh L4092-4127·L4242, bootstrap.ps1 L4808-4857·L5025.
 # Source: https://github.com/oogisoogi/jarvis-install · License: LICENSES/jarvis-install-MIT.txt.
-# 세 번째 인자(선택): 선언 기록 파일 — 있으면 그 수정 시각을 초로 자르지 않고 나노초로 기준 삼는다(같은 초 안의 선언 직전 기록 배제).
+# 세 번째 인자(선택): 선언 기록 파일. 주면 엄격 판정 — 세션 기록을 줄(레코드) 단위로 읽어, 같은 파일 안에서
+# 「timestamp(실제 Claude 세션 기록의 최상위 키 · ISO8601 UTC)가 선언 파일 수정 시각(나노초) 이상인 user 줄」 뒤에 assistant 줄이
+# 있을 때만 확인됨이다(선언은 조용할 때 배달되므로 선언 파일 시각 ≠ 선언이 들어간 시각).
+# 선언 전 답·user 줄 없는 assistant·파일 수정 시각·깨진/부분 줄·timestamp 없음/파싱 불가는 근거가 아니다(미확인).
+# 인자가 없으면(옛 호출) 기존 판정: 파일 수정 시각 ≥ 기준 시각 ∧ assistant 기록 존재.
 master_awake_state() {
   python3 - "$WAVE_HOME/fleet/status.json" "$1" "$2" "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}/projects" "${3:-}" <<'PY_AWAKE'
 import json, os, re, sys
+from datetime import datetime
 from pathlib import Path
 status, ref, since, root = sys.argv[1], sys.argv[2], float(sys.argv[3]), Path(sys.argv[4])
+strict = bool(sys.argv[5])
 since_ns = int(since * 10**9)
-if sys.argv[5]:
+if strict:
     try:
         since_ns = os.stat(sys.argv[5]).st_mtime_ns
     except OSError:
         pass
+
+def answered_after(path):
+    """엄격: 같은 파일 안에서 ① timestamp ≥ 선언 기준 시각인 user 줄(= 선언이 실제로 들어간 줄) 뒤(파일 줄 순서)에
+    ② timestamp 가 있는 assistant 줄이 있을 때만 True. 줄 단위 파싱 — 깨진·부분·시각 없음·파싱 불가 줄은 건너뛴다."""
+    declared_in = False
+    for raw in path.read_bytes().splitlines():
+        try:
+            d = json.loads(raw)
+            if not isinstance(d, dict) or not isinstance(d.get('timestamp'), str):
+                continue
+            t = datetime.fromisoformat(d['timestamp'].replace('Z', '+00:00'))
+            if t.tzinfo is None:
+                continue
+            kind = d.get('type')
+            if kind == 'user' and int(t.timestamp() * 10**9) >= since_ns:
+                declared_in = True
+            elif kind == 'assistant' and declared_in:
+                return True
+        except (ValueError, TypeError, OverflowError, OSError):
+            continue
+    return False
+
 try:
     cwd = next(s['cwd'] for s in json.loads(Path(status).read_text())['surfaces'] if s.get('surface_ref') == ref)
     files = (root / re.sub(r'[^A-Za-z0-9]', '-', cwd)).glob('*.jsonl')
-    ok = any(f.stat().st_mtime_ns >= since_ns and b'"type":"assistant"' in f.read_bytes() for f in files)
+    if strict:
+        ok = any(f.stat().st_mtime_ns >= since_ns and answered_after(f) for f in files)
+    else:
+        ok = any(f.stat().st_mtime_ns >= since_ns and b'"type":"assistant"' in f.read_bytes() for f in files)
 except (OSError, ValueError, KeyError, TypeError, StopIteration):
     ok = False
 print('confirmed' if ok else 'unconfirmed')

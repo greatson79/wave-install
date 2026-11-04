@@ -1158,7 +1158,7 @@ PY_G3
 # 세 번째 인자(선택): 선언 기록 파일. 주면 엄격 판정 — 세션 기록을 줄(레코드) 단위로 읽어, 같은 파일 안에서
 # 「timestamp(실제 Claude 세션 기록의 최상위 키 · ISO8601 UTC)가 선언 파일 수정 시각(나노초) 이상인 user 줄」 뒤에 assistant 줄이
 # 있을 때만 확인됨이다(선언은 조용할 때 배달되므로 선언 파일 시각 ≠ 선언이 들어간 시각).
-# 선언 전 답·user 줄 없는 assistant·파일 수정 시각·깨진/부분 줄·timestamp 없음/파싱 불가는 근거가 아니다(미확인).
+# 선언 전 답·user 줄 없는 assistant·도구 결과 user 줄(tool_result)·파일 수정 시각·깨진/부분 줄·timestamp 없음/파싱 불가는 근거가 아니다(미확인).
 # 인자가 없으면(옛 호출) 기존 판정: 파일 수정 시각 ≥ 기준 시각 ∧ assistant 기록 존재.
 master_awake_state() {
   python3 - "$WAVE_HOME/fleet/status.json" "$1" "$2" "${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}/projects" "${3:-}" <<'PY_AWAKE'
@@ -1188,7 +1188,10 @@ def answered_after(path):
                 continue
             kind = d.get('type')
             if kind == 'user' and int(t.timestamp() * 10**9) >= since_ns:
-                declared_in = True
+                content = (d.get('message') or {}).get('content')
+                # 도구 결과도 type=user 줄이다(content 가 tool_result 항목 목록) — 선언이 들어간 줄이 아니다.
+                if not (isinstance(content, list) and any(isinstance(x, dict) and x.get('type') == 'tool_result' for x in content)):
+                    declared_in = True
             elif kind == 'assistant' and declared_in:
                 return True
         except (ValueError, TypeError, OverflowError, OSError):

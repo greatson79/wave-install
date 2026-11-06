@@ -5,42 +5,37 @@
   "platforms": ["macos", "windows"],
   "release": {
     "repository": "greatson79/wave-terminal",
-    "macos_version": "0.2.5",
-    "version": "0.2.5",
+    "macos_version": "0.3.0",
+    "version": "0.3.0",
     "asset_name": {
-      "macos_arm64": "wave-terminal-0.2.5-macos-arm64.dmg",
-      "macos_x64": "wave-terminal-0.2.5-macos-arm64.dmg",
-      "windows_x64": "wave-terminal-0.2.5-windows-x64-setup.exe"
+      "macos_arm64": "wave-terminal-0.3.0-macos-arm64.dmg",
+      "windows_x64": "wave-terminal-0.3.0-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/wave-terminal-0.2.5-macos-arm64.dmg",
-      "macos_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/wave-terminal-0.2.5-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/wave-terminal-0.2.5-windows-x64-setup.exe"
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.0/wave-terminal-0.3.0-macos-arm64.dmg",
+      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.0/wave-terminal-0.3.0-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 128935203},
+    "bytes": {"windows_x64": 129266925},
     "sha256": {
-      "macos_arm64": "7b0c8d71d3bf9d2fb81e8508a9e62c39cac0d9e90db91ad51c40d0155e10ab0d",
-      "macos_x64": "7b0c8d71d3bf9d2fb81e8508a9e62c39cac0d9e90db91ad51c40d0155e10ab0d",
-      "windows_x64": "299dcc697ae0cf7408074be541d6ad4ebe686fb5605a016f5487b1968d10a7bb"
+      "macos_arm64": "26b9270b3bbe8fbd5aef5a658b480c5df53fe7e2915f24e72543194869ba897b",
+      "windows_x64": "45f4bc9565f215daa78d0b91eae258f74d3da4e0ed20a155b07679d428ab9485"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.0/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.0/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,
-      "macos_x64": null,
       "windows_x64": null
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "6b7faab63885895145ea9443d593c9efbc4541e1",
-      "macos_x64": "6b7faab63885895145ea9443d593c9efbc4541e1"
+      "macos_arm64": "8817bb4974e771b105759b1f645396a420c3dd62"
     }
   },
   "reinstall": {
     "command": {
       "macos": "curl -fsSL https://waveainetworks.com/mac | bash -s -- --reinstall",
-      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
+      "windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://github.com/greatson79/wave-terminal/releases/latest/download/bootstrap.ps1 -OutFile ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1'); powershell -NoProfile -ExecutionPolicy Bypass -File ([Environment]::GetFolderPath('UserProfile')+'\\install-wave.ps1') -Reinstall\""
     },
     "description": "설치 상태를 백업하고 처음부터 다시 실행합니다. 앱·팩·사용자 파일 전체 삭제는 하지 않습니다."
   },

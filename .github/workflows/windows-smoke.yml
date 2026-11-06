@@ -171,6 +171,12 @@ jobs:
         run: |
           python -m unittest tests.test_win_start_runtime -v
           if ($LASTEXITCODE -ne 0) { throw 'built Windows entry regression failed' }
+      - name: Claude local-bin USER and process PATH regression (PS5.1)
+        shell: powershell
+        run: |
+          $env:PWSH = (Get-Command powershell).Source
+          python -m unittest tests.test_windows_bootstrap.BootstrapTests.test_claude_local_bin_user_and_process_path_idempotent -v
+          if ($LASTEXITCODE -ne 0) { throw 'Claude USER/process PATH regression failed' }
   signed-install:
     if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
     needs: bootstrap-contract

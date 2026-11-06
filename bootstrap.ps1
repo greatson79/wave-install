@@ -691,21 +691,58 @@ function Run-S00 {
   $script:StepObserved = [ordered]@{ os = "windows"; powershell = $PSVersionTable.PSVersion.ToString(); free_bytes = $drive.Free; user_path = $true }
 }
 
+function Get-ClaudeExecutable { Join-Path $env:USERPROFILE '.local\bin\claude.exe' }
+
+function Update-ClaudePath {
+  $bin = Join-Path $env:USERPROFILE '.local\bin'
+  $userKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+  try {
+    foreach ($scope in @('User', 'Process')) {
+      $current = if ($scope -eq 'User') {
+        [string]$userKey.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+      } else { $env:Path }
+      $entries = @()
+      $found = $false
+      if ($current) {
+        foreach ($entry in $current.Split(';')) {
+          $normalized = [Environment]::ExpandEnvironmentVariables($entry.Trim().Trim('"')).TrimEnd('\')
+          if ($normalized -eq $bin) {
+            if ($found) { continue }
+            $found = $true
+            if ($scope -eq 'Process') { $entry = $bin }
+          }
+          $entries += $entry
+        }
+      }
+      if (-not $found) { $entries += $bin }
+      $updated = $entries -join ';'
+      if ($updated -cne $current) {
+        if ($scope -eq 'User') {
+          $kind = if ($userKey.GetValueNames() -contains 'Path') { $userKey.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
+          [Environment]::SetEnvironmentVariable('Path', $updated, 'User')
+          $userKey.SetValue('Path', $updated, $kind)
+        } else { $env:Path = $updated }
+      }
+    }
+  } finally { $userKey.Dispose() }
+  Say 'Claude 명령 경로를 등록했습니다. 다른 터미널에서도 쓰려면 터미널을 닫고 새로 열어 주세요.'
+}
+
 function Run-S01 {
-  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+  Update-ClaudePath
+  if (-not (Get-Command (Get-ClaudeExecutable) -ErrorAction SilentlyContinue)) {
     $installer = Join-Path $WaveHome 'src\claude-install.ps1'
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installer) | Out-Null
     Invoke-WebRequest -UseBasicParsing -Uri 'https://claude.ai/install.ps1' -OutFile $installer -ErrorAction Stop
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
     if ($LASTEXITCODE -ne 0) { throw 'Claude Code 공식 설치 실패' }
-    $env:PATH = (Join-Path $env:USERPROFILE '.local\bin') + [IO.Path]::PathSeparator + $env:PATH
-    if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'Claude Code 설치 후 명령 없음' }
+    if (-not (Get-Command (Get-ClaudeExecutable) -ErrorAction SilentlyContinue)) { throw 'Claude Code 설치 후 명령 없음' }
   }
   $pin = [string](Get-ConfigValue "tooling.claude_code_version")
   if ($pin -like "__*__") { throw "Claude Code 버전 핀이 아직 정해지지 않음" }
   $minimum = [string](Get-ConfigValue "tooling.claude_code_min_version")
   if (-not $minimum -or $minimum -like "__*__") { throw "Claude Code 최소 버전 미정" }
-  $version = (& claude --version 2>$null | Out-String).Trim()
+  $version = (& (Get-ClaudeExecutable) --version 2>$null | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw "Claude Code 버전 조회 실패" }
   $tooling = Join-Path $WaveHome "tooling"
   New-Item -ItemType Directory -Force -Path $tooling | Out-Null
@@ -728,9 +765,9 @@ function Run-S01 {
     if ($comparison -ne 0) { break }
   }
   if ($comparison -lt 0 -or ($comparison -eq 0 -and $pre)) {
-    & claude update
+    & (Get-ClaudeExecutable) update
     if ($LASTEXITCODE -ne 0) { throw 'Claude Code 업데이트 실패' }
-    $version = (& claude --version 2>$null | Out-String).Trim()
+    $version = (& (Get-ClaudeExecutable) --version 2>$null | Out-String).Trim()
     $actual = [regex]::Match($version, '\A' + $core + '(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?: \(Claude Code\))?\z')
     if (-not $actual.Success -or [version]($actual.Groups[1].Value + '.' + $actual.Groups[2].Value + '.' + $actual.Groups[3].Value) -lt [version]$minimum -or $actual.Groups[4].Value) {
       throw "중단: claude update 후에도 $minimum 미만입니다($version). PowerShell에서 claude update를 직접 실행한 뒤 다시 시도하세요."
@@ -741,16 +778,17 @@ function Run-S01 {
 }
 
 function Confirm-SeatClaudeAuth {
+  Update-ClaudePath
   $configDir = if ($env:CYS_ACCOUNT_DIR) { $env:CYS_ACCOUNT_DIR } else { Join-Path $env:USERPROFILE '.cys\claude' }
   New-Item -ItemType Directory -Force -Path $configDir | Out-Null
   $previous = $env:CLAUDE_CONFIG_DIR
   try {
     $env:CLAUDE_CONFIG_DIR = $configDir
-    & claude auth status *> $null
+    & (Get-ClaudeExecutable) auth status *> $null
     if ($LASTEXITCODE -ne 0) {
-      & claude auth login
+      & (Get-ClaudeExecutable) auth login
       if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 실패' }
-      & claude auth status *> $null
+      & (Get-ClaudeExecutable) auth status *> $null
       if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 재확인 실패' }
     }
   } finally {
@@ -1277,7 +1315,7 @@ function Run-S07 {
     $previous = $env:CLAUDE_CONFIG_DIR
     try {
       $env:CLAUDE_CONFIG_DIR = $configDir
-      & claude auth status *> $null
+      & (Get-ClaudeExecutable) auth status *> $null
       if ($LASTEXITCODE -ne 0) {
         $script:StepObserved = [ordered]@{ fleet_started = $false; j_code = 'J-LOGIN-03'; source = 'seat-config claude auth status' }
         throw '작업 칸 로그인이 풀렸습니다. Wave 작업 칸에서 /login 한 뒤 같은 설치 명령을 다시 실행해 주세요.'

@@ -44,6 +44,8 @@ class VersionGateTests(unittest.TestCase):
                 harness = root / "s01.ps1"
                 harness.write_text(source.split(marker)[0] + """
 $script:Config = Get-Content -LiteralPath $env:TEST_STEPS -Raw | ConvertFrom-Json
+function Get-ClaudeExecutable { 'claude' }
+function Update-ClaudePath { }
 function claude {
   $global:LASTEXITCODE = [int]$env:TEST_CLAUDE_EXIT
   return $env:TEST_CLAUDE_VERSION

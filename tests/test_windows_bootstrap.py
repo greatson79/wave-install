@@ -10,6 +10,81 @@ ROOT = Path(__file__).resolve().parents[1]
 PWSH = os.environ.get('PWSH') or shutil.which('pwsh')
 
 class BootstrapTests(unittest.TestCase):
+    def test_claude_path_is_updated_before_install_and_auth(self):
+        source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
+        self.assertTrue('function Update-ClaudePath' in source)
+        self.assertNotIn('& claude ', source)
+        self.assertIn("function Get-ClaudeExecutable { Join-Path $env:USERPROFILE '.local\\bin\\claude.exe' }", source)
+        for name in ('Run-S01', 'Confirm-SeatClaudeAuth'):
+            body = source.split('function ' + name + ' {', 1)[1].split('\nfunction ', 1)[0]
+            self.assertLess(body.index('Update-ClaudePath'), body.index('claude'))
+        self.assertIn('터미널을 닫고 새로 열어 주세요', source)
+
+    @unittest.skipUnless(os.name == 'nt' and Path(PWSH or '').name.lower() == 'powershell.exe',
+                         'requires PS5.1 compiler and Windows USER PATH registry')
+    def test_claude_local_bin_user_and_process_path_idempotent(self):
+        self.run_ps(r'''
+$userKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+$oldUserExists = $userKey.GetValueNames() -contains 'Path'
+$oldUser = $userKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$oldKind = if ($oldUserExists) { $userKey.GetValueKind('Path') } else { $null }
+$oldProcess = $env:Path
+$oldMachine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+try {
+  $bin = Join-Path $env:USERPROFILE '.local\bin'
+  New-Item -ItemType Directory -Force $bin | Out-Null
+  $env:CLAUDE_PATH_CALLS = Join-Path $env:USERPROFILE 'claude-calls.txt'
+  Add-Type -OutputAssembly (Join-Path $bin 'claude.exe') -OutputType ConsoleApplication -TypeDefinition @"
+using System;
+public class ClaudePathFixture {
+  public static int Main(string[] args) {
+    System.IO.File.AppendAllText(Environment.GetEnvironmentVariable("CLAUDE_PATH_CALLS"), string.Join(" ", args) + "\n");
+    if (args.Length == 1 && args[0] == "--version") Console.WriteLine("99.99.99 (Claude Code)");
+    if (args.Length == 2 && args[0] == "auth") {
+      string marker = System.IO.Path.Combine(Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR"), "loggedin");
+      if (args[1] == "login") System.IO.File.WriteAllText(marker, "ok");
+      if (args[1] == "status") return System.IO.File.Exists(marker) ? 0 : 1;
+    }
+    return 0;
+  }
+}
+"@
+  $before = 'C:\first;C:\keep;C:\last'
+  [Environment]::SetEnvironmentVariable('Path', $before, 'User')
+  $env:Path = "$env:SystemRoot\System32;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+  if (Get-Command claude -ErrorAction SilentlyContinue) { throw 'stub already reachable before installer step' }
+  $decoy = Join-Path $env:USERPROFILE 'decoy'
+  New-Item -ItemType Directory $decoy | Out-Null
+  [IO.File]::WriteAllText((Join-Path $decoy 'claude.cmd'), "@echo off`r`nexit /b 91`r`n")
+  $env:Path = $decoy + ';' + $env:Path
+  if ((Get-Command claude).Source -ne (Join-Path $decoy 'claude.cmd')) { throw 'decoy not earlier on starting PATH' }
+  $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
+  Load-Config
+  Run-S01
+  Run-S01
+  Confirm-SeatClaudeAuth
+  $expected = $before + ';' + $bin
+  $actual = $userKey.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+  if ($actual -cne $expected) { throw ('USER PATH order/duplication: ' + $actual) }
+  if (@($env:Path.Split(';') | Where-Object { $_ -eq $bin }).Count -ne 1) { throw 'process PATH duplicate/missing' }
+  if ((Get-Command (Get-ClaudeExecutable)).Source -ne (Join-Path $bin 'claude.exe')) { throw 'wrong claude executable' }
+  $calls = Get-Content $env:CLAUDE_PATH_CALLS
+  if (@($calls | Where-Object { $_ -eq '--version' }).Count -ne 2 -or $calls -notcontains 'auth status' -or $calls -notcontains 'auth login') { throw 'installer did not reach native stub' }
+  [Environment]::SetEnvironmentVariable('Path', ($before + ';%USERPROFILE%\.local\bin;' + $bin.ToUpperInvariant()), 'User')
+  Update-ClaudePath
+  $actual = $userKey.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+  if ($actual -cne ($before + ';%USERPROFILE%\.local\bin')) { throw 'equivalent USER PATH entries were not deduplicated' }
+  if ([Environment]::GetEnvironmentVariable('Path', 'Machine') -cne $oldMachine) { throw 'machine PATH changed' }
+  Write-Host 'PASS Claude local-bin stub reached; USER/process PATH idempotent; machine PATH unchanged'
+} finally {
+  if ($oldUserExists) { $userKey.SetValue('Path', $oldUser, $oldKind) } else { $userKey.DeleteValue('Path', $false) }
+  if (($userKey.GetValueNames() -contains 'Path') -ne $oldUserExists) { throw 'USER PATH existence not restored' }
+  if ($oldUserExists -and ($userKey.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) -cne $oldUser -or $userKey.GetValueKind('Path') -ne $oldKind)) { throw 'raw USER PATH/type not restored' }
+  $userKey.Dispose()
+  $env:Path = $oldProcess
+}
+''')
+
     def test_s07_retained_seat_exit_message_contract(self):
         source = (ROOT / 'bootstrap.ps1').read_text(encoding='utf-8-sig')
         contract = source.split("'master-create' (Get-AwakeningBudgetMs", 1)[1].split('Send-MasterDeclaration $clock $declaredPath', 1)[0]

@@ -6,6 +6,8 @@ import test_windows_bootstrap as helper
 class WindowsSeatLogin(unittest.TestCase):
     def run_case(self, body):
         return helper.BootstrapTests.run_ps(self, r'''
+function Get-ClaudeExecutable { 'claude' }
+function Update-ClaudePath { }
 function claude {
   param([string]$noun, [string]$verb)
   Add-Content -LiteralPath (Join-Path $env:USERPROFILE 'calls') -Value "$verb|$env:CLAUDE_CONFIG_DIR"

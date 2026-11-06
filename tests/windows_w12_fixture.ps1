@@ -6,6 +6,19 @@ $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDe
 $env:USERPROFILE=$env:W12_FIXTURE_HOME
 $WaveHome=Join-Path $env:USERPROFILE '.wave';$PackHome=Join-Path $env:USERPROFILE '.cys/pack';$ScriptDir=Join-Path $env:USERPROFILE 'bundle'
 $LogFile=Join-Path $WaveHome 'install.log'
+# Native auth stub at the production path; reject calls outside this fixture's status check.
+$claudeBin=Join-Path $env:USERPROFILE '.local/bin'
+New-Item -ItemType Directory -Force $claudeBin | Out-Null
+$stubSource=Join-Path $env:USERPROFILE 'ClaudeAuthFixture.cs'
+[IO.File]::WriteAllText($stubSource, 'public class ClaudeAuthFixture { public static int Main(string[] args) { return args.Length == 2 && args[0] == "auth" && args[1] == "status" ? 0 : 91; } }')
+$csc=Join-Path $env:SystemRoot 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+& $csc /nologo /target:exe ("/out:" + (Join-Path $claudeBin 'claude.exe')) $stubSource
+if($LASTEXITCODE -ne 0){throw 'native Claude auth fixture compilation failed'}
+$userKey=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+$hadPath=$userKey.GetValueNames() -contains 'Path'
+$rawPath=$userKey.GetValue('Path',$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$pathKind=if($hadPath){$userKey.GetValueKind('Path')}else{$null}
+try {
 $script:AwakeningStartedAt=$null
 New-Item -ItemType Directory -Force (Join-Path $ScriptDir 'wave-pack/directives'),(Join-Path $PackHome 'directives')|Out-Null
 $stub=Join-Path $ScriptDir 'wave-pack/directives/MASTER_DIRECTIVE.md';$target=Join-Path $PackHome 'directives/MASTER_DIRECTIVE.md'
@@ -135,3 +148,8 @@ function Get-LiveFleet([int]$TimeoutMs=5000) { return $live }
 Run-S07
 if(@($script:calls | Where-Object { $_ -like 'send*' -or $_ -like 'launch-agent*' }).Count -ne 0){throw 'awakened master got a second declaration or a new seat'}
 Write-Host 'PASS W-DECLARE rerun re-sends once; declared reuse sends nothing'
+
+} finally {
+  if($hadPath){$userKey.SetValue('Path',$rawPath,$pathKind)}else{$userKey.DeleteValue('Path',$false)}
+  $userKey.Dispose()
+}

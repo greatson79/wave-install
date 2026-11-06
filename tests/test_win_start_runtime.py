@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import threading
 import unittest
+import zipfile
 
 
 @unittest.skipUnless(os.name == 'nt' and os.environ.get('WAVE_BUILT_WIN_START'),
@@ -18,7 +19,27 @@ class WinStartRuntimeTests(unittest.TestCase):
         self.assertTrue(built.startswith(b'& {'), built[:8].hex(' '))
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            stub = b"[IO.File]::WriteAllText($env:WAVE_STUB_MARKER, 'bootstrap reached')\r\nexit 0\r\n"
+            with zipfile.ZipFile(root / 'payload.zip', 'w') as archive:
+                archive.writestr('payload.txt', 'fixture payload')
+            stub = b"""$ErrorActionPreference = 'Stop'
+Write-Host ('CHILD_PSModulePath=' + $env:PSModulePath)
+$work = $env:WAVE_STUB_MARKER + '.work'
+$null = New-Item -ItemType Directory -Path $work
+try {
+  $zip = Join-Path $work 'payload.zip'
+  Invoke-WebRequest -UseBasicParsing -Uri ($env:WAVE_STUB_BASE + '/payload.zip') -OutFile $zip
+  $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash
+  if ($hash.Length -ne 64) { throw 'stub hash missing' }
+  $out = Join-Path $work 'expanded'
+  Expand-Archive -LiteralPath $zip -DestinationPath $out
+  if ((Get-Content -Raw (Join-Path $out 'payload.txt')) -ne 'fixture payload') { throw 'stub expansion failed' }
+  [IO.File]::WriteAllText($env:WAVE_STUB_MARKER, 'bootstrap reached')
+  Write-Host 'PASS child Invoke-WebRequest, Get-FileHash, Expand-Archive'
+} finally {
+  Remove-Item -LiteralPath $work -Recurse -Force
+}
+exit 0
+"""
             (root / 'bootstrap.ps1').write_bytes(stub)
 
             class Handler(http.server.SimpleHTTPRequestHandler):
@@ -49,6 +70,7 @@ class WinStartRuntimeTests(unittest.TestCase):
                         # Continue lets the negative control inspect its failed background job.
                         command = f"""
 $ErrorActionPreference = 'Continue'
+Write-Host ('PARENT_PSModulePath=' + $env:PSModulePath)
 irm '{base}/{entry}' | iex
 $jobs = @(Get-Job)
 Write-Host ('JOBS=' + $jobs.Count)
@@ -73,10 +95,14 @@ if ($LASTEXITCODE -ne 0) { throw 'bootstrap exit was not zero' }
 Write-Host 'PASS bootstrap marker, exit 0, JOBS=0'
 exit 0
 """
+                        child_env = dict(os.environ, WAVE_STUB_MARKER=str(marker), WAVE_STUB_BASE=base)
+                        if shell == 'powershell.exe':
+                            # Model a directly opened PS5.1; PS7 and its bootstrap child keep their environment.
+                            child_env.pop('PSMODULEPATH', None)
                         result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass',
                                                  '-Command', command], capture_output=True, text=True,
                                                 encoding='utf-8', errors='replace', timeout=60,
-                                                env=dict(os.environ, WAVE_STUB_MARKER=str(marker)))
+                                                env=child_env)
                         print(f'{shell} negative={negative}\n{result.stdout}\n{result.stderr}')
                         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                         self.assertEqual(marker.exists(), not negative)

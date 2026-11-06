@@ -143,8 +143,13 @@ foreach ($invalid in @('12345', 0, -1, $null, $true)) {
             if os.name == 'nt':
                 # Preserve real shortcut files while exercising the real Windows shortcut helper.
                 folders = subprocess.check_output([PWSH, '-NoProfile', '-Command',
-                    "[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop')) | ConvertTo-Json -Compress"], text=True, encoding='utf-8')
-                programs, desktop = map(Path, json.loads(folders))
+                    "[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); @([Environment]::GetFolderPath('Programs', 'DoNotVerify'), [Environment]::GetFolderPath('Desktop', 'DoNotVerify')) | ConvertTo-Json -Compress"],
+                    env=dict(os.environ, USERPROFILE=str(home)), text=True, encoding='utf-8')
+                paths = json.loads(folders)
+                self.assertTrue(all(paths), 'temporary profile known-folder paths missing')
+                programs, desktop = map(Path, paths)
+                programs.mkdir(parents=True, exist_ok=True)
+                desktop.mkdir(parents=True, exist_ok=True)
                 links = (programs/'Wave Terminal.lnk', programs/'Wave Terminal/Wave Terminal.lnk', desktop/'Wave Terminal.lnk')
                 saved = {link: link.read_bytes() if link.exists() else None for link in links}
                 def restore_shortcuts():

@@ -12,16 +12,17 @@ jobs:
   live-entry:
     runs-on: windows-latest
     timeout-minutes: 5
+    env:
+      EXPECTED_BOOTSTRAP_SHA256: ${{ inputs.expected_bootstrap_sha256 }}
     strategy:
       fail-fast: false
       matrix:
         shell: [pwsh, powershell]
     steps:
-      - name: Plain learner command stops after bootstrap hash verification
-        shell: ${{ matrix.shell }}
-        env:
-          EXPECTED_BOOTSTRAP_SHA256: ${{ inputs.expected_bootstrap_sha256 }}
+      - name: Prepare shared non-installing boundary check
+        shell: pwsh
         run: |
+          $scriptText = @'
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
           if ($env:EXPECTED_BOOTSTRAP_SHA256 -notmatch '\A[0-9a-fA-F]{64}\z') { throw 'expected bootstrap SHA256 must be 64 hex characters' }
@@ -62,3 +63,13 @@ jobs:
             Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $entryFile, $script:BootstrapMarker -Force -ErrorAction SilentlyContinue
           }
+          '@
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'live-win-entry.ps1'), $scriptText, [Text.UTF8Encoding]::new($true))
+      - name: Plain learner command in PowerShell 7
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: . "$env:RUNNER_TEMP/live-win-entry.ps1"
+      - name: Plain learner command in Windows PowerShell 5.1
+        if: matrix.shell == 'powershell'
+        shell: powershell
+        run: . "$env:RUNNER_TEMP/live-win-entry.ps1"

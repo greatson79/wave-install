@@ -1,0 +1,64 @@
+name: Live Windows entry hash boundary
+on:
+  workflow_dispatch:
+    inputs:
+      expected_bootstrap_sha256:
+        description: Independently verified live bootstrap.ps1 SHA256
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  live-entry:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
+    steps:
+      - name: Plain learner command stops after bootstrap hash verification
+        shell: ${{ matrix.shell }}
+        env:
+          EXPECTED_BOOTSTRAP_SHA256: ${{ inputs.expected_bootstrap_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          if ($env:EXPECTED_BOOTSTRAP_SHA256 -notmatch '\A[0-9a-fA-F]{64}\z') { throw 'expected bootstrap SHA256 must be 64 hex characters' }
+          $script:ExpectedBootstrapSha = $env:EXPECTED_BOOTSTRAP_SHA256.ToLowerInvariant()
+          $script:BootstrapCalls = 0
+          $script:BootstrapMarker = Join-Path $env:RUNNER_TEMP ('live-entry-' + [guid]::NewGuid().ToString('N') + '.marker')
+          $entryFile = Join-Path $env:RUNNER_TEMP ('live-entry-' + [guid]::NewGuid().ToString('N') + '.ps1')
+          Write-Host ('PowerShell=' + $PSVersionTable.PSVersion)
+          if (@(Get-Job).Count -ne 0) { throw 'test must start without background jobs' }
+          # The real entry verifies SHA before this child boundary; never execute bootstrap.
+          function powershell.exe {
+            $script:BootstrapCalls++
+            Write-Host ('CapturedArgs=' + (ConvertTo-Json -InputObject @($args) -Compress))
+            $fileIndex = [Array]::IndexOf([string[]]$args, '-File')
+            if ($fileIndex -lt 0 -or $fileIndex + 1 -ge $args.Count -or @($args | Where-Object { $_ -eq '-File' }).Count -ne 1) { throw 'entry child must supply exactly one -File path' }
+            $bootstrap = [string]$args[$fileIndex + 1]
+            if (-not (Test-Path -LiteralPath $bootstrap -PathType Leaf)) { throw 'downloaded bootstrap missing' }
+            $observed = (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrap).Hash.ToLowerInvariant()
+            Write-Host ('BootstrapSHA256=' + $observed)
+            if ($observed -cne $script:ExpectedBootstrapSha) { throw 'downloaded bootstrap differs from independently verified SHA256' }
+            [IO.File]::WriteAllText($script:BootstrapMarker, $observed)
+            $global:LASTEXITCODE = 0
+          }
+          try {
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://waveainetworks.com/win' -OutFile $entryFile
+            $bytes = [IO.File]::ReadAllBytes($entryFile)
+            if ($bytes.Length -lt 8) { throw 'live entry shorter than eight bytes' }
+            Write-Host ('LiveFirst8=' + (($bytes[0..7] | ForEach-Object { $_.ToString('x2') }) -join ' '))
+            irm https://waveainetworks.com/win | iex
+            $jobs = @(Get-Job)
+            Write-Host ('JOBS=' + $jobs.Count)
+            if ($jobs.Count -ne 0) { throw 'live entry created a background job' }
+            if ($script:BootstrapCalls -ne 1 -or -not (Test-Path -LiteralPath $script:BootstrapMarker)) { throw 'verified bootstrap child boundary not reached exactly once' }
+            if ($LASTEXITCODE -ne 0) { throw 'entry did not preserve child exit 0' }
+            Write-Host 'PASS live learner entry: verified bootstrap marker, exit 0, JOBS=0; bootstrap never executed'
+          } finally {
+            Get-Job | Stop-Job -ErrorAction SilentlyContinue
+            Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $entryFile, $script:BootstrapMarker -Force -ErrorAction SilentlyContinue
+          }

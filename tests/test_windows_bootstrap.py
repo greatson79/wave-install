@@ -1,5 +1,6 @@
 """Portable execution of Windows helpers. External IO uses explicit test doubles."""
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -139,7 +140,28 @@ foreach ($invalid in @('12345', 0, -1, $null, $true)) {
                 shutil.copyfile(ROOT/name, home/name)
             source = (ROOT/'bootstrap.ps1').read_text(encoding='utf-8-sig')
             source = source.replace('$ErrorActionPreference = "Stop"', '$ErrorActionPreference = "Stop"\n[Console]::OutputEncoding = [Text.UTF8Encoding]::new()')
+            if os.name == 'nt':
+                # Preserve real shortcut files while exercising the real Windows shortcut helper.
+                folders = subprocess.check_output([PWSH, '-NoProfile', '-Command',
+                    "[Console]::OutputEncoding=[Text.UTF8Encoding]::new(); @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop')) | ConvertTo-Json -Compress"], text=True, encoding='utf-8')
+                programs, desktop = map(Path, json.loads(folders))
+                links = (programs/'Wave Terminal.lnk', programs/'Wave Terminal/Wave Terminal.lnk', desktop/'Wave Terminal.lnk')
+                saved = {link: link.read_bytes() if link.exists() else None for link in links}
+                def restore_shortcuts():
+                    for link, data in saved.items():
+                        if data is None:
+                            link.unlink(missing_ok=True)
+                        else:
+                            link.write_bytes(data)
+                self.addCleanup(restore_shortcuts)
+                for link in links:
+                    link.unlink(missing_ok=True)
             overrides = r'''
+if ($env:OS -eq 'Windows_NT') {
+  . (Join-Path $env:TEST_ROOT 'tests/windows_native_stub.ps1')
+  $app = Join-Path $WaveHome 'bin/cys-app.exe'
+  if (-not (Test-Path -LiteralPath $app)) { New-NativeTestExecutable $app 'public class AppFixture { public static int Main() { return 0; } }' }
+}
 function Run-S00 { Say 'ACTION-S00' }
 function Ensure-Pack { }
 function Run-S01 { Say 'ACTION-S01' }
@@ -153,7 +175,7 @@ function Run-S08 { $script:StepObserved = @{ original_match = $true; new_file_co
 '''
             script = home/'bootstrap.ps1'
             script.write_text(source.replace('\nLoad-Config\nif ($DryRun)', overrides+'\nLoad-Config\nif ($DryRun)'), encoding='utf-8-sig')
-            env = dict(os.environ, USERPROFILE=str(home), WAVE_HOME=str(home/'wave'), WAVE_NO_PROGRESS='1')
+            env = dict(os.environ, USERPROFILE=str(home), WAVE_HOME=str(home/'wave'), WAVE_NO_PROGRESS='1', TEST_ROOT=str(ROOT))
             def run(*args):
                 result = subprocess.run([PWSH, '-NoProfile', '-File', str(script), *args], env=env, capture_output=True, text=True, encoding='utf-8')
                 self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
@@ -484,6 +506,13 @@ if ($StepStatus -ne 'unmeasured' -or $StepObserved.reason -ne 'call_failed' -or 
     @unittest.skipUnless(os.name == 'nt', 'Run-S07 uses Windows PowerShell child process')
     def test_s07_requires_master_marker_and_three_live_roles(self):
         self.run_ps(r'''
+. (Join-Path $env:TEST_ROOT 'tests/windows_native_stub.ps1')
+New-ClaudeAuthStub $env:USERPROFILE
+$userKey=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+$hadPath=$userKey.GetValueNames() -contains 'Path'
+$rawPath=$userKey.GetValue('Path',$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$pathKind=if($hadPath){$userKey.GetValueKind('Path')}else{$null}
+try {
 $StepsFile = Join-Path $env:TEST_ROOT 'steps.json'
 $StateTemplate = Join-Path $env:TEST_ROOT 'install-state.json'
 Load-Config
@@ -513,6 +542,10 @@ if (Test-AwakenedFleet $fixtureStatus) { throw 'wrong numeric marker accepted' }
 '{"surface_ref":"1","orchestra_check":"exit 0"}'|Set-Content (Join-Path $env:USERPROFILE '.cys/.master-bootstrapped') -Encoding UTF8
 $fixtureStatus.surfaces[1].agent_alive=$false
 if (Test-AwakenedFleet $fixtureStatus) { throw 'dead CSO accepted' }
+} finally {
+  if($hadPath){$userKey.SetValue('Path',$rawPath,$pathKind)}else{$userKey.DeleteValue('Path',$false)}
+  $userKey.Dispose()
+}
 ''')
 
     @unittest.skipUnless(os.name == 'nt', 'Bounded native child test requires Windows')

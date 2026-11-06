@@ -38,7 +38,7 @@ text = source.read_text(encoding='utf-8-sig')
 for marker, value in [('__WAVE_BOOTSTRAP_URL__', url), ('__WAVE_BOOTSTRAP_SHA256__', hashlib.sha256(bootstrap.read_bytes()).hexdigest())]:
     assert text.count(marker) == 1, marker
     text = text.replace(marker, value)
-target.write_text(text, encoding='utf-8-sig')
+target.write_text(text, encoding='ascii')
 PY
 ( cd "$ART" && shasum -a 256 $(ls | sort) > "$STAGE/sums" && mv "$STAGE/sums" SHA256SUMS )
 echo "조립 끝: $ART ($REPO v$V · 설치기 $IV)"; cat "$ART/SHA256SUMS"

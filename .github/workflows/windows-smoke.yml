@@ -136,6 +136,41 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
         shell: bash
         run: bash tests/win-pin-release.sh
+  build-win-start:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Entry encoding regression and release assembly
+        shell: bash
+        run: |
+          python3 -m unittest tests.test_release_windows tests.test_windows_checks -v
+          mkdir win-start-built
+          version=$(python3 -c 'import json; print(json.load(open("steps.json"))["release"]["version"])')
+          bash scripts/assemble-wave-terminal-release.sh greatson79/wave-terminal "$version" "$PWD/win-start-built"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-start-built
+          path: win-start-built/
+          if-no-files-found: error
+  win-start-runtime:
+    needs: build-win-start
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: win-start-built
+          path: win-start-built
+      - name: Built HTTP entry PS7 and PS5.1 with old BOM negative control
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          WAVE_BUILT_WIN_START: win-start-built/win-start.ps1
+        run: |
+          python -m unittest tests.test_win_start_runtime -v
+          if ($LASTEXITCODE -ne 0) { throw 'built Windows entry regression failed' }
   signed-install:
     if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
     needs: bootstrap-contract

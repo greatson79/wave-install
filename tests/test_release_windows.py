@@ -9,10 +9,18 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+ENTRY_POINTS = ('win-start.ps1',)
 BASE = 'https://github.com/greatson79/wave-install/releases/download/v0.3.0'
 
 
 class WindowsReleaseTests(unittest.TestCase):
+    def test_iex_entry_points_are_bomless_ascii(self):
+        for name in ENTRY_POINTS:
+            with self.subTest(name=name):
+                data = (ROOT / name).read_bytes()
+                self.assertTrue(data.startswith(b'& {'), data[:8].hex(' '))
+                self.assertTrue(all(b in (9, 10, 13) or 32 <= b <= 126 for b in data))
+
     def test_wave_terminal_assembly_includes_pinned_windows_entry(self):
         with tempfile.TemporaryDirectory() as folder:
             out = Path(folder)
@@ -22,7 +30,11 @@ class WindowsReleaseTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for name in ('bootstrap.ps1', 'win-start.ps1', 'wave-install-0.3.0.zip', 'steps.json'):
                 self.assertTrue((out / name).is_file(), name)
-            start = (out / 'win-start.ps1').read_text(encoding='utf-8-sig')
+            data = (out / 'win-start.ps1').read_bytes()
+            self.assertTrue(data.startswith(b'& {'), data[:8].hex(' '))
+            self.assertTrue(all(b in (9, 10, 13) or 32 <= b <= 126 for b in data))
+            self.assertTrue((out / 'bootstrap.ps1').read_bytes().startswith(b'\xef\xbb\xbf'))
+            start = data.decode('ascii')
             self.assertIn('https://github.com/greatson79/wave-terminal/releases/download/v0.2.5/bootstrap.ps1', start)
             self.assertIn(hashlib.sha256((out / 'bootstrap.ps1').read_bytes()).hexdigest(), start)
             self.assertNotIn('__WAVE_BOOTSTRAP_', start)

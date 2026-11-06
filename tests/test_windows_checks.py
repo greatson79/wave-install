@@ -13,6 +13,20 @@ balance = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(balance)
 
 class CheckTests(unittest.TestCase):
+    def test_iex_encoding_mutants(self):
+        with tempfile.TemporaryDirectory() as folder:
+            entry = Path(folder) / 'win-start.ps1'
+            for data, valid in ((b'& {}', True), (b'\xef\xbb\xbf& {}', False),
+                                ('& { "한글" }'.encode('utf-8'), False), (b'& {\x00}', False)):
+                with self.subTest(data=data):
+                    entry.write_bytes(data)
+                    self.assertEqual(not balance.check_bom(entry), valid)
+            file_entry = Path(folder) / 'bootstrap.ps1'
+            file_entry.write_bytes(b'\xef\xbb\xbf' + '"한글"'.encode('utf-8'))
+            self.assertEqual(balance.check_bom(file_entry), [])
+            file_entry.write_bytes('"한글"'.encode('utf-8'))
+            self.assertTrue(balance.check_bom(file_entry))
+
     def test_delimiter_mutants(self):
         cases = [
             ('function f { @("[]", \'{}\') } # ]', True),

@@ -2,26 +2,31 @@
   "schema": "wave-install.steps.v1",
   "product": "Wave Terminal",
   "version": "0.3.0",
-  "platforms": ["macos", "windows"],
+  "platforms": [
+    "macos",
+    "windows"
+  ],
   "release": {
     "repository": "greatson79/wave-terminal",
-    "macos_version": "0.3.1",
-    "version": "0.3.1",
+    "macos_version": "0.3.2",
+    "version": "0.3.2",
     "asset_name": {
-      "macos_arm64": "wave-terminal-0.3.1-macos-arm64.dmg",
-      "windows_x64": "wave-terminal-0.3.1-windows-x64-setup.exe"
+      "macos_arm64": "wave-terminal-0.3.2-macos-arm64.dmg",
+      "windows_x64": "wave-terminal-0.3.2-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.1/wave-terminal-0.3.1-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.1/wave-terminal-0.3.1-windows-x64-setup.exe"
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.2/wave-terminal-0.3.2-macos-arm64.dmg",
+      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.2/wave-terminal-0.3.2-windows-x64-setup.exe"
     },
-    "bytes": {"windows_x64": 129273095},
+    "bytes": {
+      "windows_x64": 129599008
+    },
     "sha256": {
-      "macos_arm64": "172ed5cdc18c350714230efa54f9ddf7f6fac0173ac1bf115d2ec5c0766b2165",
-      "windows_x64": "8396cd1009d834b2100895c87fa8f155b5bf69b1d1dfa752f5c198cec0a8c815"
+      "macos_arm64": "b58a19b13383a2ed8c7b36c04581067065e976e69f6c0aaa8f10c5bee1e3c28d",
+      "windows_x64": "1b873ed2583cb0d60b959a128745af0a940f938b445eb7e6f24ff62042e2f8c9"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.1/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.1/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.2/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.2/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,
@@ -29,7 +34,7 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "1ae493c29d3d65614beb12f285bd642161c54883"
+      "macos_arm64": "25aec80585fab87e3fa8459baae2cea4c8bcbb1a"
     }
   },
   "reinstall": {
@@ -55,8 +60,14 @@
         "windows": "[Environment]::OSVersion; $PSVersionTable.PSVersion; Get-PSDrive -Name C; Test-Path -PathType Container $env:USERPROFILE"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S00-PREFLIGHT",
@@ -75,9 +86,18 @@
         "windows": "Get-Command claude -ErrorAction SilentlyContinue; if (-not $?) { Invoke-WebRequest https://claude.ai/install.ps1 }; claude --version; claude update (낮을 때만)"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/tooling/claude.version"},
-        {"kind": "non_placeholder", "path": "~/.wave/tooling/claude.version"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/tooling/claude.version"
+        },
+        {
+          "kind": "non_placeholder",
+          "path": "~/.wave/tooling/claude.version"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S01-CLAUDE",
@@ -96,8 +116,14 @@
         "windows": "claude auth status; claude auth login (미로그인 때만); claude auth status"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/auth/claude-authenticated"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/auth/claude-authenticated"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S02-AUTH",
@@ -116,9 +142,19 @@
         "windows": "Invoke-WebRequest <asset-url> -OutFile <artifact>; Get-FileHash <artifact> -Algorithm SHA256; Get-AuthenticodeSignature <artifact>"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/downloads/wave-terminal-artifact"},
-        {"kind": "sha256", "path": "~/.wave/downloads/wave-terminal-artifact", "source": "SHA256SUMS"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/downloads/wave-terminal-artifact"
+        },
+        {
+          "kind": "sha256",
+          "path": "~/.wave/downloads/wave-terminal-artifact",
+          "source": "SHA256SUMS"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S03-VERIFY",
@@ -137,9 +173,18 @@
         "windows": "$env:USERPROFILE\\.wave\\bin\\cys.exe --version; $env:USERPROFILE\\.wave\\bin\\cysd.exe --version"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/bin/cys"},
-        {"kind": "file_exists", "path": "~/.wave/bin/cysd"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/bin/cys"
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/bin/cysd"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S04-LINK",
@@ -158,9 +203,18 @@
         "windows": "cys init-pack; cys pack-manifest (지침 SHA256 대조)"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.cys/pack/manifest.json"},
-        {"kind": "file_exists", "path": "~/.cys/pack/SHA256SUMS"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.cys/pack/manifest.json"
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.cys/pack/SHA256SUMS"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S06-PACK",
@@ -179,8 +233,14 @@
         "windows": "cys daemon install; cys ping (최대 5회, 명령마다 시간 상한); 응답이 없으면 cysd.exe 직접 실행 후, 그래도 없으면 Wave Terminal 앱 실행 후 cys ping 재확인"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/install/daemon-register-result"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/install/daemon-register-result"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S05-DAEMON",
@@ -263,9 +323,21 @@
         "windows": "Test-Path $env:USERPROFILE\\.wave\\START-HERE.md; Get-Content $env:USERPROFILE\\.wave\\START-HERE.md"
       },
       "pass": [
-        {"kind": "exit_code", "equals": 0},
-        {"kind": "file_exists", "path": "~/.wave/START-HERE.md"},
-        {"kind": "json_path", "path": "~/.wave/install-state.json", "json_path": "required_steps_passed", "equals": true, "message": "전체 검증 시 true · 예외·미측정이 있으면 false와 exceptions 기록"}
+        {
+          "kind": "exit_code",
+          "equals": 0
+        },
+        {
+          "kind": "file_exists",
+          "path": "~/.wave/START-HERE.md"
+        },
+        {
+          "kind": "json_path",
+          "path": "~/.wave/install-state.json",
+          "json_path": "required_steps_passed",
+          "equals": true,
+          "message": "전체 검증 시 true · 예외·미측정이 있으면 false와 exceptions 기록"
+        }
       ],
       "on_fail": {
         "error_id": "WT-S09-COMPLETE",

@@ -2,6 +2,8 @@ name: Hotfix live Windows entry check (login STUBBED)
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['hotfix/**']
 
 permissions:
   contents: read
@@ -13,9 +15,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cmd: [new, old]
+        cmd: [new, old, winfix]
     steps:
-      - uses: actions/checkout@v4
       - name: Prepare fresh profile and Claude login stub
         shell: powershell
         run: |
@@ -23,9 +24,14 @@ jobs:
           if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) {
             throw 'Native Windows PowerShell 5.1 is required'
           }
-          $minimum = [string](Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).tooling.claude_code_min_version
-          if ($minimum -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid Claude minimum pin' }
+          $ProgressPreference = 'SilentlyContinue'
           $evidence = Join-Path $env:RUNNER_TEMP 'hotfix-live-${{ matrix.cmd }}'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $stepsUrl = 'https://github.com/greatson79/wave-terminal/releases/download/v0.3.3/steps.json'
+          $stepsPath = Join-Path $evidence 'steps.json'
+          Invoke-WebRequest -UseBasicParsing -Uri $stepsUrl -OutFile $stepsPath
+          $minimum = [string](Get-Content -LiteralPath $stepsPath -Raw -Encoding UTF8 | ConvertFrom-Json).tooling.claude_code_min_version
+          if ($minimum -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid Claude minimum pin' }
           $profile = Join-Path $env:RUNNER_TEMP ('live-home-' + [guid]::NewGuid().ToString('N'))
           $stubs = Join-Path $profile 'stubs'
           New-Item -ItemType Directory -Force -Path $evidence, $stubs | Out-Null
@@ -48,7 +54,7 @@ jobs:
             'WAVE_NO_PROGRESS=1'
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           # WAVE_NO_PROGRESS disables both progress and help: bootstrap.ps1:130,1673; lib/install-help.ps1:154.
-          @{command='${{ matrix.cmd }}'; minimum=$minimum; login='STUBBED, auth status always exits 0'; profile=$profile; commit=$env:GITHUB_SHA} |
+          @{command='${{ matrix.cmd }}'; minimum=$minimum; steps_url=$stepsUrl; steps_sha256=(Get-FileHash -LiteralPath $stepsPath -Algorithm SHA256).Hash; login='STUBBED, auth status always exits 0'; profile=$profile; commit=$env:GITHUB_SHA} |
             ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $evidence 'setup.json')
       - name: Run exact live learner command (20-minute cap; later failures recorded)
         id: live
@@ -64,6 +70,8 @@ jobs:
             Write-Host "Claude command: $((Get-Command claude).Source); LOGIN IS STUBBED"
             if ('${{ matrix.cmd }}' -eq 'new') {
               iex ((irm https://waveainetworks.com/win) -replace '^[^&]*','')
+            } elseif ('${{ matrix.cmd }}' -eq 'winfix') {
+              irm https://waveainetworks.com/winfix.txt | iex
             } else {
               irm https://waveainetworks.com/win | iex
             }

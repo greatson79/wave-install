@@ -798,7 +798,8 @@ function Run-S03 {
 
 function Ensure-WaveShortcuts {
   if ($env:OS -ne 'Windows_NT') { return }
-  $target = Join-Path $WaveHome 'bin\cys-app.exe'
+  $target = Join-Path $WaveHome 'bin\wave-app.exe'
+  $targets = @($target, (Join-Path $WaveHome 'bin\cys-app.exe'))
   if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw 'Wave Terminal 앱 실행 파일이 없습니다' }
   $programs = [Environment]::GetFolderPath('Programs')
   $desktop = [Environment]::GetFolderPath('Desktop')
@@ -807,24 +808,29 @@ function Ensure-WaveShortcuts {
   $desktopMarker = Join-Path $WaveHome 'install\desktop-shortcut'
   if (Test-Path -LiteralPath $nested) { $start = $nested }
   $shell = New-Object -ComObject WScript.Shell
-  foreach ($link in @($start)) {
-    if (-not (Test-Path -LiteralPath $link)) {
+  $links = @($start)
+  $flat = Join-Path $programs 'Wave Terminal.lnk'
+  if ($flat -ne $start -and (Test-Path -LiteralPath $flat)) { $links += $flat }
+  $desktopLink = Join-Path $desktop 'Wave Terminal.lnk'
+  if (Test-Path -LiteralPath $desktopLink) { $links += $desktopLink }
+  foreach ($link in $links) {
+    if (-not (Test-Path -LiteralPath $link) -or $targets -notcontains $shell.CreateShortcut($link).TargetPath) {
       $shortcut = $shell.CreateShortcut($link)
       $shortcut.TargetPath = $target
       $shortcut.Save()
     }
-    if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath($target)) {
+    if ($targets -notcontains [IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath)) {
       throw "Wave Terminal 바로가기 대상이 다릅니다: $link"
     }
   }
   if (-not (Test-Path -LiteralPath $desktopMarker)) {
     $link = Join-Path $desktop 'Wave Terminal.lnk'
-    if (-not (Test-Path -LiteralPath $link)) {
+    if (-not (Test-Path -LiteralPath $link) -or $targets -notcontains $shell.CreateShortcut($link).TargetPath) {
       $shortcut = $shell.CreateShortcut($link)
       $shortcut.TargetPath = $target
       $shortcut.Save()
     }
-    if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath($target)) {
+    if ($targets -notcontains [IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath)) {
       throw "Wave Terminal 바로가기 대상이 다릅니다: $link"
     }
     New-Item -ItemType Directory -Force -Path (Split-Path $desktopMarker) | Out-Null

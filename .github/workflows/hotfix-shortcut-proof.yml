@@ -1,0 +1,144 @@
+name: Hotfix shortcut proof (Windows PowerShell 5.1)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['hotfix/**']
+
+permissions:
+  contents: read
+
+jobs:
+  shortcut-proof:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse, install pinned 0.3.3, and prove real shortcuts
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $evidence = Join-Path $env:RUNNER_TEMP 'hotfix-shortcut-proof'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          Start-Transcript -Path (Join-Path $evidence 'proof.log')
+          try {
+            if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) {
+              throw 'This proof requires native Windows PowerShell 5.1'
+            }
+            $bootstrapAst = $null
+            foreach ($file in @('bootstrap.ps1', 'win-start.ps1')) {
+              $tokens = $null; $parseErrors = $null
+              $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$parseErrors)
+              if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+              if ($file -eq 'bootstrap.ps1') { $bootstrapAst = $ast }
+              Write-Host "PARSE PASS: $file"
+            }
+            $entry = [IO.File]::ReadAllBytes((Join-Path $PWD 'win-start.ps1'))
+            if ($entry.Length -lt 3 -or $entry[0] -ne 38 -or $entry[1] -ne 32 -or $entry[2] -ne 123) {
+              throw 'win-start.ps1 must start with literal & {, without a BOM'
+            }
+            $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
+            $asset = 'wave-terminal-0.3.3-windows-x64-setup.exe'
+            $pin = [string]$release.sha256.windows_x64
+            if ($release.version -ne '0.3.3' -or $release.asset_name.windows_x64 -ne $asset -or $pin -notmatch '^[0-9a-f]{64}$') {
+              throw 'Expected the shipped 0.3.3 Windows pin in steps.json'
+            }
+            $download = Join-Path $env:RUNNER_TEMP ('shortcut-download-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $download | Out-Null
+            gh release download v0.3.3 --repo greatson79/wave-terminal --pattern $asset --dir $download
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned installer download failed' }
+            $installer = Join-Path $download $asset
+            $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $pin) { throw "Installer hash mismatch: $actual != $pin" }
+            if ((Get-Item -LiteralPath $installer).Length -ne $release.bytes.windows_x64) {
+              throw 'Installer byte count mismatch'
+            }
+            $env:USERPROFILE = Join-Path $env:RUNNER_TEMP ('shortcut-home-' + [guid]::NewGuid().ToString('N'))
+            $env:HOME = $env:USERPROFILE
+            $env:WAVE_HOME = Join-Path $env:USERPROFILE '.wave'
+            $WaveHome = $env:WAVE_HOME
+            $bin = Join-Path $WaveHome 'bin'
+            New-Item -ItemType Directory -Force -Path $bin | Out-Null
+            $install = Start-Process -FilePath $installer -ArgumentList "/S /D=$bin" -Wait -PassThru
+            if ($install.ExitCode -ne 0) { throw "NSIS failed: $($install.ExitCode)" }
+            $target = Join-Path $bin 'wave-app.exe'
+            if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw 'NSIS did not install wave-app.exe' }
+            # NSIS and .NET use the runner account's native known folders, not USERPROFILE overrides.
+            $programs = [Environment]::GetFolderPath('Programs')
+            $desktop = [Environment]::GetFolderPath('Desktop')
+            $flat = Join-Path $programs 'Wave Terminal.lnk'
+            $nested = Join-Path (Join-Path $programs 'Wave Terminal') 'Wave Terminal.lnk'
+            $desktopLink = Join-Path $desktop 'Wave Terminal.lnk'
+            $paths = @($flat, $nested, $desktopLink)
+            $shell = New-Object -ComObject WScript.Shell
+            $results = New-Object System.Collections.ArrayList
+            function Assert-Target([string]$path, [string]$expected) {
+              if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing shortcut: $path" }
+              $actualTarget = $shell.CreateShortcut($path).TargetPath
+              if ([IO.Path]::GetFullPath($actualTarget) -ne [IO.Path]::GetFullPath($expected)) {
+                throw "Wrong shortcut target: $path -> $actualTarget"
+              }
+            }
+            function Record-Case([string]$name) {
+              $links = @(foreach ($path in $paths) {
+                if (Test-Path -LiteralPath $path) {
+                  @{path=$path; target=$shell.CreateShortcut($path).TargetPath; sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+                }
+              })
+              [void]$results.Add(@{case=$name; verdict='PASS'; links=$links})
+              @($results.ToArray()) | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $evidence 'cases.json')
+              Write-Host "PASS: $name"
+            }
+            $functions = @($bootstrapAst.FindAll({
+              param($node)
+              $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Ensure-WaveShortcuts'
+            }, $true))
+            if ($functions.Count -ne 1) { throw 'Expected exactly one Ensure-WaveShortcuts definition' }
+            # Load only the actual fixed helper; dot-sourcing all bootstrap would run its main installer.
+            . ([scriptblock]::Create($functions[0].Extent.Text))
+            $made = @($paths | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+            if (-not ($made -contains $flat) -and -not ($made -contains $nested)) {
+              throw 'NSIS did not create a Start Menu shortcut'
+            }
+            foreach ($path in $made) {
+              Assert-Target $path $target
+              Copy-Item -LiteralPath $path -Destination (Join-Path $evidence ('nsis-' + [array]::IndexOf($paths, $path) + '.lnk'))
+            }
+            @{asset=$asset; sha256=$actual; expected_sha256=$pin; install_exit=$install.ExitCode; userprofile=$env:USERPROFILE; bin=$bin; programs=$programs; desktop=$desktop; commit=$env:GITHUB_SHA} |
+              ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $evidence 'install.json')
+            Ensure-WaveShortcuts
+            foreach ($path in $made) { Assert-Target $path $target }
+            Assert-Target $desktopLink $target
+            Record-Case '1: NSIS-made canonical shortcut accepted'
+            # Exercise both Start Menu forms and Desktop, including the existing Desktop marker.
+            New-Item -ItemType Directory -Force -Path (Split-Path $nested) | Out-Null
+            foreach ($path in $paths) {
+              $link = $shell.CreateShortcut($path)
+              $link.TargetPath = Join-Path $bin 'other.exe'
+              $link.Save()
+            }
+            Ensure-WaveShortcuts
+            foreach ($path in $paths) { Assert-Target $path $target }
+            Record-Case '2: mismatched shortcuts repaired'
+            foreach ($path in $paths) {
+              Move-Item -LiteralPath $path -Destination (Join-Path $evidence ('repaired-' + [array]::IndexOf($paths, $path) + '.lnk'))
+            }
+            Move-Item -LiteralPath (Join-Path $WaveHome 'install\desktop-shortcut') -Destination (Join-Path $evidence 'desktop-shortcut.marker')
+            Ensure-WaveShortcuts
+            Assert-Target $flat $target
+            Assert-Target $desktopLink $target
+            Record-Case '3: absent shortcuts created'
+            if ($results.Count -ne 3) { throw 'Expected all three shortcut cases' }
+          } finally {
+            Stop-Transcript
+          }
+      - name: Upload shortcut proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotfix-shortcut-proof-${{ github.sha }}
+          path: ${{ runner.temp }}/hotfix-shortcut-proof/
+          if-no-files-found: error

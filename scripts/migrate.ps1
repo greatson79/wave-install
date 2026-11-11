@@ -189,3 +189,6 @@ foreach ($settings in @((Join-Path $source 'settings.json'), $homeSettings)) {
 }
 Log "summary: copied $script:copied / skipped (clash) $script:clashes / listed hooks $script:hooks + MCP $script:mcp / backup $backup"
 if ($DryRun) { Log 'report: none (dry run)' } else { Log "report: $script:report" }
+
+$reportLocation = if ($DryRun) { '없음(미리보기)' } else { $script:report }
+Write-Output "옮긴 것 $script:copied`개 / 건너뛴 것 $script:clashes`개(이름 충돌) / 훅·MCP 목록: 훅 $script:hooks`개 + MCP $script:mcp`개 / 백업 위치: $backup / 보고서 위치: $reportLocation"

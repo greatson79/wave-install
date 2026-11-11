@@ -3,8 +3,9 @@
 set -euo pipefail
 umask 077
 shopt -s nullglob dotglob
+migrate() {
 DRY=0
-case "${1-}" in '' ) ;; --dry-run) DRY=1 ;; *) echo 'Usage: migrate.sh [--dry-run]' >&2; exit 2 ;; esac
+case "${1-}" in --yes) ;; --dry-run) DRY=1 ;; *) echo 'Usage: migrate.sh [--dry-run|--yes]' >&2; exit 2 ;; esac
 [ "$#" -le 1 ] || exit 2
 SRC=${WAVE_MIGRATE_SRC:-$HOME/.claude}
 ACCOUNT=${CYS_ACCOUNT_DIR:-$HOME/.cys/claude}
@@ -156,3 +157,21 @@ JS
 done
 log "summary: copied $COPIED / skipped (clash) $CLASH / listed hooks $HOOKS + MCP $MCP / backup $BACKUP"
 if [ "$DRY" = 1 ]; then log 'report: none (dry run)'; else log "report: $REPORT"; fi
+
+printf '옮긴 것 %s개 / 건너뛴 것 %s개(이름 충돌) / 훅·MCP 목록: 훅 %s개 + MCP %s개 / 백업 위치: %s / 보고서 위치: %s\n' "$COPIED" "$CLASH" "$HOOKS" "$MCP" "$BACKUP" "${REPORT:-없음(미리보기)}"
+}
+# Define the complete script before reading the terminal so curl | bash cannot consume its own code.
+if [ "$#" -gt 0 ]; then
+    migrate "$@"
+else
+    migrate --dry-run
+    answer=''
+    if { printf '옮길까요? (Y/N) ' > /dev/tty; IFS= read -r answer < /dev/tty; } 2>/dev/null; then
+        case "$answer" in
+            Y|y) migrate --yes ;;
+            *) printf '아무것도 변경하지 않았습니다.\n' ;;
+        esac
+    else
+        printf '미리보기만 실행했습니다. 실제로 옮기려면 터미널에서 curl -fsSL https://waveainetworks.com/migrate.sh | bash -s -- --yes 를 실행하세요.\n'
+    fi
+fi

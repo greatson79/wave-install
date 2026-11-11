@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Prove migration with Windows PowerShell 5.1
+      - name: Prove PS 5.1 migration and starter Y/N/SHA-mismatch paths
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -33,8 +33,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Prove migration with system Bash 3.2
+      - name: Prove Bash piped yes, dry-run, no-tty and site assembly
         shell: bash
         run: |
           /bin/bash --version
           python3 -m unittest discover -s tests -p test_migrate.py -v
+      - name: Assemble migration site and verify pinned file checksums
+        shell: bash
+        run: |
+          bash scripts/assemble-migrate-site.sh "$RUNNER_TEMP/migrate-site"
+          cd "$RUNNER_TEMP/migrate-site"
+          shasum -a 256 -c SHA256SUMS-migrate

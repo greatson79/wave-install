@@ -93,7 +93,7 @@ class MigrationTests(unittest.TestCase):
                 raise
         engine = os.environ.get('MIGRATE_ENGINE', 'powershell' if os.name == 'nt' else 'bash')
         if engine == 'bash':
-            self.command = ['/bin/bash', str(ROOT / 'scripts/migrate.sh')]
+            self.command = ['/bin/bash', str(ROOT / 'scripts/migrate.sh'), '--yes']
             self.dry = '--dry-run'
         else:
             exe = shutil.which(engine)
@@ -108,7 +108,8 @@ class MigrationTests(unittest.TestCase):
         path.write_bytes(data)
 
     def run_script(self, *flags, ok=True):
-        p = subprocess.run(self.command + list(flags), env=self.env, capture_output=True, timeout=30)
+        command = [arg for arg in self.command if arg != '--yes'] if flags else self.command
+        p = subprocess.run(command + list(flags), env=self.env, capture_output=True, timeout=30)
         if ok:
             self.assertEqual(p.returncode, 0, (p.stdout + p.stderr).decode('utf-8', 'replace'))
         else:
@@ -206,6 +207,99 @@ class MigrationTests(unittest.TestCase):
         before = snapshot(self.home)
         self.run_script(ok=False)
         self.assertEqual(snapshot(self.home), before)
+
+
+    @unittest.skipIf(os.name == 'nt', 'macOS pipe entry point')
+    def test_piped_yes_migrates(self):
+        p = self.pipe_shell('--yes')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual((self.account / 'agents/도우미.md').read_bytes(), self.payload)
+        for text in ('옮긴 것 5개', '건너뛴 것 1개(이름 충돌)', '훅·MCP 목록', '백업 위치', '보고서 위치'):
+            self.assertIn(text, p.stdout.decode())
+
+    @unittest.skipIf(os.name == 'nt', 'macOS pipe entry point')
+    def test_piped_dry_and_no_tty_write_nothing(self):
+        for flags in (('--dry-run',), ()):
+            with self.subTest(flags=flags):
+                before = snapshot(self.home)
+                p = self.pipe_shell(*flags)
+                self.assertEqual(p.returncode, 0, p.stderr)
+                self.assertEqual(snapshot(self.home), before)
+                self.assertIn(b'DRY RUN', p.stdout)
+                if not flags:
+                    self.assertIn('--yes', p.stdout.decode())
+
+    def pipe_shell(self, *flags):
+        return subprocess.run(['/bin/bash', '-s', '--', *flags],
+                              input=(ROOT / 'scripts/migrate.sh').read_bytes(),
+                              env=self.env, capture_output=True, timeout=30, start_new_session=True)
+
+    @unittest.skipUnless(os.name == 'nt', 'requires Windows PowerShell 5.1')
+    def test_starter_yes_no_and_hash_mismatch(self):
+        template = ROOT / 'scripts/migrate-start.ps1'
+        self.assertTrue(template.is_file(), 'migration starter must exist')
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            pin = hashlib.sha256((ROOT / 'scripts/migrate.ps1').read_bytes()).hexdigest()
+            for answer, digest in (('N', pin), ('Y', '0' * 64), ('Y', pin)):
+                with self.subTest(answer=answer, digest=digest):
+                    starter = tmp / 'starter.ps1'
+                    starter.write_bytes(template.read_bytes().replace(b'__WAVE_MIGRATE_PS1_SHA256__', digest.encode()))
+                    env = dict(self.env, WAVE_MIGRATE_ANSWER=answer,
+                               WAVE_MIGRATE_PS1_URL=(ROOT / 'scripts/migrate.ps1').as_uri(),
+                               TEMP=str(tmp), TMP=str(tmp))
+                    before = snapshot(self.home)
+                    p = subprocess.run([shutil.which('powershell'), '-NoProfile', '-ExecutionPolicy',
+                                        'Bypass', '-Command',
+                                        "Get-Content -Raw -LiteralPath '" + str(starter).replace("'", "''") + "' | Invoke-Expression"],
+                                       env=env, capture_output=True, timeout=30)
+                    if digest != pin:
+                        self.assertNotEqual(p.returncode, 0)
+                        self.assertIn(b'SHA_MISMATCH', p.stdout + p.stderr)
+                    else:
+                        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+                    self.assertEqual(sorted(p.name for p in tmp.iterdir()), ['starter.ps1'])
+                    if answer == 'N' or digest != pin:
+                        self.assertEqual(snapshot(self.home), before)
+                    else:
+                        self.assertEqual((self.account / 'agents/도우미.md').read_bytes(), self.payload)
+                        self.assertIn('옮긴 것 5개', p.stdout.decode('utf-8-sig'))
+
+
+class SiteAssemblyTests(unittest.TestCase):
+    def test_starter_encoding(self):
+        p = ROOT / 'scripts/migrate-start.ps1'
+        self.assertTrue(p.is_file(), 'migration starter must exist')
+        data = p.read_bytes()
+        self.assertTrue(data.startswith(b'& {'))
+        data.decode('ascii')
+        self.assertFalse(data.startswith(b'\xef\xbb\xbf'))
+        self.assertTrue((ROOT / 'scripts/migrate.ps1').read_bytes().startswith(b'\xef\xbb\xbf'))
+
+    @unittest.skipIf(os.name == 'nt', 'site assembly uses Bash')
+    def test_assembled_pin_and_checksums(self):
+        assembler = ROOT / 'scripts/assemble-migrate-site.sh'
+        self.assertTrue(assembler.is_file(), 'site assembler must exist')
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / 'site'
+            p = subprocess.run(['/bin/bash', str(assembler), str(out)], capture_output=True)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual({f.name for f in out.iterdir()},
+                             {'migrate', 'migrate.ps1', 'migrate.sh', 'SHA256SUMS-migrate'})
+            pin = hashlib.sha256((out / 'migrate.ps1').read_bytes()).hexdigest()
+            starter = (out / 'migrate').read_bytes()
+            self.assertIn(pin.encode(), starter)
+            self.assertNotIn(b'__WAVE_', starter)
+            starter.decode('ascii')
+            self.assertTrue(starter.startswith(b'& {'))
+            for name in ('migrate.ps1', 'migrate.sh'):
+                self.assertEqual((out / name).read_bytes(), (ROOT / 'scripts' / name).read_bytes())
+            entries = {}
+            for line in (out / 'SHA256SUMS-migrate').read_text().splitlines():
+                digest, name = line.split()
+                entries[name] = digest
+                self.assertEqual(digest, hashlib.sha256((out / name).read_bytes()).hexdigest())
+            self.assertEqual(set(entries), {'migrate', 'migrate.ps1', 'migrate.sh'})
 
 
 if os.name != 'nt' and shutil.which('pwsh') and not os.environ.get('MIGRATE_ENGINE'):

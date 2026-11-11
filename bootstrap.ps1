@@ -853,6 +853,15 @@ function Ensure-WaveShortcuts {
   }
 }
 
+# Launch the NSIS setup through a separate cmd so that a security tool killing the launcher (11/11 learner:
+# step 5 ended with exit 1 and no text) hits cmd, not this installer — the exit code is then reported.
+function Invoke-NsisSetup([string]$Setup, [string]$Dir) {
+  Write-Log "setup launch: $Setup"
+  $launcher = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /c start "" /wait "' + $Setup + '" /S /D=' + $Dir) -WindowStyle Hidden -Wait -PassThru
+  Write-Log "setup exit: $($launcher.ExitCode)"
+  return [int]$launcher.ExitCode
+}
+
 function Run-S04 {
   Release-Context
   if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) { throw "검증된 artifact 없음" }
@@ -867,8 +876,8 @@ function Run-S04 {
   New-Item -ItemType Directory -Force -Path $bin | Out-Null
   # NSIS /D는 공백이 있어도 따옴표 없이 마지막 인자여야 한다.
   # 정본: https://nsis.sourceforge.io/Docs/Chapter3.html#installerusage
-  $process = Start-Process -FilePath $ArtifactPath -ArgumentList "/S /D=$bin" -Wait -PassThru
-  if ($process.ExitCode -ne 0) { throw "W-NSIS-EXIT: 설치기 종료값 $($process.ExitCode)" }
+  $process = [pscustomobject]@{ ExitCode = (Invoke-NsisSetup $ArtifactPath $bin) }
+  if ($process.ExitCode -ne 0) { throw "W-NSIS-EXIT: 설치기 종료값 $($process.ExitCode) (백신이 설치 파일을 막았다면 Windows 보안 > 보호 기록에서 허용한 뒤 다시 실행하세요)" }
   $cys = Join-Path $bin "cys.exe"
   $cysd = Join-Path $bin "cysd.exe"
   if (-not (Test-Path -LiteralPath $cys -PathType Leaf) -or -not (Test-Path -LiteralPath $cysd -PathType Leaf)) { throw "S2 설치 산출물의 cys/cysd 경로가 없음" }

@@ -74,3 +74,5 @@ jobs:
           Invoke-Case 'login-fails-interactive-ok' 'fail' 'ok' $false $true @('auth status', 'auth login', '', 'auth status')
           Invoke-Case 'login-fails-interactive-fails' 'fail' 'no' $false $false @('auth status', 'auth login', '', 'auth status')
           Write-Host 'ALL CASES PASS'
+          # The last stub call (expected-failure case) leaves LASTEXITCODE=1; the step result is the asserts above.
+          exit 0

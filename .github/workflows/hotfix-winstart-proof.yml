@@ -33,7 +33,10 @@ jobs:
             $runner = Join-Path $root 'run.ps1'
             [IO.File]::WriteAllText($runner, $script, [Text.Encoding]::ASCII)
             $env:WAVE_HOME = Join-Path $root '.wave'
+            # The child's expected failure line arrives on stderr; under Stop, PS 5.1 would abort the harness on it.
+            $ErrorActionPreference = 'Continue'
             $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "iex ([IO.File]::ReadAllText('$runner'))" 2>&1 | Out-String)
+            $ErrorActionPreference = 'Stop'
             Write-Host "---- $Name output ----`n$out"
             $hasTail = $out.Contains($marker) -and $out.Contains('last lines of install.log')
             if ($ExpectTail -ne $hasTail) { throw "$Name : expected tail=$ExpectTail, got $hasTail" }

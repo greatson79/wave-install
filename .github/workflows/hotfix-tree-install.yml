@@ -23,7 +23,7 @@ jobs:
           $profile = Join-Path $env:RUNNER_TEMP ('tree-home-' + [guid]::NewGuid().ToString('N'))
           $stubs = Join-Path $profile 'stubs'
           New-Item -ItemType Directory -Force -Path $stubs | Out-Null
-          @('@echo off', 'if "%~1"=="--version" ( echo ' + $minimum + ' & exit /b 0 )', 'if "%~1 %~2"=="auth status" exit /b 0', 'echo Claude is STUBBED: %* 1>&2', 'exit /b 99') -join "`r`n" |
+          @('@echo off', 'if "%~1"=="--version" (', ('  echo ' + $minimum), '  exit /b 0', ')', 'if "%~1 %~2"=="auth status" exit /b 0', 'echo Claude is STUBBED: %* 1>&2', 'exit /b 99') -join "`r`n" |
             Set-Content -Encoding ASCII (Join-Path $stubs 'claude.cmd')
           $stubs | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           @("USERPROFILE=$profile", "HOME=$profile", "WAVE_HOME=$(Join-Path $profile '.wave')", 'WAVE_NO_PROGRESS=1') | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append

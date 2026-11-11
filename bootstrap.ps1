@@ -749,9 +749,24 @@ function Confirm-SeatClaudeAuth {
     & claude auth status *> $null
     if ($LASTEXITCODE -ne 0) {
       & claude auth login
-      if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 실패' }
+      $loginExit = $LASTEXITCODE
+      if ($loginExit -ne 0) {
+        # Real Windows learners hit a failed browser login here (11/11, help 427bf312, f7553a27).
+        # Fall back to Claude's own first-run screen, then check again.
+        Write-Log "claude auth login exit $loginExit; falling back to interactive claude"
+        Write-Host ''
+        Write-Host 'Claude 로그인이 끝나지 않았습니다. 이제 Claude 화면을 엽니다.'
+        Write-Host '  1) 화면 안내대로 Claude 계정(Pro 또는 Max)으로 로그인하세요. 로그인 메뉴가 안 보이면 /login 을 입력하세요.'
+        Write-Host '  2) 로그인이 끝나면 /exit 를 입력해 Claude 를 닫으세요. 설치가 이어집니다.'
+        Write-Host ''
+        & claude
+      }
       & claude auth status *> $null
-      if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 재확인 실패' }
+      if ($LASTEXITCODE -ne 0) {
+        throw ('Claude 작업 칸 로그인 실패. 새 PowerShell 창에서 아래 두 줄을 차례로 실행하세요(Claude Pro 또는 Max 계정 필요):' +
+          [Environment]::NewLine + '  $env:CLAUDE_CONFIG_DIR="$HOME\.cys\claude"; claude    (로그인 후 /exit)' +
+          [Environment]::NewLine + '  irm https://waveainetworks.com/win | iex    (새 창에서)')
+      }
     }
   } finally {
     $env:CLAUDE_CONFIG_DIR = $previous

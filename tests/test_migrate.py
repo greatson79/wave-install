@@ -12,15 +12,28 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# PowerShell itself writes profile/module caches under the (test) home: AppData on Windows,
-# ~/.local/share/powershell and ~/.cache/powershell with pwsh. They are not migration writes.
-POWERSHELL_RUNTIME = ('AppData', '.local', '.cache')
+# PowerShell itself writes profile/module caches under the (test) home (PS 5.1 resolves AppData from
+# %USERPROFILE% via the registry, so env vars cannot move it). Only these exact PowerShell-owned trees
+# are ignored; anything else under AppData/.local/.cache still counts as a write and fails the test.
+POWERSHELL_OWNED = (
+    ('AppData', 'Local', 'Microsoft', 'Windows', 'PowerShell'),
+    ('AppData', 'Local', 'Microsoft', 'PowerShell'),
+    ('AppData', 'Roaming', 'Microsoft', 'Windows', 'PowerShell'),
+    ('.local', 'share', 'powershell'),
+    ('.cache', 'powershell'),
+    ('.config', 'powershell'),
+)
+
+
+def powershell_owned(parts):
+    # A PowerShell-owned tree itself, anything inside it, or one of its parent folders.
+    return any(parts[:len(owned)] == owned or owned[:len(parts)] == parts for owned in POWERSHELL_OWNED)
 
 
 def snapshot(root):
     result = {}
     for p in root.rglob('*'):
-        if p.relative_to(root).parts[0] in POWERSHELL_RUNTIME:
+        if powershell_owned(p.relative_to(root).parts):
             continue
         key = str(p.relative_to(root))
         if p.is_symlink():
@@ -30,6 +43,20 @@ def snapshot(root):
         else:
             result[key] = 'dir'
     return result
+
+
+class SnapshotFilterTests(unittest.TestCase):
+    def test_only_powershell_owned_trees_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in ('AppData/Local/Microsoft/Windows/PowerShell/StartupProfileData-NonInteractive',
+                        '.local/share/powershell/Modules/x.txt', 'AppData/stray.txt',
+                        'AppData/Local/wave-stray/x.txt', '.local/share/wave/x.txt', '.cache/other.txt'):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text('x')
+            keys = {Path(k).as_posix() for k, v in snapshot(root).items() if v != 'dir'}
+            self.assertEqual(keys, {'AppData/stray.txt', 'AppData/Local/wave-stray/x.txt',
+                                    '.local/share/wave/x.txt', '.cache/other.txt'})
 
 
 class MigrationTests(unittest.TestCase):

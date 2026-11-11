@@ -1,0 +1,76 @@
+name: Hotfix S02 login fallback proof (Windows PowerShell 5.1)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['hotfix/**']
+
+permissions:
+  contents: read
+
+jobs:
+  login-proof:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove Confirm-SeatClaudeAuth fallback with a stubbed claude (real login cannot run in CI)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Needs Windows PowerShell 5.1' }
+          $tokens = $null; $parseErrors = $null
+          $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          Write-Host 'PARSE PASS: bootstrap.ps1'
+          $fn = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Confirm-SeatClaudeAuth' }, $true))
+          if ($fn.Count -ne 1) { throw 'Expected exactly one Confirm-SeatClaudeAuth' }
+          # Load only the fixed helper; dot-sourcing all of bootstrap would run the installer.
+          . ([scriptblock]::Create($fn[0].Extent.Text))
+          $script:LogLines = New-Object System.Collections.ArrayList
+          function Write-Log([string]$Message) { [void]$script:LogLines.Add($Message) }
+
+          # Stub claude: logged in = marker file inside CLAUDE_CONFIG_DIR. Every call is recorded with the config dir it saw.
+          $stubs = Join-Path $env:RUNNER_TEMP 'stubs'
+          New-Item -ItemType Directory -Force -Path $stubs | Out-Null
+          $calls = Join-Path $env:RUNNER_TEMP 'calls.txt'
+          @(
+            '@echo off',
+            ('echo %*^|%CLAUDE_CONFIG_DIR%>>"' + $calls + '"'),
+            'if "%~1 %~2"=="auth status" ( if exist "%CLAUDE_CONFIG_DIR%\logged-in" ( exit /b 0 ) else ( exit /b 1 ) )',
+            'if "%~1 %~2"=="auth login" ( if "%STUB_LOGIN%"=="ok" ( echo x>"%CLAUDE_CONFIG_DIR%\logged-in" & exit /b 0 ) else ( exit /b 1 ) )',
+            'if "%~1"=="" ( if "%STUB_INTERACTIVE%"=="ok" ( echo x>"%CLAUDE_CONFIG_DIR%\logged-in" ) & exit /b 0 )',
+            'exit /b 99'
+          ) -join "`r`n" | Set-Content -Encoding ASCII (Join-Path $stubs 'claude.cmd')
+          $env:PATH = $stubs + ';' + $env:PATH
+
+          function Invoke-Case([string]$Name, [string]$Login, [string]$Interactive, [bool]$Preauth, [bool]$ExpectPass, [string[]]$ExpectCalls) {
+            $env:USERPROFILE = Join-Path $env:RUNNER_TEMP ('home-' + $Name)
+            Remove-Item -Recurse -Force -LiteralPath $env:USERPROFILE -ErrorAction SilentlyContinue
+            Remove-Item -Force -LiteralPath $calls -ErrorAction SilentlyContinue
+            $dir = Join-Path $env:USERPROFILE '.cys\claude'
+            if ($Preauth) { New-Item -ItemType Directory -Force -Path $dir | Out-Null; 'x' | Set-Content (Join-Path $dir 'logged-in') }
+            $env:STUB_LOGIN = $Login; $env:STUB_INTERACTIVE = $Interactive
+            $script:LogLines.Clear()
+            $env:CLAUDE_CONFIG_DIR = 'OUTER'
+            $err = $null
+            try { Confirm-SeatClaudeAuth } catch { $err = $_.Exception.Message }
+            if ($env:CLAUDE_CONFIG_DIR -ne 'OUTER') { throw "$Name : CLAUDE_CONFIG_DIR not restored" }
+            $seen = @(Get-Content -LiteralPath $calls)
+            foreach ($line in $seen) { if (($line -split '\|')[1] -ne $dir) { throw "$Name : claude ran with wrong config dir: $line" } }
+            $verbs = @($seen | ForEach-Object { ($_ -split '\|')[0].Trim() })
+            if (($verbs -join ',') -ne ($ExpectCalls -join ',')) { throw "$Name : calls [$($verbs -join ',')] != [$($ExpectCalls -join ',')]" }
+            if ($ExpectPass -and $err) { throw "$Name : expected pass, got: $err" }
+            if (-not $ExpectPass) {
+              if (-not $err) { throw "$Name : expected failure" }
+              if ($err -notlike '*$env:CLAUDE_CONFIG_DIR="$HOME\.cys\claude"; claude*' -or $err -notlike '*irm https://waveainetworks.com/win | iex*') { throw "$Name : manual line missing: $err" }
+            }
+            if ($Login -ne 'ok' -and -not $Preauth -and -not ($script:LogLines -match 'claude auth login exit 1')) { throw "$Name : exit code not logged" }
+            Write-Host "PASS: $Name (calls: $($verbs -join ', '))"
+          }
+
+          Invoke-Case 'already-logged-in' 'ok' 'ok' $true $true @('auth status')
+          Invoke-Case 'login-ok' 'ok' 'no' $false $true @('auth status', 'auth login', 'auth status')
+          Invoke-Case 'login-fails-interactive-ok' 'fail' 'ok' $false $true @('auth status', 'auth login', '', 'auth status')
+          Invoke-Case 'login-fails-interactive-fails' 'fail' 'no' $false $false @('auth status', 'auth login', '', 'auth status')
+          Write-Host 'ALL CASES PASS'

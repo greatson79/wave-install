@@ -1,0 +1,62 @@
+name: Hotfix detached NSIS launch proof (Windows PowerShell 5.1)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['hotfix/**']
+
+permissions:
+  contents: read
+
+jobs:
+  nsis-launch-proof:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real pinned 0.3.3 setup via Invoke-NsisSetup + exit-code passthrough
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Needs Windows PowerShell 5.1' }
+          $tokens = $null; $parseErrors = $null
+          $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          $fn = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-NsisSetup' }, $true))
+          if ($fn.Count -ne 1) { throw 'Expected exactly one Invoke-NsisSetup' }
+          . ([scriptblock]::Create($fn[0].Extent.Text))
+          function Write-Log([string]$Message) { Write-Host "LOG: $Message" }
+
+          # Case 1: exit code passthrough with a fake setup that exits 3.
+          $fakeDir = Join-Path $env:RUNNER_TEMP 'fake setup'
+          New-Item -ItemType Directory -Force -Path $fakeDir | Out-Null
+          $fake = Join-Path $fakeDir 'fake-setup.exe'
+          Add-Type -OutputType ConsoleApplication -OutputAssembly $fake -TypeDefinition 'public static class P { public static int Main(string[] a) { return 3; } }'
+          $code = Invoke-NsisSetup $fake (Join-Path $env:RUNNER_TEMP 'x bin')
+          if ($code -ne 3) { throw "fake setup exit passthrough: got $code, want 3" }
+          Write-Host 'PASS: exit code passthrough (3)'
+
+          # Case 2: the real pinned 0.3.3 NSIS installs silently through the detached launcher, incl. a path with a space.
+          $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
+          $asset = 'wave-terminal-0.3.3-windows-x64-setup.exe'
+          $download = Join-Path $env:RUNNER_TEMP 'dl'
+          New-Item -ItemType Directory -Force -Path $download | Out-Null
+          gh release download v0.3.3 --repo greatson79/wave-terminal --pattern $asset --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'download failed' }
+          $setup = Join-Path $download $asset
+          $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne [string]$release.sha256.windows_x64) { throw "hash mismatch $actual" }
+          foreach ($bin in @((Join-Path $env:RUNNER_TEMP 'home1\.wave\bin'), (Join-Path $env:RUNNER_TEMP 'home two\.wave\bin'))) {
+            New-Item -ItemType Directory -Force -Path $bin | Out-Null
+            $code = Invoke-NsisSetup $setup $bin
+            if ($code -ne 0) { throw "real setup exit $code for $bin" }
+            foreach ($exe in @('cys.exe', 'cysd.exe', 'wave-app.exe')) {
+              if (-not (Test-Path -LiteralPath (Join-Path $bin $exe) -PathType Leaf)) { throw "missing $exe in $bin" }
+            }
+            Write-Host "PASS: real setup installed into '$bin'"
+          }
+          Write-Host 'ALL CASES PASS'
+          exit 0

@@ -1,5 +1,6 @@
 """Portable launch/encoding guards; Windows runtime proofs live in hotfix_av_proof.ps1."""
 from pathlib import Path
+import json
 import re
 import unittest
 
@@ -25,6 +26,10 @@ class AvLaunchTests(unittest.TestCase):
         row = source.split('"code": "J-AV-03"', 1)[1].split('}', 1)[0]
         self.assertIn('안랩 Safe Transaction(ASTx)·V3·알약', row)
         self.assertIn('작업 표시줄', row)
+        actions = json.loads('{"code": "J-AV-03"' + row + '}')
+        points = re.search(r'Write-Host \(-join \(\[char\[\]\]\(([^)]+)\)', start.decode('ascii'))
+        self.assertIsNotNone(points)
+        self.assertEqual(''.join(chr(int(n)) for n in points[1].split(',')), actions['action1'] + ' ' + actions['action2'])
 
 
 if __name__ == '__main__':

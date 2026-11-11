@@ -318,7 +318,7 @@ function Test-Path { param($LiteralPath, $PathType) return $true }
 function New-ItemProperty { throw 'installer must not register HKCU directly' }
 function Get-ItemProperty { throw 'installer must not inspect HKCU directly' }
 function New-Item { throw 'installer must not create a registry key' }
-function Start-Process {
+function Start-WaveDetached {
   param($FilePath)
   $script:starts += $FilePath
   $script:phase++

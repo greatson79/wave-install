@@ -1,4 +1,4 @@
-# rc.4 S07 (윈): 확인 창이 떠 있는 동안 예산 정지 · 상한 도달 시 좌석이 살아 있으면 종료값 2. 데몬·앱·실제 홈을 쓰지 않는다.
+﻿# rc.4 S07 (윈): 확인 창이 떠 있는 동안 예산 정지 · 상한 도달 시 좌석이 살아 있으면 종료값 2. 데몬·앱·실제 홈을 쓰지 않는다.
 param([string]$Mode = 'unit')
 $ErrorActionPreference = 'Stop'
 $t = $null; $errors = $null
@@ -95,7 +95,7 @@ if ($Mode -eq 'cwd') {
   $elsewhere = Join-Path $env:RC4_FIXTURE_DIR 'project'; New-Item -ItemType Directory -Force $elsewhere | Out-Null
   $env:USERPROFILE = $home1; $WaveHome = Join-Path $home1 '.wave'
   Set-Location $elsewhere
-  $r = Invoke-BoundedCheck (Get-Process -Id $PID).Path @('-NoProfile', '-Command', '(Get-Location).Path') 'cwd' 20000
+  $r = Invoke-BoundedCheck (Get-Process -Id $PID).Path @('-NoProfile', '-Command', '"(Get-Location).Path"') 'cwd' 20000
   $got = ([string]$r.stdout).Trim()
   # macOS 임시 폴더의 /private 별칭 차이만 흡수한다
   if (($got -replace '^/private', '') -ne ($home1 -replace '^/private', '')) { throw "child cwd was '$got', expected the user home" }

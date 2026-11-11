@@ -322,8 +322,8 @@ $HelpRulesJson = @'
     "code": "J-AV-03",
     "symptom": "이전 실행이 실행 중 상태로 중단됨",
     "pattern": "지난 실행이 끝을 알리지 않고 멈췄습니다",
-    "action1": "창을 직접 닫았는지 확인하세요. 백신 기록도 확인하세요.",
-    "action2": "같은 명령으로 완료 단계를 건너뛰고 이어가세요.",
+    "action1": "안랩 Safe Transaction(ASTx)·V3·알약: 작업 표시줄에서 '종료'만으로는 부족할 수 있습니다;",
+    "action2": "설치하는 동안 해당 보안 프로그램의 예외 등록 또는 잠시 제거 후 같은 명령을 다시 실행하세요; 설치가 끝나면 다시 켜거나 설치하세요.",
     "case": "우리 running 상태 중단 회귀; 백신 원인 미확정",
     "os": "win",
     "sample": "지난 실행이 끝을 알리지 않고 멈췄습니다"
@@ -881,8 +881,9 @@ function Run-S04 {
   $cys = Join-Path $bin "cys.exe"
   $cysd = Join-Path $bin "cysd.exe"
   if (-not (Test-Path -LiteralPath $cys -PathType Leaf) -or -not (Test-Path -LiteralPath $cysd -PathType Leaf)) { throw "S2 설치 산출물의 cys/cysd 경로가 없음" }
-  $cliVersion = (& $cys --version 2>&1 | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or -not $cliVersion) { throw "cys 실행 확인 실패" }
+  $versionCheck = Invoke-BoundedCheck $cys @('--version') 'cys-version' 15000
+  $cliVersion = $versionCheck.stdout.Trim()
+  if ($versionCheck.exit_code -ne 0 -or -not $cliVersion) { throw "cys 실행 확인 실패" }
   # cysd에는 --version 계약이 없다. 여기서 실행하면 데몬이 기동되어 설치기가 대기한다.
   # 서명·고정 해시가 검증된 NSIS의 설치 결과를 정적 검사하고 실제 기동은 러너의 별도 스모크로 검증한다.
   $daemonFile = [IO.File]::OpenRead($cysd)
@@ -917,10 +918,14 @@ function Test-DaemonReady {
   return $false
 }
 
+function Start-WaveDetached([string]$FilePath) {
+  Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /c start "" "' + $FilePath + '"') -WorkingDirectory $env:USERPROFILE | Out-Null
+}
+
 function Start-WaveApp {
   $app = Join-Path $WaveHome 'bin\cys-app.exe'
   if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw 'cys-app.exe 없음' }
-  Start-Process -FilePath $app -WorkingDirectory $env:USERPROFILE | Out-Null   # 홈에서 시작 — 앱이 띄우는 데몬·복원 좌석이 호출자 폴더를 상속하지 않게(2238)
+  Start-WaveDetached $app   # 홈에서 시작 — 앱이 띄우는 데몬·복원 좌석이 호출자 폴더를 상속하지 않게(2238)
 }
 
 function Run-S05 {
@@ -935,7 +940,7 @@ function Run-S05 {
   $fallback = $false
   if (-not $ready) {
     $fallback = $true
-    try { Start-Process -FilePath (Join-Path $WaveHome 'bin\cysd.exe') -WorkingDirectory $env:USERPROFILE | Out-Null } catch { Write-Log $_.Exception.Message }
+    try { Start-WaveDetached (Join-Path $WaveHome 'bin\cysd.exe') } catch { Write-Log $_.Exception.Message }
     $ready = Test-DaemonReady
     if (-not $ready) {
       try { Start-WaveApp } catch { Write-Log $_.Exception.Message }
@@ -1407,7 +1412,8 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
   $stdoutPath = Join-Path $verify ($Name + '.stdout.log')
   $stderrPath = Join-Path $verify ($Name + '.stderr.log')
-  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -WorkingDirectory $env:USERPROFILE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+  # ASTx blocked PowerShell starting fresh installed binaries; cmd stays their direct parent.
+  $process = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /c ""' + $FilePath + '" ' + ($Arguments -join ' ') + '"') -WorkingDirectory $env:USERPROFILE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
   $exitCode = $null
   $killError = $null
   try {
@@ -1416,7 +1422,12 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
     if ($finished) {
       $exitCode = $process.ExitCode
     } else {
-      try { if (-not $process.HasExited) { $process.Kill() } }
+      try {
+        if (-not $process.HasExited) {
+          & "$env:SystemRoot\System32\taskkill.exe" /T /F /PID $process.Id 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0 -and -not $process.HasExited) { $killError = "taskkill failed (exit $LASTEXITCODE)" }
+        }
+      }
       catch { if (-not $process.HasExited) { $killError = $_.Exception.Message } }
     }
     # Keep the final wait bounded: descendants may retain redirected handles.

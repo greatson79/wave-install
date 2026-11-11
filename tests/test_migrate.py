@@ -12,9 +12,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# PowerShell itself writes profile/module caches under the (test) home: AppData on Windows,
+# ~/.local/share/powershell and ~/.cache/powershell with pwsh. They are not migration writes.
+POWERSHELL_RUNTIME = ('AppData', '.local', '.cache')
+
+
 def snapshot(root):
     result = {}
     for p in root.rglob('*'):
+        if p.relative_to(root).parts[0] in POWERSHELL_RUNTIME:
+            continue
         key = str(p.relative_to(root))
         if p.is_symlink():
             result[key] = ('link', os.readlink(p))

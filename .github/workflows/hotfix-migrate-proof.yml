@@ -1,0 +1,40 @@
+name: Hotfix add-on migration proof
+
+on:
+  push:
+    branches: ['hotfix/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove migration with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Requires Windows PowerShell 5.1' }
+          $env:MIGRATE_ENGINE = 'powershell'
+          python -m unittest discover -s tests -p test_migrate.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove migration with system Bash 3.2
+        shell: bash
+        run: |
+          /bin/bash --version
+          python3 -m unittest discover -s tests -p test_migrate.py -v

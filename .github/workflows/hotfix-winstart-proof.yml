@@ -1,0 +1,47 @@
+name: Hotfix win-start prints install.log on failure (Windows PowerShell 5.1)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['hotfix/**']
+
+permissions:
+  contents: read
+
+jobs:
+  winstart-proof:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fake bootstrap exits 1 or 0; win-start must show the log tail only on failure
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Needs Windows PowerShell 5.1' }
+          $template = [IO.File]::ReadAllText((Join-Path $PWD 'win-start.ps1'))
+          if (-not $template.StartsWith('& {')) { throw 'win-start.ps1 must start with & {' }
+          function Invoke-Case([string]$Name, [int]$Exit, [bool]$ExpectTail) {
+            $root = Join-Path $env:RUNNER_TEMP ('ws-' + $Name)
+            Remove-Item -Recurse -Force -LiteralPath $root -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force -Path (Join-Path $root '.wave') | Out-Null
+            $fake = Join-Path $root 'bootstrap.ps1'
+            $marker = "STEP5-MARKER-$Name"
+            "Add-Content -LiteralPath (Join-Path `$env:WAVE_HOME 'install.log') -Value '[5/10] $marker'; exit $Exit" | Set-Content -Encoding ASCII $fake
+            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $fake).Hash.ToLowerInvariant()
+            $script = $template.Replace('__WAVE_BOOTSTRAP_URL__', ([Uri]$fake).AbsoluteUri).Replace('__WAVE_BOOTSTRAP_SHA256__', $sha)
+            $runner = Join-Path $root 'run.ps1'
+            [IO.File]::WriteAllText($runner, $script, [Text.Encoding]::ASCII)
+            $env:WAVE_HOME = Join-Path $root '.wave'
+            $out = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "iex ([IO.File]::ReadAllText('$runner'))" 2>&1 | Out-String)
+            Write-Host "---- $Name output ----`n$out"
+            $hasTail = $out.Contains($marker) -and $out.Contains('last lines of install.log')
+            if ($ExpectTail -ne $hasTail) { throw "$Name : expected tail=$ExpectTail, got $hasTail" }
+            if ($ExpectTail -and -not $out.Contains("Wave installer failed (exit $Exit)")) { throw "$Name : failure line missing" }
+            Write-Host "PASS: $Name"
+          }
+          Invoke-Case 'fail-exit1' 1 $true
+          Invoke-Case 'ok-exit0' 0 $false
+          Invoke-Case 'alive-exit2' 2 $false
+          Write-Host 'ALL CASES PASS'
+          exit 0

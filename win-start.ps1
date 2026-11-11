@@ -11,6 +11,16 @@
     if ($actual -ne '__WAVE_BOOTSTRAP_SHA256__') { throw 'BOOTSTRAP_SHA_MISMATCH' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f
     $code = $LASTEXITCODE
+    if ($code -ne 0 -and $code -ne 2) {
+      # The installer can die without printing (e.g. killed mid-step), so always show where it stopped.
+      $home2 = if ($env:WAVE_HOME) { $env:WAVE_HOME } else { Join-Path $env:USERPROFILE '.wave' }
+      $log = Join-Path $home2 'install.log'
+      if (Test-Path -LiteralPath $log) {
+        Write-Host '--- last lines of install.log (show this to your instructor) ---'
+        Get-Content -LiteralPath $log -Tail 15 -Encoding UTF8 | ForEach-Object { Write-Host $_ }
+        Write-Host "--- full log: $log ---"
+      }
+    }
     if ($code -eq 2) { $global:LASTEXITCODE = 2 } elseif ($code -ne 0) { throw "Wave installer failed (exit $code)." }
   } finally {
     if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force }

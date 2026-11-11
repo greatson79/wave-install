@@ -857,7 +857,7 @@ function Ensure-WaveShortcuts {
 # step 5 ended with exit 1 and no text) hits cmd, not this installer — the exit code is then reported.
 function Invoke-NsisSetup([string]$Setup, [string]$Dir) {
   Write-Log "setup launch: $Setup"
-  $launcher = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /c start "" /wait "' + $Setup + '" /S /D=' + $Dir) -WindowStyle Hidden -Wait -PassThru
+  $launcher = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /v:on /c start "" /wait "' + $Setup + '" /S /D=' + $Dir + ' & exit /b !errorlevel!') -WindowStyle Hidden -Wait -PassThru
   Write-Log "setup exit: $($launcher.ExitCode)"
   return [int]$launcher.ExitCode
 }

@@ -18,6 +18,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $ProgressPreference = 'SilentlyContinue'
+          python tests/test_hotfix_av.py
+          if ($LASTEXITCODE -ne 0) { throw 'static launch/encoding guard failed' }
           if ($PSVersionTable.PSVersion.ToString() -notlike '5.1.*') { throw 'Needs Windows PowerShell 5.1' }
           $tokens = $null; $errors = $null
           $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'), [ref]$tokens, [ref]$errors)

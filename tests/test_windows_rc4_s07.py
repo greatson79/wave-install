@@ -33,6 +33,7 @@ class WindowsRc4S07Tests(unittest.TestCase):
             self.assertIn("jcode|J-VER-04", lines)   # J-UNK-00 이 아니라 전용 진단 코드
             self.assertEqual(lines[-1], "S07_INITIAL_FLEET|failed|2|WT-S07-FLEET")
 
+    @unittest.skipUnless(os.name == 'nt', 'cmd.exe launch cwd requires Windows')
     def test_installer_starts_cys_processes_in_the_user_home(self):
         with tempfile.TemporaryDirectory() as td:
             r = self.run_fixture("cwd", {"RC4_FIXTURE_DIR": td})

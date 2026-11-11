@@ -1,0 +1,41 @@
+name: Hotfix cmd launch and AV hint proof (Windows PowerShell 5.1)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['hotfix/**']
+permissions:
+  contents: read
+jobs:
+  av-proof:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: G2 G3 G5 with pinned setup and real process boundaries
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          if ($PSVersionTable.PSVersion.ToString() -notlike '5.1.*') { throw 'Needs Windows PowerShell 5.1' }
+          $tokens = $null; $errors = $null
+          $ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'bootstrap.ps1'), [ref]$tokens, [ref]$errors)
+          if ($errors.Count) { throw ($errors | Out-String) }
+          $fn = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Invoke-NsisSetup' }, $true))
+          if ($fn.Count -ne 1) { throw 'Expected one Invoke-NsisSetup' }
+          . ([scriptblock]::Create($fn[0].Extent.Text))
+          function Write-Log([string]$Message) { Write-Host "LOG: $Message" }
+          $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
+          $asset = 'wave-terminal-0.3.3-windows-x64-setup.exe'
+          $download = Join-Path $env:RUNNER_TEMP 'av-download'
+          New-Item -ItemType Directory -Force $download | Out-Null
+          gh release download v0.3.3 --repo greatson79/wave-terminal --pattern $asset --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'download failed' }
+          $setup = Join-Path $download $asset
+          if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$release.sha256.windows_x64) { throw 'setup SHA256 mismatch' }
+          $bin = Join-Path $env:RUNNER_TEMP 'av home\.wave\bin'
+          New-Item -ItemType Directory -Force $bin | Out-Null
+          if ((Invoke-NsisSetup $setup $bin) -ne 0) { throw 'real setup failed' }
+          & ./tests/hotfix_av_proof.ps1 -InstalledCys (Join-Path $bin 'cys.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'AV proofs failed' }

@@ -1,0 +1,26 @@
+name: M2 published S04 then candidate recovery MEASUREMENT
+on:
+  push:
+    branches: ['hotfix/0.3.5-installer']
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: windows-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Measure published failure then candidate in SAME injected profile
+        shell: powershell
+        run: |
+          python scripts/ci/hotfix-recovery-measurement.py
+          if ($LASTEXITCODE -ne 0) { throw 'M2 measurement could not execute/record' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: m2-recovery-${{ github.sha }}
+          path: ${{ runner.temp }}/m2-recovery/
+          if-no-files-found: error

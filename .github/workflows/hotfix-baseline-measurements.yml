@@ -1,0 +1,43 @@
+name: Published installer measurements M1 Windows 0.3.4 and M3 macOS 0.3.5
+on:
+  push:
+    branches: ['hotfix/0.3.5-installer']
+permissions:
+  contents: read
+jobs:
+  m1-windows-034:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: M1 published 0.3.4 measurement only (login STUBBED)
+        shell: powershell
+        run: |
+          if ($PSVersionTable.PSVersion.ToString() -notlike '5.1.*') { throw 'Requires PS5.1' }
+          python scripts/ci/hotfix-baseline-measurements.py M1
+          if ($LASTEXITCODE -ne 0) { throw 'M1 could not record a complete execution measurement' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: M1-published-windows-034-${{ github.sha }}
+          path: ${{ runner.temp }}/published-M1/evidence/
+          if-no-files-found: error
+  m3-macos-035:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: M3 published macOS 0.3.5 measurement only (login STUBBED)
+        run: python scripts/ci/hotfix-baseline-measurements.py M3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: M3-published-macos-035-${{ github.sha }}
+          path: ${{ runner.temp }}/published-M3/evidence/
+          if-no-files-found: error

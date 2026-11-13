@@ -15,7 +15,7 @@ class WindowsShortcuts(unittest.TestCase):
     def run_shortcuts(self, existing=None, marker=False, missing_app=False, save_fails=False):
         self.assertTrue(PWSH, 'PWSH is required')
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = Path(tmp).resolve()
             wave = root / 'wave'
             programs = root / 'Programs'
             desktop = root / 'Desktop'
@@ -73,7 +73,7 @@ try {
   @{error=$_.Exception.Message; saves=$script:Saves; shortcut_reads=$script:ShortcutReads} | ConvertTo-Json -Compress -Depth 5
 }
 ''', encoding='utf-8-sig')
-            env = dict(os.environ, HOME=tmp, USERPROFILE=tmp, WAVE_HOME=str(wave),
+            env = dict(os.environ, HOME=str(root), USERPROFILE=str(root), WAVE_HOME=str(wave),
                        TEST_PROGRAMS=str(programs), TEST_DESKTOP=str(desktop),
                        TEST_SAVE_FAILS='1' if save_fails else '0')
             result = subprocess.run([PWSH, '-NoProfile', '-NonInteractive', '-File', str(script)],

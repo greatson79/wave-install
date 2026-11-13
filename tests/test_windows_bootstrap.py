@@ -420,10 +420,17 @@ $script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | For
 })}
 $fixtureStatus.surfaces[0].surface_ref = 'surface:1'
 $script:appCalls=0
-function Confirm-SeatClaudeAuth { }
+function claude {
+  param($noun, $verb)
+  if ($noun -ne 'auth' -or $verb -ne 'status') { throw 'unexpected Claude request' }
+  $global:LASTEXITCODE = 0
+}
 function Start-WaveApp { $script:appCalls++ }
 function Invoke-BoundedCheck {
   param($FilePath,$Arguments,$Name,$TimeoutMs)
+  if (($Arguments -join ' ') -eq '--version') {
+    return [pscustomobject]@{timed_out=$false;exit_code=0;stdout='cys 0.0.0';stderr=''}
+  }
   if (($Arguments -join ' ') -ne 'status --json') { throw 'unexpected process request; no daemon access allowed' }
   return [pscustomobject]@{timed_out=$false;exit_code=0;stdout=($fixtureStatus|ConvertTo-Json -Depth 8);stderr=''}
 }

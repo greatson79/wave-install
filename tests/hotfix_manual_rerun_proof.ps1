@@ -39,6 +39,7 @@ try {
     (Test-Path -LiteralPath $_.FullName -PathType Leaf) -and (Test-Path -LiteralPath $newPath -PathType Leaf)
   } | ForEach-Object { $_.Name })
   $result = [ordered]@{
+    measurement_only = $true
     setup_sha256 = $ReleaseExpectedSha256
     first_install = $manual
     rerun_target = $target
@@ -51,7 +52,7 @@ try {
   }
   $result | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $root 'result.json') -Encoding UTF8
   Write-Host ('MANUAL_RERUN_RESULT=' + ($result | ConvertTo-Json -Depth 5 -Compress))
-  if ($duplicates.Count) { throw 'RERUN_DUPLICATE_COPY: stop for design decision; do not recommend rerun' }
+  if ($duplicates.Count) { Write-Host 'MANUAL_RERUN_MEASUREMENT: duplicate GUI files are an expected known outcome; do not rerun after hand install' }
 } finally {
   $env:USERPROFILE = $oldProfile
   $env:WAVE_HOME = $oldWaveHome

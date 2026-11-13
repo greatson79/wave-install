@@ -45,6 +45,7 @@ $ErrorActionPreference = 'Stop'
 $WaveHome = $env:WAVE_HOME
 $env:OS = 'Windows_NT'
 $script:Saves = 0
+$script:ShortcutReads = @()
 function New-Object {
   param($ComObject)
   if ($ComObject -ne 'WScript.Shell') { throw 'unexpected COM request' }
@@ -52,6 +53,7 @@ function New-Object {
   $shell | Add-Member ScriptMethod CreateShortcut {
     param($path)
     $target = if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllText($path) } else { '' }
+    $script:ShortcutReads += @{path=$path; target=$target; normalized_target=$(if ($target) { [IO.Path]::GetFullPath($target) } else { '' })}
     $shortcut = [pscustomobject]@{Path=$path; TargetPath=$target}
     $shortcut | Add-Member ScriptMethod Save {
       $script:Saves++
@@ -68,7 +70,7 @@ try {
   Ensure-WaveShortcuts
   @{error=''; saves=$script:Saves} | ConvertTo-Json -Compress
 } catch {
-  @{error=$_.Exception.Message; saves=$script:Saves} | ConvertTo-Json -Compress
+  @{error=$_.Exception.Message; saves=$script:Saves; shortcut_reads=$script:ShortcutReads} | ConvertTo-Json -Compress -Depth 5
 }
 ''', encoding='utf-8-sig')
             env = dict(os.environ, HOME=tmp, USERPROFILE=tmp, WAVE_HOME=str(wave),
@@ -81,7 +83,7 @@ try {
             if missing_app or save_fails:
                 self.assertIn('실행 파일이 없습니다' if missing_app else '바로가기 대상이 다릅니다', outcome['error'])
                 return
-            self.assertEqual(outcome['error'], '', result.stdout)
+            self.assertEqual(outcome['error'], '', result.stdout + '\ninjected_root=' + str(root) + '\nexpected_target=' + str(target))
             expected = set(existing or {}) | ({'nested'} if 'nested' in (existing or {}) else {'flat'})
             if not marker:
                 expected.add('desktop')

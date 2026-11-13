@@ -49,7 +49,7 @@ Write-Output 'PASS S02 seat-only login skips login'
         out = self.run_case(r'''
 $env:FAKE_LOGIN_OK = '0'
 try { Run-S02; throw 'S02 unexpectedly passed' } catch {
-  if ($_.Exception.Message -notmatch '재확인 실패') { throw }
+  if ($_.Exception.Message -notmatch 'Claude 작업 칸 로그인 실패') { throw }
 }
 $calls = @(Get-Content -LiteralPath (Join-Path $env:USERPROFILE 'calls'))
 if ($calls.Count -ne 3) { throw "wrong call count: $($calls -join ',')" }

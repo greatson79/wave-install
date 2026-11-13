@@ -23,11 +23,11 @@ if ($env:REAL_TRANSPORT -eq '1' -and $env:WAVE_HELP_BASE_URL -notmatch '^https:/
 if ($env:REAL_TRANSPORT -ne '1') {
 function Invoke-ProgressPost {
   param($Uri, $Body, $TimeoutMs)
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
+  Add-Content -Encoding UTF8 -LiteralPath $env:REC -Value (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'network down' }
 }
 function Invoke-HelpHttp([string]$Method, [string]$Path, $Body, [string]$Token, [int]$TimeoutSec) {
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'help'; method = $Method; path = $Path; timeout = $TimeoutSec; body = ($Body | ConvertTo-Json -Compress -Depth 5) } | ConvertTo-Json -Compress)
+  Add-Content -Encoding UTF8 -LiteralPath $env:REC -Value (@{ kind = 'help'; method = $Method; path = $Path; timeout = $TimeoutSec; body = ($Body | ConvertTo-Json -Compress -Depth 5) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'help down' }
   return @{ status = 201; body = @{ id = ('c' * 32); client_token = ('b' * 64) } }
 }

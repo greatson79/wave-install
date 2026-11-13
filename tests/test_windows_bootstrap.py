@@ -67,6 +67,7 @@ foreach ($invalid in @('12345', 0, -1, $null, $true)) {
             overrides = r'''
 function Run-S00 { Say 'ACTION-S00' }
 function Ensure-Pack { }
+function Ensure-WaveShortcuts { }
 function Run-S01 { Say 'ACTION-S01' }
 function Run-S02 { Say 'ACTION-S02' }
 function Run-S03 { Say 'ACTION-S03' }
@@ -419,6 +420,7 @@ $script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | For
 })}
 $fixtureStatus.surfaces[0].surface_ref = 'surface:1'
 $script:appCalls=0
+function Confirm-SeatClaudeAuth { }
 function Start-WaveApp { $script:appCalls++ }
 function Invoke-BoundedCheck {
   param($FilePath,$Arguments,$Name,$TimeoutMs)

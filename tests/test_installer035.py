@@ -25,8 +25,9 @@ if ((Get-JCode $hresult) -ne 'J-AV-04') { throw 'HRESULT identity lost' }
 foreach ($failure in @($blocked, $wrapped)) {
   if ((Get-JCode $failure) -ne 'J-AV-04') { throw 'app-control identity lost' }
 }
-if ((Get-JCode ([ComponentModel.Win32Exception]::new(5))) -ne 'J-UNK-00') { throw 'access denied mislabeled' }
+if ((Get-JCode ([ComponentModel.Win32Exception]::new(5, 'unclassified injected failure'))) -ne 'J-UNK-00') { throw 'access denied mislabeled' }
 if ((Get-JCode ([ComponentModel.Win32Exception]::new(4556))) -eq 'J-AV-04') { throw 'malicious reputation mislabeled' }
+if ((Get-JCode 'Access is denied') -ne 'J-PERM-02') { throw 'existing access-denied mapping lost' }
 if ((Get-JCode '검증된 artifact 없음') -ne 'J-AV-02') { throw 'existing mapping lost' }
 if ((Get-JCode 'an unclassified failure') -ne 'J-UNK-00') { throw 'fallback changed' }
 function Start-Process { throw [ComponentModel.Win32Exception]::new(4551, 'blocked') }

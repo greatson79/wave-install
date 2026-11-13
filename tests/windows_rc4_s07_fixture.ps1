@@ -97,8 +97,9 @@ if ($Mode -eq 'cwd') {
   Set-Location $elsewhere
   $r = Invoke-BoundedCheck (Get-Process -Id $PID).Path @('-NoProfile', '-Command', '"(Get-Location).Path"') 'cwd' 20000
   $got = ([string]$r.stdout).Trim()
+  Write-Host ('CWD_COMPARE=' + (@{got=$got; raw_home=$home1; full_home=[IO.Path]::GetFullPath($home1)} | ConvertTo-Json -Compress))
   # macOS 임시 폴더의 /private 별칭 차이만 흡수한다
-  if (($got -replace '^/private', '') -ne ($home1 -replace '^/private', '')) { throw "child cwd was '$got', expected the user home" }
+  if (($got -replace '^/private', '') -ne (([IO.Path]::GetFullPath($home1)) -replace '^/private', '')) { throw "child cwd was '$got', expected the user home '$home1' (full '$([IO.Path]::GetFullPath($home1))')" }
   Write-Host 'PASS bounded cys calls start in the user home'
   exit 0
 }

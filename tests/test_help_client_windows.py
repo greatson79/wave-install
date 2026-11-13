@@ -95,7 +95,7 @@ class WindowsHelpClientParity(unittest.TestCase):
 
     def test_notice_text_identical_on_both_oses(self):
         ps = self.run_ps()
-        self.assertEqual(ps['notice'].strip(), (ROOT / 'lib/help-notice.txt').read_text(encoding='utf-8').strip())
+        self.assertEqual(ps['notice'].replace('\r\n', '\n').strip(), (ROOT / 'lib/help-notice.txt').read_text(encoding='utf-8').strip())
 
 
 if __name__ == '__main__':

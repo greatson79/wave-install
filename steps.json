@@ -8,25 +8,25 @@
   ],
   "release": {
     "repository": "greatson79/wave-terminal",
-    "macos_version": "0.3.4",
-    "version": "0.3.4",
+    "macos_version": "0.3.5",
+    "version": "0.3.5",
     "asset_name": {
-      "macos_arm64": "wave-terminal-0.3.4-macos-arm64.dmg",
-      "windows_x64": "wave-terminal-0.3.4-windows-x64-setup.exe"
+      "macos_arm64": "wave-terminal-0.3.5-macos-arm64.dmg",
+      "windows_x64": "wave-terminal-0.3.5-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.4/wave-terminal-0.3.4-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.4/wave-terminal-0.3.4-windows-x64-setup.exe"
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/wave-terminal-0.3.5-macos-arm64.dmg",
+      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/wave-terminal-0.3.5-windows-x64-setup.exe"
     },
     "bytes": {
-      "windows_x64": 129661488
+      "windows_x64": 129655549
     },
     "sha256": {
-      "macos_arm64": "2c54eec446242cfcc1084d5955cb5b2c0c878dea74351cd53f62df651cad3ee4",
-      "windows_x64": "e5e8c61ef19c7b7bbdf5022d2f68ae0736a8b944a956352da7973a91225128f9"
+      "macos_arm64": "bdf6380501c35c461caf23220f7496373f63131da02e53ee6c39888bd4066931",
+      "windows_x64": "97ae76d26960975678ebb15c0741918793de162abba351a77df8d404e51a4386"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.4/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.4/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,
@@ -34,7 +34,7 @@
     },
     "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
     "cdhash": {
-      "macos_arm64": "0ba2a17aba82401726303fb6a28fa6a7f2b5a192"
+      "macos_arm64": "612d36ef4575e873755f667b059a810bd07c4c50"
     }
   },
   "reinstall": {

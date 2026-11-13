@@ -41,7 +41,7 @@ jobs:
           @'
           import json, os, sys, unittest
           from pathlib import Path
-          suite = unittest.defaultTestLoader.discover('tests', pattern='test_*.py', top_level_dir='.')
+          suite = unittest.defaultTestLoader.discover('tests', pattern='test_*.py')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           summary = dict(phase=os.environ['SUITE_PHASE'], tests=result.testsRun,
                          failures=len(result.failures), errors=len(result.errors),

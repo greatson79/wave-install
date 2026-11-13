@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -44,7 +45,7 @@ function Start-Process {
     foreach ($name in @('cys.exe')) {
       $file = Join-Path $dir $name
       Set-Content $file -Value "#!/bin/sh`nprintf 'cys 0.1.1\n'`nexit 0"
-      & chmod +x $file
+      if ($env:OS -ne 'Windows_NT') { & chmod +x $file }
     }
     $data = [byte[]]::new(2048)
     $data[0] = 0x4D; $data[1] = 0x5A; $data[60] = 128
@@ -55,6 +56,10 @@ function Start-Process {
   return [pscustomobject]@{ ExitCode = [int]$env:TEST_CODE }
 }
 function Ensure-WaveShortcuts { } # NSIS itself is replaced above; real shortcuts are checked by windows-smoke.ps1.
+function Invoke-BoundedCheck($FilePath, $Arguments, $Name, $TimeoutMs) {
+  if ($Name -ne 'cys-version') { throw 'unexpected external check in NSIS fixture' }
+  return [pscustomobject]@{ timed_out=$false; exit_code=0; stdout="cys 0.1.1`n"; stderr=''; kill_error=$null }
+}
 try { Run-S04 6>$null; $StepObserved | ConvertTo-Json; exit 0 }
 catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
 ''')
@@ -69,9 +74,13 @@ catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIsNotNone(call, "NSIS_EXECUTION_MISSING")
         self.assertTrue(call["wait"] and call["pass"])
-        self.assertTrue(call["args"].startswith("/S /D="), call)
-        self.assertNotIn('"', call["args"])
-        self.assertTrue(call["args"].endswith("/wave/bin"), call)
+        self.assertTrue(call["file"].lower().endswith("cmd.exe"), call)
+        self.assertTrue(call["args"].startswith('/d /v:on /c start "" /wait "'), call)
+        self.assertIn('wave-terminal-0.1.1-windows-x64-setup.exe" /S /D=', call["args"])
+        target = re.search(r'/S /D=(.+) & exit /b !errorlevel!$', call["args"])
+        self.assertIsNotNone(target, call)
+        self.assertNotIn('"', target[1])
+        self.assertEqual(Path(target[1]).parts[-2:], ('wave', 'bin'))
 
     def test_nonzero_nsis_exit_is_failure(self):
         result, call = self.run_install(code=7)

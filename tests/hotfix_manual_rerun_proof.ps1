@@ -17,6 +17,7 @@ try {
   $boundary = $source.IndexOf("`nLoad-Config`nif (`$DryRun)")
   if ($boundary -lt 0) { throw 'Bootstrap function-only boundary missing' }
   . ([scriptblock]::Create($source.Substring(0, $boundary)))
+  $script:ScriptDir = $repo
   $script:StepsFile = Join-Path $repo 'steps.json'
   Load-Config
   Release-Context

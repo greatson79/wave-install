@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ matrix.phase == 'baseline' && 'c5dc5f1' || github.sha }}
+          ref: ${{ matrix.phase == 'baseline' && 'c5dc5f18bdb59b117a4b78edd46a782148e3cb65' || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

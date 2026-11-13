@@ -32,6 +32,9 @@ def main():
     evidence, entry, home, stubs = [root / name for name in ("evidence", "entry", "home", "stubs")]
     for directory in (evidence, entry, home, stubs):
         directory.mkdir(parents=True, exist_ok=True)
+    if not windows:
+        # A normal macOS login profile already has Desktop; this injected profile must too.
+        (home / "Desktop").mkdir()
     result = {
         "measurement": args.measurement, "measurement_only": True, "release_tag": tag,
         "started_at": datetime.now(timezone.utc).isoformat(),
@@ -49,7 +52,7 @@ def main():
             raise ValueError("Malformed Claude version pin")
         name = "bootstrap.ps1" if windows else "bootstrap.sh"
         result["assets"][name] = download(base + name, entry / name)
-        env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), WAVE_HOME=str(home / ".wave"),
+        env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), WAVE_HOME=str(home / (".wave" if windows else ".wave-measurement")),
                    WAVE_NO_PROGRESS="1", PATH=str(stubs) + os.pathsep + os.environ["PATH"])
         if windows:
             stub = "\r\n".join((
@@ -92,7 +95,8 @@ def main():
                     result["exit_code"] = process.wait(timeout=15)
                 except subprocess.TimeoutExpired as error:
                     raise RuntimeError("Timed-out installer process survived bounded cleanup") from error
-        wave = home / ".wave"
+        wave = Path(env["WAVE_HOME"])
+        result["wave_home"] = str(wave)
         for filename in ("install.log", "install-state.json"):
             source = wave / filename
             if source.exists():

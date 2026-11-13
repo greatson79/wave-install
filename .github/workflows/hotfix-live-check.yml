@@ -27,7 +27,7 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $evidence = Join-Path $env:RUNNER_TEMP 'hotfix-live-${{ matrix.cmd }}'
           New-Item -ItemType Directory -Force -Path $evidence | Out-Null
-          $stepsUrl = 'https://github.com/greatson79/wave-terminal/releases/download/v0.3.3/steps.json'
+          $stepsUrl = 'https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/steps.json'
           $stepsPath = Join-Path $evidence 'steps.json'
           Invoke-WebRequest -UseBasicParsing -Uri $stepsUrl -OutFile $stepsPath
           $minimum = [string](Get-Content -LiteralPath $stepsPath -Raw -Encoding UTF8 | ConvertFrom-Json).tooling.claude_code_min_version

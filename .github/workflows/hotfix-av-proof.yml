@@ -29,10 +29,10 @@ jobs:
           . ([scriptblock]::Create($fn[0].Extent.Text))
           function Write-Log([string]$Message) { Write-Host "LOG: $Message" }
           $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
-          $asset = 'wave-terminal-0.3.3-windows-x64-setup.exe'
+          $asset = [string]$release.asset_name.windows_x64
           $download = Join-Path $env:RUNNER_TEMP 'av-download'
           New-Item -ItemType Directory -Force $download | Out-Null
-          gh release download v0.3.3 --repo greatson79/wave-terminal --pattern $asset --dir $download
+          gh release download ("v" + [string]$release.version) --repo greatson79/wave-terminal --pattern $asset --dir $download
           if ($LASTEXITCODE -ne 0) { throw 'download failed' }
           $setup = Join-Path $download $asset
           if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$release.sha256.windows_x64) { throw 'setup SHA256 mismatch' }

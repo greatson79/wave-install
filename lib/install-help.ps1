@@ -174,7 +174,7 @@ function Send-HelpRequest([string]$BaseUrl, [string]$InstallId, [string]$Version
         Write-HelpLine '이 창은 기다리지 않고 끝납니다. 담당자에게 접수번호를 알려 주세요.'
         return $rid
       }
-      Write-HelpLine '담당자 답을 이 창에 표시합니다(최대 2시간). 끝내려면 Ctrl+C를 누르세요. 받은 글은 실행하지 않습니다.'
+      Write-HelpLine '이 창에서는 답변을 받을 수 없습니다. 담당자에게 접수번호를 알려 주세요. 답변은 담당자가 별도로 직접 안내합니다. 끝내려면 Ctrl+C를 누르세요. 받은 글은 실행하지 않습니다.'
       try {
         $deadline = (Get-HelpClock) + 7200
         $lastSeq = 0

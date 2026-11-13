@@ -63,7 +63,14 @@ function Say-Step([object]$Step, [string]$Message) {
   Say "[$CurrentStep] $($Step.title) — $Message"
 }
 
-function Get-JCode([string]$Message) {
+function Get-JCode($Failure) {
+  $exception = if ($Failure -is [Management.Automation.ErrorRecord]) { $Failure.Exception } elseif ($Failure -is [Exception]) { $Failure } else { $null }
+  while ($null -ne $exception) {
+    # Microsoft WinSDK winerror.h: ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION = 4551.
+    if (($exception -is [ComponentModel.Win32Exception] -and $exception.NativeErrorCode -eq 4551) -or $exception.HResult -eq -2147020345) { return 'J-AV-04' }
+    $exception = $exception.InnerException
+  }
+  $Message = if ($Failure -is [Management.Automation.ErrorRecord]) { $Failure.Exception.Message } elseif ($Failure -is [Exception]) { $Failure.Message } else { [string]$Failure }
   foreach ($rule in $HelpRules) {
     if ($Message -match $rule.pattern) { return [string]$rule.code }
   }
@@ -327,6 +334,16 @@ $HelpRulesJson = @'
     "case": "우리 running 상태 중단 회귀; 백신 원인 미확정",
     "os": "win",
     "sample": "지난 실행이 끝을 알리지 않고 멈췄습니다"
+  },
+  {
+    "code": "J-AV-04",
+    "symptom": "Windows 앱 제어 정책이 파일 실행을 차단함",
+    "pattern": "^W-APP-CONTROL:",
+    "action1": "안랩 Safe Transaction(ASTx)·V3·알약을 먼저 확인하세요. 제품의 차단·격리 기록에서 대상 파일과 시각을 확인하고 담당자에게 전달하세요. 11/11 안내처럼 예외 등록 또는 잠시 제거 후 재실행하는 조치는 사용자와 담당자가 위험을 검토해 직접 결정해야 합니다. 단순히 작업 표시줄에서 종료해도 남을 수 있습니다. 제거를 선택했다면 설치 후 다시 설치하세요. 설치기는 보호 설정을 바꾸지 않습니다.",
+    "action2": "다음 가능성은 Windows 스마트 앱 컨트롤입니다. Windows 보안 > 앱 및 브라우저 컨트롤 > 스마트 앱 컨트롤에서 상태를 확인하세요. 이 오류만으로 어느 제품이 원인인지, 서명 부족인지 바이러스인지 구별할 수 없습니다. Microsoft CodeIntegrity 이벤트 3077의 PolicyName과 제품 기록을 담당자가 대조해야 합니다. 서명된 배포판을 기다릴 수 있으며, 스마트 앱 컨트롤을 끌지는 사용자의 결정입니다. Microsoft 안내는 서로 다릅니다. 앱 및 브라우저 컨트롤 문서는 다시 켜려면 초기화·재설치가 필요하다고 하지만 최신 FAQ는 업데이트 후 다시 켤 수 있다고 합니다. 10월 KB5127648의 재활성화 문제는 26H2·25H2에서 10월 28일 KB5127936 이후, 24H2에서 11월 10일 KB5132061 이후 해결되었다는 안내입니다. PC의 업데이트 상태를 확인하세요. 평가 모드로 돌아가려면 여전히 초기화·재설치가 필요하다는 안내입니다.",
+    "case": "Microsoft WinSDK winerror.h ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION=4551; 예외 주입 검증, 실제 정책 차단 미측정. https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/shared/winerror.h ; https://support.microsoft.com/en-us/help/4013218 ; https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003 ; https://support.microsoft.com/kb/KB5127648 ; AV 안내 근거: 11/11 hf5 J-AV-03(원인 자동 확정 아님); https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/event-id-explanations ; https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/appcontrol-debugging-and-troubleshooting",
+    "os": "win",
+    "sample": "W-APP-CONTROL: injected policy failure"
   },
   {
     "code": "J-DL-05",
@@ -859,6 +876,7 @@ function Invoke-NsisSetup([string]$Setup, [string]$Dir) {
   Write-Log "setup launch: $Setup"
   $launcher = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /v:on /c start "" /wait "' + $Setup + '" /S /D=' + $Dir + ' & exit /b !errorlevel!') -WindowStyle Hidden -Wait -PassThru
   Write-Log "setup exit: $($launcher.ExitCode)"
+  if ($launcher.ExitCode -eq 4551) { throw [ComponentModel.Win32Exception]::new(4551) }
   return [int]$launcher.ExitCode
 }
 
@@ -912,7 +930,7 @@ function Test-DaemonReady {
     try {
       $ping = Invoke-BoundedCheck $cys @('ping') "daemon-ping-$attempt" 3000
       if (-not $ping.timed_out -and $ping.exit_code -eq 0 -and $ping.stdout.Trim() -eq 'pong') { return $true }
-    } catch { Write-Log $_.Exception.Message }
+    } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log $_.Exception.Message }
     Start-Sleep -Milliseconds 500
   }
   return $false
@@ -935,15 +953,15 @@ function Run-S05 {
     $install = Invoke-BoundedCheck $cys @('daemon', 'install') 'daemon-install' 30000
     $registered = (-not $install.timed_out -and $install.exit_code -eq 0)
     if (-not $registered) { Write-Log "daemon install 미완료: $($install.stderr)" }
-  } catch { Write-Log "daemon install 실패: $($_.Exception.Message)" }
+  } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log "daemon install 실패: $($_.Exception.Message)" }
   $ready = Test-DaemonReady
   $fallback = $false
   if (-not $ready) {
     $fallback = $true
-    try { Start-WaveDetached (Join-Path $WaveHome 'bin\cysd.exe') } catch { Write-Log $_.Exception.Message }
+    try { Start-WaveDetached (Join-Path $WaveHome 'bin\cysd.exe') } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log $_.Exception.Message }
     $ready = Test-DaemonReady
     if (-not $ready) {
-      try { Start-WaveApp } catch { Write-Log $_.Exception.Message }
+      try { Start-WaveApp } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log $_.Exception.Message }
       $ready = Test-DaemonReady
     }
   }
@@ -1058,7 +1076,7 @@ function Wait-GuiOnboarded([Diagnostics.Stopwatch]$Clock, [int]$CapMs = 180000) 
   try {
     $v = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('--version') 'cys-version' (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds)
     if (-not $v.timed_out -and $v.exit_code -eq 0) { $version = @($v.stdout.Trim() -split '\s+')[-1] }
-  } catch { Write-Log "cys --version 확인 실패: $($_.Exception.Message)" }
+  } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log "cys --version 확인 실패: $($_.Exception.Message)" }
   $wait = [Diagnostics.Stopwatch]::StartNew()
   while ($wait.ElapsedMilliseconds -lt $CapMs -and (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds) -gt 0) {
     if (Test-Path -LiteralPath $marker -PathType Leaf) {
@@ -1256,7 +1274,7 @@ function Show-FirstRunGateNotice([object]$Status) {
   if ($null -eq $Status) { return }
   $needles = @('Quicksafetycheck', 'Isthisaprojectyoucreatedoroneyoutrust', 'Doyoutrustthefilesinthisfolder', 'Doyoutrustthisfolder', 'WARNING:ClaudeCoderunninginBypassPermissionsmode', 'InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval', 'Trythenewfullscreenrenderer?')
   foreach ($seat in @($Status.surfaces | Where-Object { $_.exited -eq $false -and ([string]$_.role) -match '^(master|cso|worker)' -and $_.surface_ref })) {
-    try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { continue }
+    try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; continue }
     if ($screen.timed_out -or $screen.exit_code -ne 0) { continue }
     $flat = ([string]$screen.stdout) -replace '\s', ''
     foreach ($n in $needles) {
@@ -1435,6 +1453,7 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
     if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
   } finally { $process.Dispose() }
   # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
+  if ($exitCode -eq 4551) { throw [ComponentModel.Win32Exception]::new(4551) }
   $stdout = Read-SharedCheckLog $stdoutPath
   $stderr = Read-SharedCheckLog $stderrPath
   return [pscustomobject]@{ timed_out = (-not $finished); timeout_ms = $TimeoutMs; exit_code = $exitCode; stdout = $stdout; stderr = $stderr; kill_error = $killError }
@@ -1502,11 +1521,11 @@ function Get-MasterAwakeState([object]$Status) {
 function Run-S08 {
   $cys = Join-Path $WaveHome 'bin\cys.exe'
   try { $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000 }
-  catch { Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
+  catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
   if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
   if ($identify.exit_code -ne 0) { Set-S08CallFailure 'cys identify' $identify.exit_code $identify.stderr; return }
   try { $result = Invoke-BoundedCheck $cys @('status', '--json') 'fleet-status' 5000 }
-  catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
+  catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
   if ($result.timed_out) { Set-S08Timeout 'cys status --json' $result.timeout_ms $result.kill_error; return }
   if ($result.exit_code -ne 0) { Set-S08CallFailure 'cys status --json' $result.exit_code $result.stderr; return }
   try {
@@ -1515,7 +1534,7 @@ function Run-S08 {
     New-Item -ItemType Directory -Force -Path $verify | Out-Null
     Set-Content -LiteralPath (Join-Path $verify 'status.json') -Value ($status | ConvertTo-Json -Depth 20) -Encoding UTF8
     if (-not (Test-AwakenedFleet $status)) { throw '마스터·CSO·worker 각성 증거 없음' }
-  } catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
+  } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
   try { $evidence = Test-OriginalInjection }
   catch {
     $script:StepObserved = [ordered]@{ original_match = $false; new_file_count = $null; source = 'app-manifest+installed-pack'; reason = $_.Exception.Message }
@@ -1643,7 +1662,7 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     }
     $reason = $_.Exception.Message
     $position = $_.InvocationInfo.PositionMessage
-    $code = Get-JCode $reason
+    $code = Get-JCode $_
     $script:StepObserved['j_code'] = $code
     $script:StepObserved['reason'] = ConvertTo-StateReason $reason
     $script:StepObserved['position'] = ConvertTo-StateReason $position
@@ -1684,7 +1703,7 @@ function Complete-State {
 
 trap {
   $failure = $_
-  if (-not $DiagnosticWritten) { Write-JCode (Get-JCode $failure.Exception.Message) }
+  if (-not $DiagnosticWritten) { Write-JCode (Get-JCode $failure) }
   try {
     Write-Log $failure.Exception.Message
     if ($failure.InvocationInfo.PositionMessage) { Write-Log $failure.InvocationInfo.PositionMessage }

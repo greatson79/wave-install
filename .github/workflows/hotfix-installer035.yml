@@ -1,0 +1,69 @@
+name: Installer 0.3.5 full suite before and after (PowerShell 5.1)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['hotfix/0.3.5-installer']
+permissions:
+  contents: read
+jobs:
+  unit-suite:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        phase: [baseline, hotfix]
+    env:
+      PYTHONUTF8: '1'
+      WAVE_NO_PROGRESS: '1'
+      WAVE_TEST_SCOPE: windows
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ matrix.phase == 'baseline' && 'c5dc5f1' || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing test-only dependency
+        shell: powershell
+        run: |
+          python -m pip install -r tests/requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Test dependency installation failed' }
+      - name: Full discovery with counts (baseline records failures; hotfix must pass)
+        shell: powershell
+        env:
+          SUITE_PHASE: ${{ matrix.phase }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.ToString() -notlike '5.1.*') { throw 'Requires PS 5.1' }
+          $env:PWSH = (Get-Command powershell).Source
+          @'
+          import json, os, sys, unittest
+          from pathlib import Path
+          suite = unittest.defaultTestLoader.discover('tests', pattern='test_*.py', top_level_dir='.')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          summary = dict(phase=os.environ['SUITE_PHASE'], tests=result.testsRun,
+                         failures=len(result.failures), errors=len(result.errors),
+                         skipped=len(result.skipped), success=result.wasSuccessful())
+          Path('suite-summary.json').write_text(json.dumps(summary, indent=2))
+          print('SUITE_SUMMARY=' + json.dumps(summary))
+          sys.exit(0 if summary['phase'] == 'baseline' or result.wasSuccessful() else 1)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Hotfix full suite failed' }
+      - name: Source gates (hotfix only; baseline is the negative control)
+        if: matrix.phase == 'hotfix'
+        shell: powershell
+        run: |
+          $env:PWSH = (Get-Command powershell).Source
+          python scripts/check-installer-launch.py .
+          if ($LASTEXITCODE -ne 0) { throw 'Launch gate failed' }
+          python scripts/check-hotfix-coverage.py
+          if ($LASTEXITCODE -ne 0) { throw 'Historical hotfix coverage failed' }
+          python tests/ps-balance.py --all
+          if ($LASTEXITCODE -ne 0) { throw 'Encoding/delimiter check failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer035-${{ matrix.phase }}-counts
+          path: suite-summary.json

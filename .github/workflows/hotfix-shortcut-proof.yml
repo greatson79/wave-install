@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Parse, install pinned 0.3.3, and prove real shortcuts
+      - name: Parse, install pinned release, and prove real shortcuts
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,14 +41,14 @@ jobs:
               throw 'win-start.ps1 must start with literal & {, without a BOM'
             }
             $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
-            $asset = 'wave-terminal-0.3.3-windows-x64-setup.exe'
+            $asset = [string]$release.asset_name.windows_x64
             $pin = [string]$release.sha256.windows_x64
-            if ($release.version -ne '0.3.3' -or $release.asset_name.windows_x64 -ne $asset -or $pin -notmatch '^[0-9a-f]{64}$') {
-              throw 'Expected the shipped 0.3.3 Windows pin in steps.json'
+            if ($release.version -ne '0.3.5' -or $release.asset_name.windows_x64 -ne $asset -or $pin -notmatch '^[0-9a-f]{64}$') {
+              throw 'Expected the shipped 0.3.5 Windows pin in steps.json'
             }
             $download = Join-Path $env:RUNNER_TEMP ('shortcut-download-' + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Path $download | Out-Null
-            gh release download v0.3.3 --repo greatson79/wave-terminal --pattern $asset --dir $download
+            gh release download ("v" + [string]$release.version) --repo greatson79/wave-terminal --pattern $asset --dir $download
             if ($LASTEXITCODE -ne 0) { throw 'Pinned installer download failed' }
             $installer = Join-Path $download $asset
             $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()

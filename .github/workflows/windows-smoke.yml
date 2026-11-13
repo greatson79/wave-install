@@ -32,6 +32,8 @@ jobs:
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # 2026-09-10 upstream missing-brace incident: precheck before ANY PS execution.
       # Use preinstalled Python so the syntax precheck also precedes tool setup.
       - name: Windows delimiter precheck (first executable check)
@@ -143,6 +145,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # Runner does not verify V3/antivirus interference, GUI/SmartScreen,
       # Korean/space account names, or real login after [3/10].
       - name: PowerShell delimiter precheck (first check)

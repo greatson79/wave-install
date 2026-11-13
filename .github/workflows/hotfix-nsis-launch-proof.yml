@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Real pinned 0.3.3 setup via Invoke-NsisSetup + exit-code passthrough
+      - name: Real pinned release setup via Invoke-NsisSetup + exit-code passthrough
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,12 +39,12 @@ jobs:
           if ($code -ne 3) { throw "fake setup exit passthrough: got $code, want 3" }
           Write-Host 'PASS: exit code passthrough (3)'
 
-          # Case 2: the real pinned 0.3.3 NSIS installs silently through the detached launcher, incl. a path with a space.
+          # Case 2: the real pinned release NSIS installs silently through the detached launcher, incl. a path with a space.
           $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
-          $asset = 'wave-terminal-0.3.3-windows-x64-setup.exe'
+          $asset = [string]$release.asset_name.windows_x64
           $download = Join-Path $env:RUNNER_TEMP 'dl'
           New-Item -ItemType Directory -Force -Path $download | Out-Null
-          gh release download v0.3.3 --repo greatson79/wave-terminal --pattern $asset --dir $download
+          gh release download ("v" + [string]$release.version) --repo greatson79/wave-terminal --pattern $asset --dir $download
           if ($LASTEXITCODE -ne 0) { throw 'download failed' }
           $setup = Join-Path $download $asset
           $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()

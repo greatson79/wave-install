@@ -29,6 +29,7 @@ SCENARIOS = {
     'bad_receipt': {'interactive': True, 'responses': [[201, {'id': '../x', 'client_token': TOKEN}]]},
     'down': {'interactive': True, 'responses': ['raise']},
     'non_interactive': {'interactive': False, 'responses': [[201, {'id': RID, 'client_token': TOKEN}]]},
+    'gone_410': {'interactive': True, 'responses': [[201, {'id': RID, 'client_token': TOKEN}], [410, {}], [200, {}]]},
     'gone_404': {'interactive': True, 'responses': [[201, {'id': RID, 'client_token': TOKEN}], [404, {}], [200, {}]]},
 }
 ENV = 'user alice@example.com\nUSERNAME=alice\nC:\\Users\\alice\\x /Users/alice/y\n' + '환경' * 40000

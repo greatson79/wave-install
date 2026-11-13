@@ -159,7 +159,7 @@ class HelpClient:
         if not interactive:
             self.emit('이 창은 기다리지 않고 끝납니다. 담당자에게 접수번호를 알려 주세요.')
             return rid
-        self.emit('담당자 답을 이 창에 표시합니다(최대 2시간). 끝내려면 Ctrl+C를 누르세요. 받은 글은 실행하지 않습니다.')
+        self.emit('이 창에서는 답변을 받을 수 없습니다. 담당자에게 접수번호를 알려 주세요. 답변은 담당자가 별도로 직접 안내합니다. 끝내려면 Ctrl+C를 누르세요. 받은 글은 실행하지 않습니다.')
         try:
             self._poll(rid, token)
         except KeyboardInterrupt:

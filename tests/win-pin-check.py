@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import subprocess
 import tempfile
 import urllib.request
 
@@ -66,6 +67,10 @@ def main():
     parser.add_argument('--steps', type=Path, default=ROOT/'steps.json')
     parser.add_argument('--release-dir', type=Path, help='local release layout; no claim of public release verification')
     args = parser.parse_args()
+    for gate in ('check-installer-launch.py', 'check-hotfix-coverage.py'):
+        command = [sys.executable, str(ROOT / 'scripts' / gate)]
+        command += [str(ROOT)] if gate == 'check-installer-launch.py' else ['--root', str(ROOT)]
+        subprocess.run(command, check=True)
     values = pins(args.steps)
     if args.release_dir:
         verify(values, args.release_dir)

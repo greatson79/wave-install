@@ -33,12 +33,12 @@
 
 <a id="j-av-04"></a>
 
-## J-AV-04 — Windows 앱 제어 정책이 파일 실행을 차단함
+## J-AV-04 — 보안 프로그램 또는 윈도우 보안 기능이 파일 실행을 막았습니다. 바이러스로 판정된 것은 아닙니다.
 
-1. 안랩 Safe Transaction(ASTx)·V3·알약을 먼저 확인하세요. 제품의 차단·격리 기록에서 대상 파일과 시각을 확인하고 담당자에게 전달하세요. 11/11 안내처럼 예외 등록 또는 잠시 제거 후 재실행하는 조치는 사용자와 담당자가 위험을 검토해 직접 결정해야 합니다. 단순히 작업 표시줄에서 종료해도 남을 수 있습니다. 제거를 선택했다면 설치 후 다시 설치하세요. 설치기는 보호 설정을 바꾸지 않습니다.
+1. 먼저: 안랩 Safe Transaction(ASTx)·V3·알약 같은 보안 프로그램이 있으면, 설치하는 동안 예외를 등록하거나 잠시 제거한 뒤 같은 명령을 다시 실행하세요(작업 표시줄 종료만으로는 부족할 수 있습니다). 설치가 끝나면 다시 켜 주세요. 설치 파일 실행 단계에서 막힌 경우에만: 받은 설치 파일을 직접 실행할 수 있습니다. 아래에 표시되는 파일 위치를 확인하고 파일 탐색기에서 이 파일을 두 번 눌러 설치하세요. 직접 설치한 뒤: Wave Terminal을 열어 사용하시면 됩니다. 이때 로그인할 때 자동 시작 등록 등 몇 단계가 빠질 수 있습니다. 설치 명령을 다시 실행하지 말고 접수번호를 담당자에게 알려 주세요. 마저 채우는 방법을 안내합니다. 설치 후 구성 요소 실행 단계에서 막힌 경우에도 설치 파일을 다시 실행하지 말고 접수번호를 담당자에게 알려 주세요.
 2. 다음 가능성은 Windows 스마트 앱 컨트롤입니다. Windows 보안 > 앱 및 브라우저 컨트롤 > 스마트 앱 컨트롤에서 상태를 확인하세요. 이 오류만으로 어느 제품이 원인인지, 서명 부족인지 바이러스인지 구별할 수 없습니다. Microsoft CodeIntegrity 이벤트 3077의 PolicyName과 제품 기록을 담당자가 대조해야 합니다. 서명된 배포판을 기다릴 수 있으며, 스마트 앱 컨트롤을 끌지는 사용자의 결정입니다. Microsoft 안내는 서로 다릅니다. 앱 및 브라우저 컨트롤 문서는 다시 켜려면 초기화·재설치가 필요하다고 하지만 최신 FAQ는 업데이트 후 다시 켤 수 있다고 합니다. 10월 KB5127648의 재활성화 문제는 26H2·25H2에서 10월 28일 KB5127936 이후, 24H2에서 11월 10일 KB5132061 이후 해결되었다는 안내입니다. PC의 업데이트 상태를 확인하세요. 평가 모드로 돌아가려면 여전히 초기화·재설치가 필요하다는 안내입니다.
 
-근거: Microsoft WinSDK winerror.h ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION=4551; 예외 주입 검증, 실제 정책 차단 미측정. https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/shared/winerror.h ; https://support.microsoft.com/en-us/help/4013218 ; https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003 ; https://support.microsoft.com/kb/KB5127648 ; AV 안내 근거: 11/11 hf5 J-AV-03(원인 자동 확정 아님); https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/event-id-explanations ; https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/appcontrol-debugging-and-troubleshooting · OS: win
+근거: Microsoft WinSDK winerror.h ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION=4551; 예외 주입 검증, 실제 정책 차단 미측정. https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/shared/winerror.h ; https://support.microsoft.com/en-us/help/4013218 ; https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003 ; https://support.microsoft.com/kb/KB5127648 ; AV 안내 근거: 11/11 hf5 J-AV-03(원인 자동 확정 아님); https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/event-id-explanations ; https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/appcontrol-debugging-and-troubleshooting ; 사용자 제보: 같은 받은 설치 파일을 직접 실행한 뒤 앱·마스터 작동; 나머지 단계와 재실행 안전성은 미확인 · OS: win
 
 <a id="j-dl-05"></a>
 

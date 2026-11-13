@@ -8,6 +8,16 @@ from tests import test_help_client_windows as help_fixture
 class AppControlTests(unittest.TestCase):
     def test_exception_identity_and_existing_codes(self):
         bootstrap_fixture.BootstrapTests().run_ps(r'''
+$policyRule = @($HelpRules | Where-Object { $_.code -eq 'J-AV-04' })[0]
+if (-not $policyRule.action1.Contains('받은 설치 파일을 직접 실행')) { throw 'manual workaround missing' }
+$script:ArtifactPath = Join-Path $env:USERPROFILE 'received setup.exe'
+$script:diagnosticLines = @()
+function Say([string]$Message) { $script:diagnosticLines += $Message }
+function Send-Progress { }
+Write-JCode 'J-AV-04'
+if ($diagnosticLines -notcontains ('받은 설치 파일 위치: ' + $ArtifactPath)) { throw 'actual setup location missing' }
+if (-not $policyRule.action1.Contains('설치 명령을 다시 실행하지 말고')) { throw 'unsafe manual-install retry advice' }
+if (-not $policyRule.action1.Contains('설치 파일 실행 단계에서 막힌 경우에만')) { throw 'setup workaround shown for component failure' }
 $blocked = [ComponentModel.Win32Exception]::new(4551, 'localized text is irrelevant')
 $wrapped = [InvalidOperationException]::new('outer', $blocked)
 $hresult = [Runtime.InteropServices.Marshal]::GetExceptionForHR(-2147020345)

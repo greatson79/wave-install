@@ -41,3 +41,15 @@ jobs:
           if ((Invoke-NsisSetup $setup $bin) -ne 0) { throw 'real setup failed' }
           & ./tests/hotfix_av_proof.ps1 -InstalledCys (Join-Path $bin 'cys.exe')
           if ($LASTEXITCODE -ne 0) { throw 'AV proofs failed' }
+      - name: Alternate-location hand install then current S04 rerun (injected roots)
+        shell: powershell
+        run: |
+          $release = (Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).release
+          $setup = Join-Path (Join-Path $env:RUNNER_TEMP 'av-download') ([string]$release.asset_name.windows_x64)
+          & ./tests/hotfix_manual_rerun_proof.ps1 -Setup $setup
+          if ($LASTEXITCODE -ne 0) { throw 'Manual-install rerun proof failed; design decision needed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer035-manual-rerun-evidence
+          path: ${{ runner.temp }}/manual-rerun-*/result.json

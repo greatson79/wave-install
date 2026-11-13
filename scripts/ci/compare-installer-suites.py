@@ -8,8 +8,9 @@ import sys
 def accept(baseline, hotfix):
     before = set(baseline['failure_ids'] + baseline['error_ids'])
     after = set(hotfix['failure_ids'] + hotfix['error_ids'])
-    return (after <= before and hotfix['applicable_success'] is True
-            and hotfix['applicable_tests'] > hotfix.get('applicable_skipped', 0))
+    return (baseline['tests'] > 0 and hotfix['tests'] > 0 and after <= before
+            and hotfix['applicable_success'] is True and hotfix['applicable_tests'] > 0
+            and hotfix['applicable_skipped'] == 0)
 
 
 if __name__ == '__main__':

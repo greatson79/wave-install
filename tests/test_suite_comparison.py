@@ -10,9 +10,9 @@ class SuiteComparisonTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('compare', ROOT / 'scripts/ci/compare-installer-suites.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        baseline = {'failure_ids': ['mac.a', 'stale.b'], 'error_ids': []}
-        hotfix = {'failure_ids': ['mac.a'], 'error_ids': [], 'applicable_success': True,
-                  'applicable_tests': 1}
+        baseline = {'tests': 2, 'failure_ids': ['mac.a', 'stale.b'], 'error_ids': []}
+        hotfix = {'tests': 3, 'failure_ids': ['mac.a'], 'error_ids': [], 'applicable_success': True,
+                  'applicable_tests': 1, 'applicable_skipped': 0}
         self.assertTrue(module.accept(baseline, hotfix))
         hotfix['failure_ids'].append('new.c')
         self.assertFalse(module.accept(baseline, hotfix))
@@ -21,6 +21,15 @@ class SuiteComparisonTests(unittest.TestCase):
         self.assertFalse(module.accept(baseline, hotfix))
         hotfix['applicable_success'] = True
         hotfix['applicable_tests'] = 0
+        self.assertFalse(module.accept(baseline, hotfix))
+        hotfix['applicable_tests'] = 1
+        baseline['tests'] = 0
+        self.assertFalse(module.accept(baseline, hotfix))
+        baseline['tests'] = 2
+        hotfix['tests'] = 0
+        self.assertFalse(module.accept(baseline, hotfix))
+        hotfix['tests'] = 3
+        hotfix['applicable_skipped'] = 1
         self.assertFalse(module.accept(baseline, hotfix))
 
 

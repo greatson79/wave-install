@@ -60,6 +60,7 @@ jobs:
               applicable = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(modules))
               summary.update(applicable_modules=modules, applicable_tests=applicable.testsRun,
                              applicable_skipped=len(applicable.skipped), applicable_success=applicable.wasSuccessful(),
+                             applicable_skip_details=[dict(test=t.id(), reason=reason) for t, reason in applicable.skipped],
                              applicable_failure_ids=sorted(t.id() for t, _ in applicable.failures + applicable.errors))
           Path('suite-summary.json').write_text(json.dumps(summary, indent=2))
           print('SUITE_SUMMARY=' + json.dumps(summary))

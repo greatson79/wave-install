@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """v0.2 한 줄 설치 회귀: tarball 자기획득 · S01 설치/업데이트 · S02 로그인 · S03 SHA256+codesign.
 네트워크·실 ~/.claude 없이 격리 HOME + 가짜 claude/curl/hdiutil/codesign 스텁만 쓴다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import hashlib
 import json
 import os

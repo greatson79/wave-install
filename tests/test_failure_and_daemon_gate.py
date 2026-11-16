@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """D1/D2 단위 회귀. 실제 인증·DMG·데몬·전체 설치는 실행하지 않는다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 import re

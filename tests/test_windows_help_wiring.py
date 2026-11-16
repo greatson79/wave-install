@@ -3,6 +3,10 @@
 Runs the real bootstrap.ps1 main path under pwsh with Invoke-ProgressPost / Invoke-HelpHttp test doubles.
 pwsh on macOS proves script logic only, not Windows PowerShell 5.1 networking.
 """
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 from pathlib import Path

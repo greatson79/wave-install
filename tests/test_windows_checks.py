@@ -1,4 +1,8 @@
 """Mutants for help-table consistency and the portable syntax precheck."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import importlib.util
 from pathlib import Path
 import shutil

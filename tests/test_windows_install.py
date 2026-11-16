@@ -1,4 +1,8 @@
 """실제 PowerShell 함수 실행: NSIS 프로세스만 격리 대역으로 대체한다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import hashlib
 import json
 import os

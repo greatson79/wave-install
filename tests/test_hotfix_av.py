@@ -1,4 +1,8 @@
 """Portable launch/encoding guards; Windows runtime proofs live in hotfix_av_proof.ps1."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 from pathlib import Path
 import json
 import re

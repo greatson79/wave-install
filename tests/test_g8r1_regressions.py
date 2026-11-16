@@ -3,6 +3,10 @@
 No real server is contacted: the Python client uses injected transports, bash uses a fake client, and the
 only sockets are loopback listeners owned (and closed) by the test itself.
 """
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import hashlib
 import importlib
 import json

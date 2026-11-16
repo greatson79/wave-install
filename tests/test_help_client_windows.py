@@ -3,6 +3,10 @@
 Both run the same scripted fake transport; no real network. pwsh on macOS proves the
 PowerShell logic only — not Windows PowerShell 5.1 or HttpWebRequest behaviour on Windows.
 """
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 import shutil

@@ -1,4 +1,8 @@
 """R5 install-help client (macOS/Python side). Transport, sleep and clock are injected: no real network."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import io
 import json
 import os

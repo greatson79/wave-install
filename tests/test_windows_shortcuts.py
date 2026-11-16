@@ -1,4 +1,8 @@
 """Execute the real shortcut helper with injected folders and a file-backed COM stub."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 from pathlib import Path

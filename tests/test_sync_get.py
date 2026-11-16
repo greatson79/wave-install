@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """동기화는 격리 worktree만 수정하며 두 대상 검사 후 복사한다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import pathlib
 import subprocess

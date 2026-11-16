@@ -1,14 +1,15 @@
 """0.3.6 C10 — the one-line installer recovers a "tangled" Mac (states a-f of 기준_..._ADDENDUM_C10).
 
 Everything runs on an injected HOME / app roots under a private temp tree (11/7 rule: never the real /Applications,
-~/.cys, launchd or a live cysd). launchctl is a recording fake; the "upstream daemon" is a compiled sleeper placed at
-<fake cys.app>/Contents/MacOS/fakedaemon so `ps` shows a real process under the leftover bundle.
+~/.cys, launchd or a live cysd). launchctl is a recording fake. The "upstream daemon" is NOT a real process: bootstrap's
+process probes go through the injected seam (WAVE_RECOVER_PS / WAVE_RECOVER_KILL, honoured only on injected roots), which
+here reads/edits a fake process table file. No compiler, no background process, no real kill (review r1, Noah + Zen).
 """
 try:
     import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
 except ImportError:  # run as tests.<module>
     from tests import rig_guard  # noqa: F401
-import hashlib, json, os, plistlib, shutil, signal, subprocess, tempfile, time, unittest
+import hashlib, json, os, plistlib, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,16 +26,12 @@ def tree_hashes(*dirs):
     return out
 
 
-_FAKE = None
+FIRST_FAKE_PID = 100001  # above the macOS pid limit (99998): can never name a real process
 
 
-def fake_daemon_binary():
-    """A real compiled sleeper (a copy of /bin/sleep is killed by macOS code-signing; a script shows as /bin/sh in ps)."""
-    global _FAKE
-    if _FAKE is None:
-        d = Path(tempfile.mkdtemp(prefix="c10-fakebin-", dir="/private/tmp")); (d / "f.c").write_text("#include <unistd.h>\nint main(){sleep(300);return 0;}\n")
-        subprocess.run(["cc", "-o", str(d / "fakedaemon"), str(d / "f.c")], check=True); _FAKE = d / "fakedaemon"
-    return _FAKE
+class FakeProc:
+    """One row of the fake process table (what `ps -axo pid=,comm=` would print)."""
+    def __init__(self, pid, exe): self.pid, self.exe = pid, exe
 
 
 class Rig:
@@ -45,6 +42,12 @@ class Rig:
         self.procs = []
         fake = Path(td) / "fake-launchctl"; fake.write_text(f'#!/bin/sh\necho "$@" >> "{self.calls}"\nexit 0\n'); fake.chmod(0o755)
         self.launchctl = fake
+        # process-table seam: fake `ps` prints the table; fake `kill -TERM <pid>` records the call and drops that row
+        self.table = Path(td) / "proc-table"; self.table.write_text(""); self.kills = Path(td) / "kill.calls"
+        self.fake_ps = Path(td) / "fake-ps"; self.fake_ps.write_text(f'#!/bin/sh\ncat "{self.table}"\n'); self.fake_ps.chmod(0o755)
+        self.fake_kill = Path(td) / "fake-kill"
+        self.fake_kill.write_text(f'#!/bin/sh\necho "$*" >> "{self.kills}"\ngrep -v "^$2 " "{self.table}" > "{self.table}.new"; mv "{self.table}.new" "{self.table}"\n')
+        self.fake_kill.chmod(0o755)
         # department records that must stay byte-identical
         (self.home / ".cys/depts.json").write_text('{"depts":["dev","ministry"]}\n')
         (self.home / ".local/state/cys/seat-1.json").write_text('{"seat":1,"role":"master"}\n')
@@ -58,9 +61,10 @@ class Rig:
         cys.write_text('#!/bin/sh\ncase "$1" in status) cat "%s" ;; *) echo cys 9.9.9 ;; esac\n' % (path.parent.parent / "legacy-status.json"))
         cys.chmod(0o755)
         if status is not None: (path.parent.parent / "legacy-status.json").write_text(json.dumps(status))
-        sleeper = path / "Contents/MacOS/fakedaemon"; shutil.copy(fake_daemon_binary(), sleeper)
-        if daemon:
-            self.procs.append(subprocess.Popen([str(sleeper)])); time.sleep(0.3)
+        daemon_exe = path / "Contents/MacOS/fakedaemon"; daemon_exe.write_text("placeholder: never executed\n")
+        if daemon:  # a row in the fake process table, not a process
+            p = FakeProc(FIRST_FAKE_PID + len(self.procs), daemon_exe); self.procs.append(p)
+            with open(self.table, "a") as f: f.write(f"{p.pid} {p.exe}\n")
         return path
 
     def plist(self, label, program):
@@ -75,15 +79,14 @@ class Rig:
 
     def run(self, fn="recover_tangled_mac"):
         env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), WAVE_RECOVER_APP_ROOTS=str(self.apps),
-                   WAVE_RECOVER_LAUNCHCTL=str(self.launchctl), PATH="/usr/bin:/bin:/usr/sbin:/sbin")
+                   WAVE_RECOVER_LAUNCHCTL=str(self.launchctl), WAVE_RECOVER_PS=str(self.fake_ps), WAVE_RECOVER_KILL=str(self.fake_kill),
+                   PATH="/usr/bin:/bin:/usr/sbin:/sbin")
         r = subprocess.run(["bash", "-c", f'source "$1"; {fn}', "rig", str(self.lib)], env=env, capture_output=True, text=True, timeout=60)
         return r
 
-    def alive(self, p): return p.poll() is None
+    def alive(self, p): return any(l.split(" ", 1)[0] == str(p.pid) for l in self.table.read_text().splitlines())
 
-    def close(self):
-        for p in self.procs:
-            if p.poll() is None: p.kill(); p.wait()
+    def close(self): pass  # nothing real was started
 
 
 class Base(unittest.TestCase):
@@ -113,6 +116,7 @@ class StateA_LegacyDaemonHoldsSocket(Base):
         self.assertEqual(before, self.rec_before())
         self.assertEqual(wave_before, tree_hashes(wave), "our own bundle is untouched")
         self.assertIn("정리했습니다", r.stderr)
+        self.assertEqual(self.rig.kills.read_text().split(), ["-TERM", str(self.rig.procs[0].pid)], "TERM through the seam, only that pid")
 
     def test_a_with_live_seats_stops_and_changes_nothing(self):
         legacy = self.rig.bundle(self.rig.apps / "cys.app", LEGACY_ID, status={"surfaces": [{"surface_ref": "surface:1", "role": "master", "exited": False}]}, daemon=True)
@@ -262,6 +266,16 @@ class StateF_AplusBplusD(Base):
         self.rig.bundle(self.rig.apps / "cys.app", LEGACY_ID, status={"surfaces": []}); self.rig.pack(foreign=False)
         self.assertEqual(self.rig.run().returncode, 0); n = len(self.backups())
         r = self.rig.run(); self.assertEqual(r.returncode, 0); self.assertEqual(len(self.backups()), n)
+
+    def test_process_seam_is_ignored_when_not_injected(self):
+        # production (WAVE_HOME = ~/.wave): WAVE_RECOVER_PS/KILL are ignored -> plain `ps`/`kill`. Under rig_guard the real
+        # `ps` is not on the confined PATH, so it can only fail here — it must never read the fake table.
+        legacy = self.rig.bundle(self.rig.apps / "cys.app", LEGACY_ID, daemon=True)
+        env = dict(os.environ, HOME=str(self.rig.home), WAVE_HOME=str(self.rig.home / ".wave"),
+                   WAVE_RECOVER_PS=str(self.rig.fake_ps), WAVE_RECOVER_KILL=str(self.rig.fake_kill))
+        r = subprocess.run(["bash", "-c", 'source "$1"; recover_pids_under "$2"', "x", str(self.rig.lib), str(legacy)], env=env, capture_output=True, text=True)
+        self.assertEqual(r.stdout.strip(), "", r.stderr)
+        self.assertFalse(self.rig.kills.exists())
 
     def test_real_paths_refused_when_not_injected(self):
         # production roots are only /Applications and ~/Applications; the override env is ignored unless WAVE_HOME is not the default

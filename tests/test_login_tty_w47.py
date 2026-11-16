@@ -62,6 +62,7 @@ touch "$CLAUDE_CONFIG_DIR/loggedin"
             tar.add(package, arcname='package')
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         tty_path = os.ttyname(self.slave)
+        self.sb.stub('ps', 'echo "' + tty_path.removeprefix('/dev/') + '"')  # what `ps -o tty= -p $$` shows for this pty (never the host's real ps)
 
         def controlling_tty():
             os.setsid()

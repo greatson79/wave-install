@@ -689,9 +689,12 @@ recover_find_legacy() {
   done
 }
 
+# 프로세스 표·종료 신호 — 시험 전용 루트(recover_injected)에서만 WAVE_RECOVER_PS / WAVE_RECOVER_KILL 로 바꿔 끼운다(실제 ps·kill 대신 가짜 표). 실제 설치는 그대로 ps·kill.
+recover_ps() { if recover_injected && [[ -n "${WAVE_RECOVER_PS:-}" ]]; then "$WAVE_RECOVER_PS"; else ps -axo pid=,comm=; fi; }
+recover_kill() { if recover_injected && [[ -n "${WAVE_RECOVER_KILL:-}" ]]; then "$WAVE_RECOVER_KILL" -TERM "$1"; else kill -TERM "$1"; fi; }
 recover_pids_under() {
   local pid cmd
-  ps -axo pid=,comm= | while read -r pid cmd; do
+  recover_ps | while read -r pid cmd; do
     case "$cmd" in "$1"/Contents/*) printf '%s\n' "$pid" ;; esac
   done
 }
@@ -834,7 +837,7 @@ recover_tangled_mac() {
   fi
   while IFS=$'\t' read -r kind app; do
     [[ -n "$app" ]] || continue
-    for pid in $(recover_pids_under "$app"); do kill -TERM "$pid" 2>/dev/null || true; stopped=1; done
+    for pid in $(recover_pids_under "$app"); do recover_kill "$pid" 2>/dev/null || true; stopped=1; done
     for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -z "$(recover_pids_under "$app")" ]] && break; sleep 1; done
     if [[ -n "$(recover_pids_under "$app")" ]]; then
       fail_message "남은 cys 서비스를 멈추지 못해 앱은 그대로 둡니다(좌석 영향 없음). Mac 을 재시작한 뒤 같은 설치 명령을 다시 실행해 주세요."

@@ -10,6 +10,12 @@ Importing this module (each test file does) does three things on POSIX hosts:
     /opt/homebrew, ~/.local/bin, ...) is dropped, so a script can only reach an allowlisted tool, a stub or a fixture by name.
     `ps`, `kill`(binary), `cc`, `sleep`-as-a-daemon etc. are simply not there. Tests that need a working fake put their own
     fake dir first on PATH, which still wins.
+ 2b. Write-capable tools (WRITE_TOOLS) are not raw symlinks but wrappers (tests/rig_write_guard.py) that resolve every
+    write operand (-t/-o/-f/-C/-d/of= targets included) with realpath -m semantics and refuse (exit 126, "rig_guard: write
+    outside rig refused: <path>") unless it is under a rig root; the refusal is logged, and the running test FAILS
+    (checked after every test, together with a byte-identical check of a sentinel dir outside every rig root).
+    NOT covered: shell redirections (`> file`) and writes from inside interpreter programs (bash/sh/zsh/python3/awk,
+    perl -e) — argv cannot show them; the outside sentinel only detects writes that land in that sentinel.
  3. Wraps subprocess.Popen: the program about to start must be (a) an allowlisted top-level program (ALLOW_TOP, the
     interpreters/tools the tests drive directly) or (b) a fixture SCRIPT inside the rig (text file starting with "#!" whose
     interpreter is itself allowlisted). Anything else — `cc`, `/bin/sleep`, `tail`, a native binary copied into a temp dir —
@@ -37,8 +43,15 @@ ALLOW_TOOLS = ("bash", "sh", "env", "python3", "perl", "cat", "grep", "egrep", "
                "md5", "cksum", "split", "join", "tput", "stty", "which",
                "zsh",  # zsh: bootstrap.sh:956 verifies its PATH hook with `zsh -f` (no rc files) on a rig file
                "df")   # df: bootstrap's required-command check (read-only disk free)
+# Every allowlisted tool that can WRITE or DELETE (review r2): in allow-bin these are write-confining wrappers
+# (tests/rig_write_guard.py), never raw symlinks. Everything else in ALLOW_TOOLS is read-only and stays a plain symlink.
+WRITE_TOOLS = ("rm", "rmdir", "mkdir", "touch", "tee", "gzip", "gunzip", "mv", "cp", "ditto", "ln", "chmod", "dd", "tar",
+               "unzip", "zip", "split", "mktemp", "sed", "perl", "sort", "uniq", "xxd", "base64", "plutil", "file", "find",
+               "git")
+# General interpreters: can write anything from inside their program text; argv checks cannot see that (honest limit).
+UNWRAPPABLE = ("bash", "sh", "zsh", "python3", "awk", "env", "xargs")
 ACTIVE = os.name == "posix"
-ROOT = STUBS = LOG = FAKE_CLAUDE = NO_CLAUDE = ALLOW_BIN = None
+ROOT = STUBS = LOG = FAKE_CLAUDE = NO_CLAUDE = ALLOW_BIN = OUTSIDE = REFUSALS = None
 REPO = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 _SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -143,17 +156,92 @@ def with_fake_claude(env):
     return env
 
 
+def _install_outside_sentinel():
+    """R4 ADD (Theo): a sentinel dir OUTSIDE every rig root (/private/var/tmp is not /private/tmp, not $TMPDIR, not the
+    repo). Negative tests aim their writes at it; after EVERY test it must still be byte-identical."""
+    global OUTSIDE
+    OUTSIDE = tempfile.mkdtemp(prefix="wave-rig-outside-", dir="/private/var/tmp")
+    assert not _inside_rig(OUTSIDE), OUTSIDE
+    os.mkdir(os.path.join(OUTSIDE, "keep-dir"))
+    for rel, text in (("keep.txt", "sentinel\n"), ("keep-dir/inner.txt", "inner\n")):
+        with open(os.path.join(OUTSIDE, rel), "w") as f:
+            f.write(text)
+    atexit.register(shutil.rmtree, OUTSIDE, True)
+
+
+def outside_snapshot():
+    """path -> (mode, bytes) for the whole outside sentinel tree (dirs included)."""
+    snap = {}
+    for dirpath, dirs, files in os.walk(OUTSIDE):
+        for n in sorted(dirs) + sorted(files):
+            p = os.path.join(dirpath, n); st = os.lstat(p)
+            snap[os.path.relpath(p, OUTSIDE)] = (st.st_mode, None if os.path.isdir(p) else open(p, "rb").read())
+    return snap
+
+
+def refusal_count():
+    if not REFUSALS or not os.path.exists(REFUSALS):
+        return 0
+    with open(REFUSALS) as f:
+        return len(f.read().splitlines())
+
+
+def expects_refusals(fn):
+    """Mark a negative test: wrapper refusals are expected there (the outside sentinel must STILL be byte-identical)."""
+    fn.rig_guard_expects_refusals = True
+    return fn
+
+
+def _patch_unittest():
+    """R4 ADD: after EVERY test (all test files import this module), a write outside the rig FAILS that test:
+    (1) any wrapper refusal during the test (unless the test is marked @expects_refusals), (2) any change to the outside
+    sentinel tree. Implemented around TestCase.run so no test file has to opt in."""
+    import unittest
+    original_run = unittest.TestCase.run
+
+    def run(self, result=None):
+        before_n, before_snap = refusal_count(), outside_snapshot()
+        out = original_run(self, result)
+        problems = []
+        method = getattr(self, self._testMethodName, None)
+        if refusal_count() != before_n and not getattr(method, "rig_guard_expects_refusals", False):
+            with open(REFUSALS) as f:
+                problems.append("write outside the rig was attempted (refused): " + " | ".join(f.read().splitlines()[before_n:]))
+        if outside_snapshot() != before_snap:
+            problems.append("the outside-the-rig sentinel %s changed" % OUTSIDE)
+        if problems and result is not None:
+            try:
+                raise AssertionError("rig_guard: " + "; ".join(problems))
+            except AssertionError:
+                result.addFailure(self, sys.exc_info())
+        return out
+
+    unittest.TestCase.run = run
+
+
 def _install():
-    global ROOT, STUBS, LOG, FAKE_CLAUDE, NO_CLAUDE, ALLOW_BIN
+    global ROOT, STUBS, LOG, FAKE_CLAUDE, NO_CLAUDE, ALLOW_BIN, REFUSALS
     ROOT = tempfile.mkdtemp(prefix="wave-test-root-", dir="/private/tmp")
     STUBS = os.path.join(ROOT, "stubs"); os.mkdir(STUBS); LOG = os.path.join(ROOT, "stub-calls.log")
     for name in GUARDED:
         _stub(name)
     ALLOW_BIN = os.path.join(ROOT, "allow-bin"); os.mkdir(ALLOW_BIN)
+    REFUSALS = os.path.join(ROOT, "write-refusals.log")
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "rig_write_guard.py")) as f:
+        body = f.read()
+    roots = sorted(_rig_roots())
     for name in ALLOW_TOOLS:
         real = sys.executable if name == "python3" else shutil.which(name, path=_SYSTEM_PATH)
-        if real and name not in GUARDED:
-            os.symlink(real, os.path.join(ALLOW_BIN, name))
+        if not real or name in GUARDED:
+            continue
+        target = os.path.join(ALLOW_BIN, name)
+        if name in WRITE_TOOLS:
+            with open(target, "w") as f:
+                f.write("#!%s -I\nTOOL = %r\nREAL = %r\nROOTS = %r\nREFUSALS = %r\n%s" % (sys.executable, name, real, roots, REFUSALS, body))
+            os.chmod(target, 0o755)
+        else:
+            os.symlink(real, target)
+    _install_outside_sentinel()
     # same stubs minus claude, for tests that assert "claude is NOT installed" (a claude stub would make `command -v claude` succeed);
     # a real claude is still unreachable: the confined PATH has no system dir.
     NO_CLAUDE = os.path.join(ROOT, "stubs-no-claude"); shutil.copytree(STUBS, NO_CLAUDE); os.remove(os.path.join(NO_CLAUDE, "claude"))
@@ -175,6 +263,7 @@ def _install():
         original(self, args, *a, **kw)
 
     subprocess.Popen.__init__ = guarded_init
+    _patch_unittest()
 
 
 if ACTIVE and ROOT is None:

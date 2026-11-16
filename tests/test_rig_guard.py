@@ -81,6 +81,87 @@ class RigGuard(unittest.TestCase):
         ok = os.path.join(rig_guard.ROOT, "fixture-ok"); open(ok, "w").write("#!/bin/sh\necho fixture-ran\n"); os.chmod(ok, 0o755)
         self.assertEqual(subprocess.run([ok], capture_output=True, text=True).stdout.strip(), "fixture-ran")
 
+    # ---- review r2 (Noah) + R4 ADD (Theo): write-capable tools are confined to the rig; a write outside FAILS the test ----
+    OUT_CASES = {  # tool -> shell command aimed at the outside sentinel (OUT); every one must be refused, OUT untouched
+        "rm": 'rm -f "$OUT/keep.txt"', "rm -r": 'rm -rf "$OUT/keep-dir"', "mv": 'mv "$OUT/keep.txt" "$IN/x"',
+        "mv-into": 'mv "$IN/src.txt" "$OUT/new.txt"', "cp": 'cp "$IN/src.txt" "$OUT/new.txt"',
+        "mkdir": 'mkdir -p "$OUT/newdir"', "touch": 'touch "$OUT/new.txt"', "chmod": 'chmod 000 "$OUT/keep.txt"',
+        "ditto": 'ditto "$IN" "$OUT/copy"', "ln": 'ln -s /etc/hosts "$OUT/link"', "tee": 'echo x | tee "$OUT/new.txt"',
+        "sed -i": 'sed -i "" s/sentinel/X/ "$OUT/keep.txt"', "dd": 'dd if=/dev/zero of="$OUT/new.bin" count=1',
+        "tar -x": 'tar -xf "$IN/a.tar" -C "$OUT"', "find -delete": 'find "$OUT" -name keep.txt -delete',
+        "sort -o": 'sort -o "$OUT/keep.txt" "$IN/src.txt"', "git -C": 'git -C "$OUT" init -q',
+        "relative ../": 'cd "$IN" && rm -f "../../../../../../../..$OUT/keep.txt"',
+    }
+
+    def write_rig(self):
+        inside = os.path.join(rig_guard.ROOT, "write-test-%d" % len(os.listdir(rig_guard.ROOT))); os.mkdir(inside)
+        with open(os.path.join(inside, "src.txt"), "w") as f:
+            f.write("b\na\n")
+        subprocess.run(["tar", "-cf", os.path.join(inside, "a.tar"), "-C", inside, "src.txt"], check=True)
+        return dict(os.environ, IN=inside, OUT=rig_guard.OUTSIDE)
+
+    @rig_guard.expects_refusals
+    def test_negative_write_tools_outside_the_rig_are_refused_and_target_untouched(self):
+        self.assertFalse(rig_guard._inside_rig(rig_guard.OUTSIDE), "the sentinel really is outside every rig root")
+        env, before = self.write_rig(), rig_guard.outside_snapshot()
+        for tool, cmd in self.OUT_CASES.items():
+            with self.subTest(tool=tool):
+                n = rig_guard.refusal_count()
+                r = subprocess.run(["bash", "-c", cmd], env=env, capture_output=True, text=True)
+                print("NEGATIVE write %-12s rc=%s %s" % (tool, r.returncode, r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ""))
+                self.assertEqual(r.returncode, 126, r.stderr)
+                self.assertIn("rig_guard: write outside rig refused: ", r.stderr)
+                self.assertGreater(rig_guard.refusal_count(), n, "refusal recorded for the per-test check")
+                self.assertEqual(rig_guard.outside_snapshot(), before, "outside target byte-identical")
+
+    def test_positive_write_tools_inside_the_rig_work(self):
+        env = self.write_rig(); n = rig_guard.refusal_count()
+        cmd = ('cd "$IN" && mkdir -p d && touch d/t && cp src.txt d/c && mv d/c d/m && chmod 600 d/m && ditto d e && '
+               'ln -s src.txt l && echo y | tee d/tee >/dev/null && sed -i "" s/a/A/ d/m && dd if=/dev/zero of=d/z count=1 2>/dev/null && '
+               'mkdir x && tar -xf a.tar -C x && sort -o d/s src.txt && find e -name t -delete && git -C "$IN" init -q && '
+               'rm -rf e && rm d/t && echo OK')
+        r = subprocess.run(["bash", "-c", cmd], env=env, capture_output=True, text=True)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "OK"), r.stderr)
+        self.assertEqual(rig_guard.refusal_count(), n, "no refusal inside the rig")
+        self.assertEqual(open(os.path.join(env["IN"], "d/m")).read(), "b\nA\n")
+
+    def test_r4_add_an_unmarked_refused_write_fails_the_test(self):
+        env = self.write_rig()
+
+        class Inner(unittest.TestCase):
+            def test_regression(self_inner):
+                subprocess.run(["bash", "-c", 'rm -f "$OUT/keep.txt" || true'], env=env)  # a "regression" that swallows the error
+
+        result = unittest.TestResult()
+        n = rig_guard.refusal_count()
+        Inner("test_regression").run(result)
+        self.assertEqual(len(result.failures), 1, "the refused outside write must FAIL the test")
+        self.assertIn("write outside the rig was attempted", result.failures[0][1])
+        print("R4-ADD failing test message:", result.failures[0][1].strip().splitlines()[-1][:220])
+        # this outer test made the refusal on purpose: drop it from the log so the outer check stays about the outer test
+        with open(rig_guard.REFUSALS) as f:
+            lines = f.read().splitlines()
+        with open(rig_guard.REFUSALS, "w") as f:
+            f.write("".join(l + "\n" for l in lines[:n]))
+
+    def test_r4_add_a_changed_outside_sentinel_fails_the_test(self):
+        path = os.path.join(rig_guard.OUTSIDE, "keep.txt")
+        original = open(path, "rb").read()
+
+        class Inner(unittest.TestCase):
+            def test_unwrapped_write(self_inner):
+                with open(path, "ab") as f:  # e.g. a shell redirection or a python write, which no wrapper can see
+                    f.write(b"x")
+
+        result = unittest.TestResult()
+        try:
+            Inner("test_unwrapped_write").run(result)
+        finally:
+            with open(path, "wb") as f:
+                f.write(original)
+        self.assertEqual(len(result.failures), 1)
+        self.assertIn("sentinel", result.failures[0][1])
+
     def test_check_env_unit(self):
         with self.assertRaises(RuntimeError):
             rig_guard.check_env({"PATH": "/usr/bin:/bin"})

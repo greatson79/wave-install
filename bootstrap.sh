@@ -663,6 +663,215 @@ wave_migrate_app() {
   fi
 }
 
+# ---- 0.3.6 C10 — 엉킨 Mac 복구 (원본 cys 앱·데몬·팩 덮어쓰기). 순서 = 감지 → 좌석·기록 안전 증명 → 백업 → 중지 → 이동 → 복원 → 확인.
+# 어느 단계든 안전을 증명 못 하면 아무것도 바꾸지 않고 멈춘다. 번들 ID(com.cysjavis.terminal)만 보고 이름은 보지 않는다. 삭제는 없다(보관 폴더로 이동·복사).
+LEGACY_BUNDLE_ID="com.cysjavis.terminal"
+WAVE_BUNDLE_ID="com.waveainetworks.wave-terminal"
+LEGACY_JOB_LABEL="com.cysjavis.cysd"
+RECOVER_BACKUP=""
+RECOVER_FOREIGN_PACK=0   # 1 = 이번 실행에서 남은 원본 cys 앱과 함께 덮인 팩을 확인했다(S06 이 --force 로 되돌릴 때만)
+
+recover_injected() { [[ "$WAVE_HOME" != "$HOME/.wave" ]]; }   # 시험 전용 루트는 WAVE_HOME 이 기본값이 아닐 때만 허용(실제 /Applications 보호)
+recover_roots() {
+  if recover_injected && [[ -n "${WAVE_RECOVER_APP_ROOTS:-}" ]]; then tr ':' '\n' <<< "$WAVE_RECOVER_APP_ROOTS"
+  else printf '%s\n' /Applications "$HOME/Applications"; fi
+}
+recover_bundle_id() { /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist" 2>/dev/null || true; }
+
+# "A<TAB>경로" = 응용 프로그램 폴더의 원본 cys 앱 · "T<TAB>경로" = 휴지통의 원본 cys 앱(데몬만 멈추고 휴지통은 건드리지 않는다)
+recover_find_legacy() {
+  local kind root app
+  { recover_roots | sed 's/^/A\t/'; printf 'T\t%s\n' "$HOME/.Trash"; } | while IFS=$'\t' read -r kind root; do
+    for app in "$root"/*.app; do
+      [[ -d "$app" && ! -L "$app" ]] || continue
+      if [[ "$(recover_bundle_id "$app")" == "$LEGACY_BUNDLE_ID" ]]; then printf '%s\t%s\n' "$kind" "$app"; fi
+    done
+  done
+}
+
+recover_pids_under() {
+  local pid cmd
+  ps -axo pid=,comm= | while read -r pid cmd; do
+    case "$cmd" in "$1"/Contents/*) printf '%s\n' "$pid" ;; esac
+  done
+}
+
+# 살아 있는 좌석 수. 읽을 수 없으면 실패(= 증명 불가).
+recover_live_seats() {
+  local cys="$1/Contents/MacOS/cys" out
+  [[ -x "$cys" ]] || return 1
+  out="$(bounded_command_out "$cys" status --json 2>/dev/null)" || return 1
+  python3 -c '
+import json, sys
+d = json.loads(sys.stdin.read()); s = d["surfaces"]
+assert isinstance(s, list)
+print(sum(1 for x in s if x.get("exited") is not True))' <<< "$out" 2>/dev/null
+}
+bounded_command_out() {
+  python3 - "$@" <<'PY_BOUND_OUT'
+import subprocess, sys, os
+try:
+    env = {k: v for k, v in os.environ.items() if k not in ("CYS_SOCKET", "JAVIS_SOCKET", "AITERM_SOCKET")}  # 호출한 좌석의 소켓을 물려받지 않는다
+    r = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=15, env=env, cwd=os.environ.get("HOME") or None)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+sys.stdout.write(r.stdout); sys.exit(r.returncode)
+PY_BOUND_OUT
+}
+
+# 부서 기록(~/.cys · ~/.local/state/cys — 팩·계정 폴더·소켓·로그 제외)의 파일별 SHA-256 목록.
+recover_records_manifest() {
+  python3 - "$HOME/.cys" "$HOME/.local/state/cys" <<'PY_REC'
+import hashlib, os, sys
+for top in sys.argv[1:]:
+    for dirpath, dirs, files in os.walk(top):
+        dirs[:] = sorted(d for d in dirs if not (dirpath == top and (d == "pack" or d.startswith("claude"))))
+        for name in sorted(files):
+            if name.endswith((".sock", ".log", ".lock", ".pid")): continue
+            p = os.path.join(dirpath, name)
+            if os.path.islink(p) or not os.path.isfile(p): continue
+            with open(p, "rb") as f: h = hashlib.sha256(f.read()).hexdigest()
+            print(h + "  " + p)
+PY_REC
+}
+
+recover_pack_foreign() {
+  local f
+  for f in bin/javis_preflight.py bin/javis_phoenix_harness.py; do
+    if grep -Fq '/Applications/cys.app' "$PACK_HOME/$f" 2>/dev/null; then return 0; fi
+  done
+  return 1
+}
+
+recover_backup_dir() {
+  [[ -n "$RECOVER_BACKUP" ]] || RECOVER_BACKUP="$WAVE_HOME/backups/recovery-$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+  mkdir -p "$RECOVER_BACKUP"
+}
+recover_backup_pack() {
+  recover_backup_dir || return 1
+  [[ -d "$RECOVER_BACKUP/pack" ]] && return 0
+  [[ -d "$PACK_HOME" ]] || return 0
+  ditto "$PACK_HOME" "$RECOVER_BACKUP/pack" || { fail_message "지침 폴더를 백업하지 못해 아무것도 바꾸지 않았습니다"; return 1; }
+  log "백업 — 공유 지침 폴더 전체를 $RECOVER_BACKUP/pack 에 복사했습니다(원본은 지우지 않습니다)."
+}
+
+# LaunchAgent 가 남은 원본 cys 앱을 가리키는가(앱 안 경로, 또는 휴지통으로 간 앱의 원래 자리).
+recover_plist_owned() {
+  local plist="$1" prog kind app
+  shift
+  [[ -f "$plist" && ! -L "$plist" ]] || return 1
+  prog="$(python3 -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1],"rb"))["ProgramArguments"][0])' "$plist" 2>/dev/null)" || return 1
+  [[ -n "$prog" ]] || return 1
+  while IFS=$'\t' read -r kind app; do
+    [[ -n "$app" ]] || continue
+    case "$prog" in "$app"/*) return 0 ;; esac
+    if [[ "$kind" == T && ! -e "$prog" && "$prog" == */"$(basename "$app")"/Contents/* ]]; then return 0; fi
+  done <<< "$1"
+  return 1
+}
+
+recover_find_parked_wave() {
+  local app root found=() n
+  for app in "$WAVE_HOME"/backups/*/*.app "$HOME/Library/Application Support"/*/removed-cys-apps/*.app; do
+    [[ -d "$app" && ! -L "$app" && "$(recover_bundle_id "$app")" == "$WAVE_BUNDLE_ID" ]] && found+=("$app")
+  done
+  n=${#found[@]}
+  (( n == 1 )) && printf '%s\n' "${found[0]}"
+  return 0
+}
+
+recover_tangled_mac() {
+  [[ "$(uname -s)" == Darwin ]] || return 0
+  local legacy plist dest root has_wave=0 kind app pid pids seats name stamp before after parked owned_plist=0 foreign=0
+  legacy="$(recover_find_legacy)"
+  plist="$HOME/Library/LaunchAgents/$LEGACY_JOB_LABEL.plist"
+  recover_plist_owned "$plist" "$legacy" && owned_plist=1
+  recover_pack_foreign && foreign=1
+  if [[ "$foreign" == 1 && -z "$legacy" ]]; then
+    # 지침 폴더에 원본 cys 경로가 있어도 남은 cys 앱이 없으면 원본이 덮었다는 증거가 아니다(원본 cys 팩을 쓰는 Mac 일 수 있음) — 건드리지 않는다.
+    log "공유 지침 폴더에 원본 cys 경로가 보이지만 남은 cys 앱이 없어 그대로 둡니다."
+    foreign=0
+  fi
+  RECOVER_FOREIGN_PACK="$foreign"
+  dest="$(wave_visible_app)" || return 1
+  while IFS= read -r root; do
+    for app in "$root"/*.app; do [[ -d "$app" && "$(recover_bundle_id "$app")" == "$WAVE_BUNDLE_ID" ]] && has_wave=1; done
+  done < <(recover_roots)
+  parked=""
+  if [[ "$has_wave" == 0 && ! -e "$dest" ]]; then parked="$(recover_find_parked_wave)"; fi
+  [[ -n "$legacy" || "$owned_plist" == 1 || "$foreign" == 1 || -n "$parked" ]] || return 0
+
+  log "[복구] 이전에 설치된 원본 cys 흔적을 찾았습니다 — 먼저 좌석과 부서 기록이 안전한지 확인합니다."
+  # 1) 안전 증명: 남은 원본 cys 데몬이 살아 있으면 그 좌석이 0개임을 읽어서 확인한다. 못 읽거나 1개 이상이면 아무것도 바꾸지 않고 멈춘다.
+  while IFS=$'\t' read -r kind app; do
+    [[ -n "$app" ]] || continue
+    pids="$(recover_pids_under "$app")"
+    [[ -n "$pids" ]] || continue
+    if ! seats="$(recover_live_seats "$app")" || [[ ! "$seats" =~ ^[0-9]+$ ]]; then
+      fail_message "남은 cys 앱의 서비스가 실행 중인데 좌석 상태를 읽을 수 없습니다. 아무것도 바꾸지 않았습니다. 작업 중인 창이 있다면 저장한 뒤 설치 지원에 알려 주세요."
+      return 1
+    fi
+    if (( seats > 0 )); then
+      fail_message "남은 cys 앱이 지금 작업 좌석 ${seats}개를 돌리고 있습니다. 좌석과 부서 기록을 지키기 위해 아무것도 바꾸지 않았습니다. 작업을 마치고 cys 앱을 종료한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      return 1
+    fi
+  done <<< "$legacy"
+  before="$(recover_records_manifest)" || { fail_message "부서 기록 목록을 만들 수 없어 아무것도 바꾸지 않았습니다"; return 1; }
+  log "기록 확인 — 살아 있는 좌석 0개, 부서 기록 $(printf '%s' "$before" | grep -c . || true)개 파일의 해시 목록을 만들었습니다."
+
+  # 2) 백업(삭제 없음)
+  recover_backup_dir || return 1
+  printf '%s\n' "$before" > "$RECOVER_BACKUP/records-before.sha256"
+  [[ "$foreign" == 1 ]] && { recover_backup_pack || return 1; }
+  [[ "$foreign" == 1 ]] || log "백업 폴더: $RECOVER_BACKUP"
+
+  # 3) 중지: 남은 원본 cys 데몬만(번들 경로 아래 프로세스) — 좌석 0개 확인 뒤에만
+  local launchctl_cmd="launchctl" stopped=0
+  if recover_injected; then launchctl_cmd="${WAVE_RECOVER_LAUNCHCTL:-}"; fi
+  if [[ "$owned_plist" == 1 && -n "$launchctl_cmd" ]]; then
+    "$launchctl_cmd" bootout "gui/$(id -u)/$LEGACY_JOB_LABEL" >/dev/null 2>&1 || true
+    stopped=1
+  fi
+  while IFS=$'\t' read -r kind app; do
+    [[ -n "$app" ]] || continue
+    for pid in $(recover_pids_under "$app"); do kill -TERM "$pid" 2>/dev/null || true; stopped=1; done
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -z "$(recover_pids_under "$app")" ]] && break; sleep 1; done
+    if [[ -n "$(recover_pids_under "$app")" ]]; then
+      fail_message "남은 cys 서비스를 멈추지 못해 앱은 그대로 둡니다(좌석 영향 없음). Mac 을 재시작한 뒤 같은 설치 명령을 다시 실행해 주세요."
+      return 1
+    fi
+  done <<< "$legacy"
+  [[ "$stopped" == 1 ]] && log "중지 — 남은 원본 cys 서비스를 멈췄습니다(Wave 서비스와 좌석은 그대로)."
+
+  # 4) 이동(삭제 아님): 원본 cys 자동 시작 등록 → 원본 cys 앱
+  if [[ "$owned_plist" == 1 ]]; then
+    mkdir -p "$RECOVER_BACKUP/launchagents" && mv "$plist" "$RECOVER_BACKUP/launchagents/" || { fail_message "원본 cys 자동 시작 등록을 옮기지 못해 앱은 그대로 둡니다"; return 1; }
+  fi
+  while IFS=$'\t' read -r kind app; do
+    [[ "$kind" == A ]] || continue
+    mkdir -p "$RECOVER_BACKUP/apps" || return 1
+    if mv "$app" "$RECOVER_BACKUP/apps/$(basename "$app")"; then
+      log "정리했습니다 — 원본 cys 앱($(basename "$app"))을 $RECOVER_BACKUP/apps 로 옮겼습니다(지우지 않았습니다)."
+    else
+      log "원본 cys 앱($(basename "$app"))을 옮기지 못해 그대로 둡니다(권한). 설치는 계속합니다."
+    fi
+  done <<< "$legacy"
+
+  # 5) 치워 둔 Wave 앱 복원(번들 ID 일치·후보 1개일 때만, 복사)
+  if [[ -n "$parked" ]]; then
+    mkdir -p "$(dirname "$dest")" && ditto "$parked" "$dest" && log "복원 — 보관 폴더에 있던 Wave Terminal 앱을 제자리로 되돌렸습니다: $dest"
+  fi
+
+  # 6) 사후 확인: 부서 기록 바이트 동일
+  after="$(recover_records_manifest)" || after=""
+  printf '%s\n' "$after" > "$RECOVER_BACKUP/records-after.sha256"
+  if [[ "$before" != "$after" ]]; then
+    fail_message "부서 기록 해시 목록이 복구 전후로 다릅니다. 설치를 멈춥니다. 비교: $RECOVER_BACKUP/records-before.sha256 / records-after.sha256"
+    return 1
+  fi
+  log "[복구 요약] 부서 기록과 좌석은 그대로이고, 남은 원본 cys 조각은 정리했습니다. 이어서 Wave Terminal 을 설치합니다."
+}
+
 step_s04() {
   require_command hdiutil || return 1
   require_command ditto || return 1
@@ -814,7 +1023,13 @@ for old in (source / 'directives').glob('*.md'):
             shutil.move(str(sidecar), str(saved) + '.new')
 PY_BACKUP
   mkdir -p "$WAVE_HOME/verify"
-  CYS_PACK_DIR="$PACK_HOME" bounded_cys init-pack || return 1
+  local init_force=()
+  if [[ "$RECOVER_FOREIGN_PACK" == 1 ]] && recover_pack_foreign; then
+    recover_backup_pack || return 1
+    init_force=(--force)
+    log "공유 지침 폴더가 원본 cys 지침으로 덮여 있어 Wave 지침으로 되돌립니다(백업 완료)."
+  fi
+  CYS_PACK_DIR="$PACK_HOME" bounded_cys init-pack ${init_force[@]+"${init_force[@]}"} || return 1
   bounded_cys pack-manifest > "$WAVE_HOME/verify/embedded-pack.json" || return 1
   python3 - "$PACK_HOME" "$WAVE_HOME/verify/embedded-pack.json" <<'PY_VERIFY' || return 1
 import hashlib, json, sys
@@ -1450,6 +1665,7 @@ main() {
   show_permission_notice
   init_state
   attempt_start
+  recover_tangled_mac || return 1
   local visible_app previous_version migration_pending=0 migration_rc
   visible_app="$(wave_visible_app)" || return 1
   previous_version="$(json_value "$STATE_FILE" 'steps.S04_INSTALL_LINK.version' 2>/dev/null)" || previous_version=

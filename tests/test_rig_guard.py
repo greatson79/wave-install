@@ -144,6 +144,7 @@ class RigGuard(unittest.TestCase):
         with open(rig_guard.REFUSALS, "w") as f:
             f.write("".join(l + "\n" for l in lines[:n]))
 
+    @unittest.skipIf(rig_guard.SANDBOXED, "under the OS sandbox this write is refused by the kernel (EPERM) before the sentinel check could see it — see test_r5_os_sandbox_…")
     def test_r4_add_a_changed_outside_sentinel_fails_the_test(self):
         path = os.path.join(rig_guard.OUTSIDE, "keep.txt")
         original = open(path, "rb").read()
@@ -161,6 +162,28 @@ class RigGuard(unittest.TestCase):
                 f.write(original)
         self.assertEqual(len(result.failures), 1)
         self.assertIn("sentinel", result.failures[0][1])
+
+    # ---- R5 (Theo kai#f6adbe): the ROOT fix is the OS-level write sandbox; this proves the kernel refuses an outside write ----
+    @unittest.skipUnless(rig_guard.SANDBOXED, "only under tests/run_sandboxed.sh (sandbox-exec)")
+    def test_r5_os_sandbox_refuses_writes_outside_the_rig_absolute_rm_and_python_open(self):
+        before = rig_guard.outside_snapshot()
+        out = rig_guard.OUTSIDE
+        # absolute /bin/rm inside a shell: no PATH lookup, no wrapper — only the OS can stop it
+        r = subprocess.run(["bash", "-c", '/bin/rm -f "$OUT/keep.txt"; echo rm=$?; /bin/mkdir "$OUT/x" ; echo mkdir=$?; echo y > "$OUT/redir.txt"; echo redir=$?'],
+                           env=dict(os.environ, OUT=out), capture_output=True, text=True)
+        print("R5 NEGATIVE shell:", r.stdout.split(), "|", " / ".join(l.strip() for l in r.stderr.strip().splitlines()))
+        self.assertIn("rm=1", r.stdout); self.assertIn("mkdir=1", r.stdout); self.assertIn("redir=1", r.stdout)
+        self.assertEqual(r.stderr.count("Operation not permitted"), 3, r.stderr)
+        # the test process's own Python write
+        with self.assertRaises(PermissionError) as cm:
+            with open(os.path.join(out, "keep.txt"), "w") as f:
+                f.write("x")
+        print("R5 NEGATIVE python open:", cm.exception)
+        self.assertEqual(cm.exception.errno, 1)  # EPERM
+        self.assertEqual(rig_guard.outside_snapshot(), before, "outside sentinel byte-identical")
+        # and a write inside the rig still works
+        p = os.path.join(rig_guard.ROOT, "r5-inside.txt"); open(p, "w").write("ok")
+        self.assertEqual(open(p).read(), "ok")
 
     def test_check_env_unit(self):
         with self.assertRaises(RuntimeError):

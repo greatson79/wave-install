@@ -51,6 +51,7 @@ WRITE_TOOLS = ("rm", "rmdir", "mkdir", "touch", "tee", "gzip", "gunzip", "mv", "
 # General interpreters: can write anything from inside their program text; argv checks cannot see that (honest limit).
 UNWRAPPABLE = ("bash", "sh", "zsh", "python3", "awk", "env", "xargs")
 ACTIVE = os.name == "posix"
+SANDBOXED = os.environ.get("WAVE_RIG_SANDBOX") == "1"  # set by tests/run_sandboxed.sh (OS-level write sandbox tests/rig.sb)
 ROOT = STUBS = LOG = FAKE_CLAUDE = NO_CLAUDE = ALLOW_BIN = OUTSIDE = REFUSALS = None
 REPO = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 _SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -160,6 +161,10 @@ def _install_outside_sentinel():
     """R4 ADD (Theo): a sentinel dir OUTSIDE every rig root (/private/var/tmp is not /private/tmp, not $TMPDIR, not the
     repo). Negative tests aim their writes at it; after EVERY test it must still be byte-identical."""
     global OUTSIDE
+    if os.environ.get("WAVE_RIG_OUTSIDE"):  # tests/run_sandboxed.sh made it before entering the sandbox (and removes it)
+        OUTSIDE = os.environ["WAVE_RIG_OUTSIDE"]
+        assert not _inside_rig(OUTSIDE), OUTSIDE
+        return
     OUTSIDE = tempfile.mkdtemp(prefix="wave-rig-outside-", dir="/private/var/tmp")
     assert not _inside_rig(OUTSIDE), OUTSIDE
     os.mkdir(os.path.join(OUTSIDE, "keep-dir"))
@@ -175,7 +180,12 @@ def outside_snapshot():
     for dirpath, dirs, files in os.walk(OUTSIDE):
         for n in sorted(dirs) + sorted(files):
             p = os.path.join(dirpath, n); st = os.lstat(p)
-            snap[os.path.relpath(p, OUTSIDE)] = (st.st_mode, None if os.path.isdir(p) else open(p, "rb").read())
+            if os.path.isdir(p):
+                data = None
+            else:
+                with open(p, "rb") as f:
+                    data = f.read()
+            snap[os.path.relpath(p, OUTSIDE)] = (st.st_mode, data)
     return snap
 
 

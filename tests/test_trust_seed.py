@@ -171,7 +171,7 @@ class MacBootstrapTests(unittest.TestCase):
         self.lib.write_text(source.rsplit('\nmain "$@"\n', 1)[0] + '\nSCRIPT_DIR="$ROOT_DIR"\n')
         self.env = {k: v for k, v in os.environ.items() if k not in ('CYS_ACCOUNT_DIR', 'CLAUDE_CONFIG_DIR')}
         self.env.update(HOME=str(self.home), WAVE_HOME=str(self.wave), CALLS=str(self.calls), ROOT_DIR=str(ROOT),
-                        PATH=str(self.fakebin) + ':' + os.environ['PATH'], SCREEN=str(self.home / 'screen.txt'))
+                        PATH=str(self.fakebin) + ':' + (rig_guard.FAKE_CLAUDE or '.') + ':' + os.environ['PATH'], SCREEN=str(self.home / 'screen.txt'))
 
     def bash(self, script, **env):
         return subprocess.run(['bash', '-c', 'source "$1"; ' + script, 'ts', str(self.lib)], env=dict(self.env, **env),

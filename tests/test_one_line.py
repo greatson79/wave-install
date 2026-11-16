@@ -34,7 +34,7 @@ class Sandbox:
         for d in (self.home, self.stubs, self.fake):
             d.mkdir()
         self.env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.home / ".wave"),
-                        PATH=f"{self.stubs}:{SYSTEM_PATH}", FAKE=str(self.fake))
+                        PATH=f"{self.stubs}:{rig_guard.NO_CLAUDE or ''}:{SYSTEM_PATH}", FAKE=str(self.fake))
         for k in ("WAVE_INSTALL_TARBALL_URL", "WAVE_INSTALL_TARBALL_SHA256"):
             self.env.pop(k, None)
 

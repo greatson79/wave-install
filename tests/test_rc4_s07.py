@@ -62,7 +62,7 @@ class S07Base(unittest.TestCase):
             (d / 'status.json').write_text(json.dumps(resp))
 
     def bash(self, script, extra_env=None, timeout=90):
-        env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), **(extra_env or {}))
+        env = rig_guard.with_fake_claude(dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), **(extra_env or {})))
         return subprocess.run(['bash', '-c', 'source "$1"; set +e; SCRIPT_DIR="$2"; ' + script, 'x', str(self.lib), str(ROOT)],
                               env=env, capture_output=True, text=True, timeout=timeout)
 

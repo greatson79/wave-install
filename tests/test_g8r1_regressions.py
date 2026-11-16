@@ -241,7 +241,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.fleet = self.home / 'fleet.json'
         self.since = int(time.time()) - 30
         self.env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), CYS_LOG=str(self.log),
-                        FLEET_JSON=str(self.fleet), PATH=str(self.fakebin) + ':' + os.environ['PATH'],
+                        FLEET_JSON=str(self.fleet), PATH=str(self.fakebin) + ':' + (rig_guard.FAKE_CLAUDE or '.') + ':' + os.environ['PATH'],
                         MANIFEST_JSON=str(self.home / 'manifest.json'), INIT_PACK_ACTION=':')
 
     def bash(self, script):

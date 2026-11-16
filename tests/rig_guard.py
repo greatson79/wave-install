@@ -15,12 +15,12 @@ import atexit, os, shutil, stat, subprocess, tempfile
 GUARDED = ("claude", "open", "osascript", "launchctl", "brew", "security", "defaults", "killall", "pkill", "tart", "sudo", "curl")
 _SYSTEM = ("/usr/", "/bin", "/sbin", "/opt/", "/System", "/Library", "/Applications")
 ACTIVE = os.name == "posix"
-ROOT = STUBS = LOG = None
+ROOT = STUBS = LOG = FAKE_CLAUDE = NO_CLAUDE = None
 
 
 def _inside_rig(path):
     real = os.path.realpath(path)
-    roots = {os.path.realpath(tempfile.gettempdir()), os.path.realpath("/private/tmp"), os.path.realpath(STUBS)}
+    roots = {os.path.realpath(tempfile.gettempdir()), os.path.realpath("/private/tmp"), os.path.realpath(STUBS)}  # (NO_CLAUDE lives under ROOT in /private/tmp)
     return any(real == r or real.startswith(r + os.sep) for r in roots)
 
 
@@ -35,7 +35,7 @@ def check_env(env):
 def _fix_path(env):
     env = dict(env)
     parts = [p for p in env.get("PATH", "").split(os.pathsep) if p]
-    if STUBS not in parts:
+    if STUBS not in parts and NO_CLAUDE not in parts:
         home_bin = os.path.join(os.path.expanduser("~"), ".local", "bin")
         at = next((i for i, p in enumerate(parts) if p.startswith(_SYSTEM) or p == home_bin or "homebrew" in p), len(parts))
         parts.insert(at, STUBS)
@@ -58,12 +58,30 @@ def _stub(name):
     os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def with_fake_claude(env):
+    """For tests that need an already-logged-in claude: `auth status`/`--version` succeed, `auth login` is recorded and REFUSED (exit 99)."""
+    env = dict(env)
+    if FAKE_CLAUDE is None:  # non-POSIX: guard inactive
+        return env
+    env["PATH"] = FAKE_CLAUDE + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def _install():
-    global ROOT, STUBS, LOG
+    global ROOT, STUBS, LOG, FAKE_CLAUDE, NO_CLAUDE
     ROOT = tempfile.mkdtemp(prefix="wave-test-root-", dir="/private/tmp")
     STUBS = os.path.join(ROOT, "stubs"); os.mkdir(STUBS); LOG = os.path.join(ROOT, "stub-calls.log")
     for name in GUARDED:
         _stub(name)
+    # same stubs minus claude, for tests that assert "claude is NOT installed" (a claude stub would make `command -v claude` succeed);
+    # a real claude is still refused: check_env raises if one resolves outside the rig.
+    NO_CLAUDE = os.path.join(ROOT, "stubs-no-claude"); shutil.copytree(STUBS, NO_CLAUDE); os.remove(os.path.join(NO_CLAUDE, "claude"))
+    FAKE_CLAUDE = os.path.join(ROOT, "fake-claude"); os.mkdir(FAKE_CLAUDE)
+    fake = os.path.join(FAKE_CLAUDE, "claude")
+    with open(fake, "w") as f:
+        f.write('#!/bin/sh\ncase "$1 $2" in "auth status") echo \'{"loggedIn":true}\'; exit 0;; "auth login") echo "claude $*" >> "%s"; exit 99;; esac\n'
+                'case "$1" in --version|-v) echo "2.1.278 (Claude Code)"; exit 0;; esac\necho "claude $*" >> "%s"; exit 98\n' % (LOG, LOG))
+    os.chmod(fake, 0o755)
     atexit.register(shutil.rmtree, ROOT, True)
     os.environ.update(_fix_path(os.environ))
     original = subprocess.Popen.__init__

@@ -16,6 +16,18 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FAKE_PKILL = r'''#!/usr/bin/env python3
+import os, re, signal, subprocess, sys
+# `pkill -f <regex>` for the rig only: refuses any pattern that does not name this test's temp home; SIGTERM to matches.
+args = sys.argv[1:]
+if len(args) != 2 or args[0] != "-f" or os.environ["RIG_HOME"] not in args[1].replace("\\", ""):
+    sys.exit(97)
+pat = re.compile(args[1]); me = {os.getpid(), os.getppid()}
+for line in subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout.splitlines():
+    pid, _, cmd = line.strip().partition(" ")
+    if int(pid) not in me and pat.search(cmd):
+        os.kill(int(pid), signal.SIGTERM)
+'''
 
 
 class FailureAndDaemonGateTests(unittest.TestCase):
@@ -268,7 +280,11 @@ printf '%s\n' "$STEP_OBSERVED"
         time.sleep(0.7)
         for name, proc in everything.items():  # 안내 줄 실행 전에 모두 살아 있어야 시험이 공허하지 않다
             self.assertIsNone(proc.poll(), "%s died before the stop line ran" % name)
-        subprocess.run(["bash", "-c", cmd], env=self.env, timeout=10)
+        # rig-only pkill (python re over `ps`): the real pkill is stubbed by rig_guard and must never run in a test.
+        pkdir = self.home / "pkill-bin"; pkdir.mkdir()
+        (pkdir / "pkill").write_text(FAKE_PKILL); (pkdir / "pkill").chmod(0o755)
+        pk_env = dict(self.env, PATH=str(pkdir) + os.pathsep + self.env.get("PATH", os.environ["PATH"]), RIG_HOME=str(self.home))
+        subprocess.run(["bash", "-c", cmd], env=pk_env, timeout=10)
         for name, proc in targets.items():
             proc.wait(timeout=5)
             self.assertEqual(proc.returncode, -signal.SIGTERM, "%s not stopped by: %s" % (name, cmd))

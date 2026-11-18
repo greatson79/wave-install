@@ -1642,6 +1642,20 @@ PY_OPTIONAL
   help_progress end
 }
 
+# Refuse before downloads/state/recovery: a GUI can keep the old bridge writing records.
+refuse_open_mac_app() {
+  [[ "$(uname -s)" == Darwin ]] || return 0
+  local processes executable
+  processes="$(ps -axo comm=)" || { fail_message "[1/10] 앱 실행 상태를 확인할 수 없습니다. 설치를 멈춥니다."; return 1; }
+  while IFS= read -r executable; do
+    case "$executable" in
+      */Wave\ Terminal.app/Contents/MacOS/wave-app|*/Wave\ Terminal.app/Contents/MacOS/cys-app|*/cys.app/Contents/MacOS/cys-app)
+        fail_message "[1/10] Wave Terminal을 먼저 종료하세요"
+        return 1 ;;
+    esac
+  done <<< "$processes"
+}
+
 main() {
   local arg
   local -a orig_args=("$@")
@@ -1657,6 +1671,7 @@ main() {
     shift
   done
   assert_user_path "$WAVE_HOME" || return 1
+  if [[ "$DRY_RUN" != 1 ]]; then refuse_open_mac_app || return 1; fi
   ensure_pack ${orig_args[@]+"${orig_args[@]}"} || return 1
   load_config || return 1
   if [[ "$DRY_RUN" == 1 ]]; then

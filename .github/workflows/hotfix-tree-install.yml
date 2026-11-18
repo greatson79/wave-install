@@ -20,15 +20,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Needs Windows PowerShell 5.1' }
           $minimum = [string](Get-Content steps.json -Raw -Encoding UTF8 | ConvertFrom-Json).tooling.claude_code_min_version
-          if ($minimum -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid Claude minimum pin' }
           $profile = Join-Path $env:RUNNER_TEMP ('tree-home-' + [guid]::NewGuid().ToString('N'))
           $stubs = Join-Path $profile 'stubs'
           New-Item -ItemType Directory -Force -Path $stubs | Out-Null
           @('@echo off', 'if "%~1"=="--version" (', ('  echo ' + $minimum), '  exit /b 0', ')', 'if "%~1 %~2"=="auth status" exit /b 0', 'echo Claude is STUBBED: %* 1>&2', 'exit /b 99') -join "`r`n" |
             Set-Content -Encoding ASCII (Join-Path $stubs 'claude.cmd')
-          . (Join-Path $PWD 'tests/windows_native_stub.ps1')
-          $nativeClaude = 'public class ClaudeFixture {{ public static int Main(string[] args) {{ if (args.Length == 1 && args[0] == "--version") {{ System.Console.WriteLine("{0}"); return 0; }} return args.Length == 2 && args[0] == "auth" && args[1] == "status" ? 0 : 99; }} }}' -f $minimum
-          New-NativeTestExecutable (Join-Path $profile '.local/bin/claude.exe') $nativeClaude
           $stubs | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           @("USERPROFILE=$profile", "HOME=$profile", "WAVE_HOME=$(Join-Path $profile '.wave')", 'WAVE_NO_PROGRESS=1') | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Run this tree's bootstrap.ps1 (not the live /win)

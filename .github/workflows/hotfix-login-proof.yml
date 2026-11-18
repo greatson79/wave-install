@@ -43,8 +43,6 @@ jobs:
             'exit /b 99'
           ) -join "`r`n" | Set-Content -Encoding ASCII (Join-Path $stubs 'claude.cmd')
           $env:PATH = $stubs + ';' + $env:PATH
-          function Update-ClaudePath { }
-          function Get-ClaudeExecutable { Join-Path $stubs 'claude.cmd' }
 
           function Invoke-Case([string]$Name, [string]$Login, [string]$Interactive, [bool]$Preauth, [bool]$ExpectPass, [string[]]$ExpectCalls) {
             $env:USERPROFILE = Join-Path $env:RUNNER_TEMP ('home-' + $Name)

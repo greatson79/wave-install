@@ -7,7 +7,3 @@ function New-NativeTestExecutable([string]$Path, [string]$Source) {
   & $compiler /nologo /target:exe ("/out:" + $Path) $sourcePath
   if ($LASTEXITCODE -ne 0) { throw 'native test executable compilation failed' }
 }
-
-function New-ClaudeAuthStub([string]$ProfilePath) {
-  New-NativeTestExecutable (Join-Path $ProfilePath '.local/bin/claude.exe') 'public class ClaudeAuthFixture { public static int Main(string[] args) { return args.Length == 2 && args[0] == "auth" && args[1] == "status" ? 0 : 91; } }'
-}

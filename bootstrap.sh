@@ -1644,8 +1644,9 @@ PY_OPTIONAL
 
 # Refuse before downloads/state/recovery: a GUI can keep the old bridge writing records.
 refuse_open_mac_app() {
-  [[ "$(uname -s)" == Darwin ]] || return 0
-  local processes executable
+  local platform processes executable
+  platform="$(uname -s)" || { fail_message "[1/10] 운영체제를 확인할 수 없습니다. 설치를 멈춥니다."; return 1; }
+  [[ "$platform" == Darwin ]] || return 0
   processes="$(ps -axo comm=)" || { fail_message "[1/10] 앱 실행 상태를 확인할 수 없습니다. 설치를 멈춥니다."; return 1; }
   while IFS= read -r executable; do
     case "$executable" in

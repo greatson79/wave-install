@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AppOpenPreflight(unittest.TestCase):
-    def run_guard(self, processes, probe_rc=0, stdin=False):
+    def run_guard(self, processes, probe_rc=0, stdin=False, uname_rc=0):
         with tempfile.TemporaryDirectory(prefix='appopen-') as td:
             root = Path(td)
             home = root / 'home'
@@ -22,7 +22,7 @@ class AppOpenPreflight(unittest.TestCase):
             fake = root / 'bin'
             fake.mkdir()
             for name, body in {
-                'uname': 'echo Darwin',
+                'uname': 'echo Darwin; exit "$UNAME_RC"',
                 'ps': 'printf "%s\\n" "$PROCESSES"; exit "$PROBE_RC"',
                 'lsof': 'exit 97',
                 'pgrep': 'exit 97',
@@ -35,7 +35,7 @@ class AppOpenPreflight(unittest.TestCase):
             source += '\nensure_pack() { echo FIRST_WRITE_REACHED >&2; return 73; }\nmain\n'
             env = dict(os.environ, HOME=str(home), WAVE_HOME=str(home / '.wave'),
                        PATH=str(fake) + os.pathsep + os.environ['PATH'],
-                       PROCESSES=processes, PROBE_RC=str(probe_rc), WAVE_NO_PROGRESS='1')
+                       PROCESSES=processes, PROBE_RC=str(probe_rc), UNAME_RC=str(uname_rc), WAVE_NO_PROGRESS='1')
             if stdin:
                 result = subprocess.run(['bash'], input=source, env=env, text=True, capture_output=True, timeout=15)
             else:
@@ -77,3 +77,9 @@ class AppOpenPreflight(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertNotIn('FIRST_WRITE_REACHED', r.stderr)
         self.assertIn('실행 상태를 확인할 수 없습니다', r.stderr)
+
+    def test_unreadable_platform_fails_closed(self):
+        r = self.run_guard('', uname_rc=97)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn('FIRST_WRITE_REACHED', r.stderr)
+        self.assertIn('확인할 수 없습니다', r.stderr)

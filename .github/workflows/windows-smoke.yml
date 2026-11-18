@@ -143,6 +143,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Entry encoding regression and release assembly
         shell: bash
         run: |

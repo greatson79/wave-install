@@ -8,33 +8,33 @@
   ],
   "release": {
     "repository": "greatson79/wave-terminal",
-    "macos_version": "0.3.5",
-    "version": "0.3.5",
+    "macos_version": "0.3.6",
+    "version": "0.3.6",
     "asset_name": {
-      "macos_arm64": "wave-terminal-0.3.5-macos-arm64.dmg",
-      "windows_x64": "wave-terminal-0.3.5-windows-x64-setup.exe"
+      "macos_arm64": "wave-terminal-0.3.6-macos-arm64.dmg",
+      "windows_x64": "wave-terminal-0.3.6-windows-x64-setup.exe"
     },
     "asset_url": {
-      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/wave-terminal-0.3.5-macos-arm64.dmg",
-      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/wave-terminal-0.3.5-windows-x64-setup.exe"
+      "macos_arm64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.6/wave-terminal-0.3.6-macos-arm64.dmg",
+      "windows_x64": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.6/wave-terminal-0.3.6-windows-x64-setup.exe"
     },
     "bytes": {
-      "windows_x64": 129655549
+      "windows_x64": 130805496
     },
     "sha256": {
-      "macos_arm64": "bdf6380501c35c461caf23220f7496373f63131da02e53ee6c39888bd4066931",
-      "windows_x64": "97ae76d26960975678ebb15c0741918793de162abba351a77df8d404e51a4386"
+      "macos_arm64": "acecd988265bea98a00097befceda066856358376006ef976815e1633f8fd136",
+      "windows_x64": "0f8a06dee555b73cfbbdcd39e8b7eedd921176b4ab6867bb908059a1321cb74c"
     },
-    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/SHA256SUMS",
-    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.5/SHA256SUMS",
+    "sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.6/SHA256SUMS",
+    "windows_sha256sums_url": "https://github.com/greatson79/wave-terminal/releases/download/v0.3.6/SHA256SUMS",
     "windows_publisher_subject": "",
     "minisig_url": {
       "macos_arm64": null,
       "windows_x64": null
     },
-    "minisign_public_key": "RWShBLhu6xe+AnzdLhOKUuXyZb6FPjuBSWG0s7SPacy3v9o4Qt8Y9mqI",
+    "minisign_public_key": "RWS/fX0VhB9fQkAKv6QG8zqtYUkDTqnaJEt+9XZ+/hA+x+mOjC5H7PWR",
     "cdhash": {
-      "macos_arm64": "612d36ef4575e873755f667b059a810bd07c4c50"
+      "macos_arm64": "cf5b48658e7647b002063559383e567a0b492b7e"
     }
   },
   "reinstall": {

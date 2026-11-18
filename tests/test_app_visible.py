@@ -1,3 +1,7 @@
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import os
 from pathlib import Path
 import plistlib
@@ -49,6 +53,7 @@ defaults() {
   fi
 }
 killall() { printf 'restart\n' >> "$HOME/dock-calls"; }
+osascript() { printf 'Ym9va21hcms='; }  # fake Dock bookmark (real osascript is stubbed by rig_guard)
 dest="$HOME/Applications/Wave Terminal.app"
 wave_migrate_app "$dest"
 wave_show_app "$dest"

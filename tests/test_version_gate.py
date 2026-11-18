@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """S01 회귀: 설치·인증·네트워크·데몬 없이 실제 두 설치기의 함수를 실행한다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 from pathlib import Path

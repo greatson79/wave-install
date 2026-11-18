@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """v0.2 한 줄 설치 회귀: tarball 자기획득 · S01 설치/업데이트 · S02 로그인 · S03 SHA256+codesign.
 네트워크·실 ~/.claude 없이 격리 HOME + 가짜 claude/curl/hdiutil/codesign 스텁만 쓴다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import hashlib
 import json
 import os
@@ -30,7 +34,7 @@ class Sandbox:
         for d in (self.home, self.stubs, self.fake):
             d.mkdir()
         self.env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.home / ".wave"),
-                        PATH=f"{self.stubs}:{SYSTEM_PATH}", FAKE=str(self.fake))
+                        PATH=f"{self.stubs}:{rig_guard.NO_CLAUDE or ''}:{SYSTEM_PATH}", FAKE=str(self.fake))
         for k in ("WAVE_INSTALL_TARBALL_URL", "WAVE_INSTALL_TARBALL_SHA256"):
             self.env.pop(k, None)
 

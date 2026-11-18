@@ -1,5 +1,9 @@
 """rc.5 wake: 설치기가 CSO·워커 칸을 직접 띄우고, 마스터 응답을 기다려 확인하며, 미확인을 숨기지 않는다(맥 bootstrap.sh).
 시험 환경변수(실사용 기본값): WAVE_AWAKE_SECONDS=120 · WAVE_AWAKE_INTERVAL=30 · WAVE_AWAKE_RESEND_AT=60."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json, os, re, shutil, subprocess, tempfile, threading, time, unittest
 from pathlib import Path
 from test_rc4_s07 import S07Base, ROOT

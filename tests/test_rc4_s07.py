@@ -1,4 +1,8 @@
 """rc.4 S07: 상한 도달 시 좌석이 살아 있으면 실패가 아니라 종료값 2 · 사람 확인 창이 떠 있는 동안은 상한을 멈춘다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import copy, json, os, subprocess, tempfile, threading, time, unittest
 from pathlib import Path
 
@@ -58,7 +62,7 @@ class S07Base(unittest.TestCase):
             (d / 'status.json').write_text(json.dumps(resp))
 
     def bash(self, script, extra_env=None, timeout=90):
-        env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), **(extra_env or {}))
+        env = rig_guard.with_fake_claude(dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), **(extra_env or {})))
         return subprocess.run(['bash', '-c', 'source "$1"; set +e; SCRIPT_DIR="$2"; ' + script, 'x', str(self.lib), str(ROOT)],
                               env=env, capture_output=True, text=True, timeout=timeout)
 

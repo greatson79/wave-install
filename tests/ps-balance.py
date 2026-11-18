@@ -16,11 +16,11 @@ UTF8_BOM = b'\xef\xbb\xbf'
 def check_bom(path):
     """Native Windows PowerShell 5.1 reads BOM-less files as system ANSI,
     corrupting non-ASCII (e.g. Korean) string literals and breaking the
-    parser. The ASCII irm|iex entry must instead stay BOM-less."""
+    parser. The ASCII irm|iex entry stays BOM-less. Other shipped .ps1 files require a UTF-8 BOM."""
     data = Path(path).read_bytes()
     if Path(path).name == 'win-start.ps1':
-        if any(b not in (9, 10, 13) and not 32 <= b <= 126 for b in data):
-            return [f'{path}: irm|iex entry must be BOM-less printable ASCII']
+        if not data.startswith(b'& {') or any(b not in (9, 10, 13) and not 32 <= b <= 126 for b in data):
+            return [f'{path}: irm|iex entry must be BOM-less printable ASCII beginning with & {{']
         return []
     head = data[:3]
     if head != UTF8_BOM:

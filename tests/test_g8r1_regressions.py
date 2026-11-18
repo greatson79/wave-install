@@ -3,6 +3,10 @@
 No real server is contacted: the Python client uses injected transports, bash uses a fake client, and the
 only sockets are loopback listeners owned (and closed) by the test itself.
 """
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import hashlib
 import importlib
 import json
@@ -237,7 +241,7 @@ class MacResumeAndPackTests(unittest.TestCase):
         self.fleet = self.home / 'fleet.json'
         self.since = int(time.time()) - 30
         self.env = dict(os.environ, HOME=str(self.home), WAVE_HOME=str(self.wave), CYS_LOG=str(self.log),
-                        FLEET_JSON=str(self.fleet), PATH=str(self.fakebin) + ':' + os.environ['PATH'],
+                        FLEET_JSON=str(self.fleet), PATH=str(self.fakebin) + ':' + (rig_guard.FAKE_CLAUDE or '.') + ':' + os.environ['PATH'],
                         MANIFEST_JSON=str(self.home / 'manifest.json'), INIT_PACK_ACTION=':')
 
     def bash(self, script):
@@ -828,7 +832,7 @@ function Update-Step($Id, $Status, $ExitCode, $ErrorId, $Observed) { if ($Status
 function Write-JCode { }
 $logged = ''
 function Write-Log([string]$Message) { $script:logged += $Message }
-$secret = 'token sk-SECRETTOKENVALUE1234567890 at ' + $env:USERPROFILE + '/alicesmith/log'
+$secret = 'token sk-SECRETTOKENVALUE1234567890 at /Users/alicesmith/log and C:\Users\alicesmith\log; injected home ' + $env:USERPROFILE + '/alicesmith/log'
 try { Invoke-Step 'S02_CLAUDE_LOGIN' { throw ("init-pack 실패: " + ('y' * 200000) + "`n" + $secret) } } catch { }
 $reason = [string]$Recorded.reason
 Write-Host ('BYTES=' + [Text.Encoding]::UTF8.GetByteCount($reason))

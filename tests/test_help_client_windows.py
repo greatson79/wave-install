@@ -3,6 +3,10 @@
 Both run the same scripted fake transport; no real network. pwsh on macOS proves the
 PowerShell logic only — not Windows PowerShell 5.1 or HttpWebRequest behaviour on Windows.
 """
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 import shutil
@@ -29,6 +33,7 @@ SCENARIOS = {
     'bad_receipt': {'interactive': True, 'responses': [[201, {'id': '../x', 'client_token': TOKEN}]]},
     'down': {'interactive': True, 'responses': ['raise']},
     'non_interactive': {'interactive': False, 'responses': [[201, {'id': RID, 'client_token': TOKEN}]]},
+    'gone_410': {'interactive': True, 'responses': [[201, {'id': RID, 'client_token': TOKEN}], [410, {}], [200, {}]]},
     'gone_404': {'interactive': True, 'responses': [[201, {'id': RID, 'client_token': TOKEN}], [404, {}], [200, {}]]},
 }
 ENV = 'user alice@example.com\nUSERNAME=alice\nC:\\Users\\alice\\x /Users/alice/y\n' + '환경' * 40000
@@ -94,7 +99,7 @@ class WindowsHelpClientParity(unittest.TestCase):
 
     def test_notice_text_identical_on_both_oses(self):
         ps = self.run_ps()
-        self.assertEqual(ps['notice'].strip(), (ROOT / 'lib/help-notice.txt').read_text(encoding='utf-8').strip())
+        self.assertEqual(ps['notice'].replace('\r\n', '\n').strip(), (ROOT / 'lib/help-notice.txt').read_text(encoding='utf-8').strip())
 
 
 if __name__ == '__main__':

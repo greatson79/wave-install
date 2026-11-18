@@ -1,4 +1,8 @@
 """좌석 첫 실행 관문 사전 기록(trust seed)·S07 관문 안내 — 임시 HOME 만 쓴다(실 ~/.claude·~/.cys·~/.wave 무접촉)."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import hashlib
 import json
 import os
@@ -167,7 +171,7 @@ class MacBootstrapTests(unittest.TestCase):
         self.lib.write_text(source.rsplit('\nmain "$@"\n', 1)[0] + '\nSCRIPT_DIR="$ROOT_DIR"\n')
         self.env = {k: v for k, v in os.environ.items() if k not in ('CYS_ACCOUNT_DIR', 'CLAUDE_CONFIG_DIR')}
         self.env.update(HOME=str(self.home), WAVE_HOME=str(self.wave), CALLS=str(self.calls), ROOT_DIR=str(ROOT),
-                        PATH=str(self.fakebin) + ':' + os.environ['PATH'], SCREEN=str(self.home / 'screen.txt'))
+                        PATH=str(self.fakebin) + ':' + (rig_guard.FAKE_CLAUDE or '.') + ':' + os.environ['PATH'], SCREEN=str(self.home / 'screen.txt'))
 
     def bash(self, script, **env):
         return subprocess.run(['bash', '-c', 'source "$1"; ' + script, 'ts', str(self.lib)], env=dict(self.env, **env),

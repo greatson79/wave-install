@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """D1/D2 단위 회귀. 실제 인증·DMG·데몬·전체 설치는 실행하지 않는다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 import re
@@ -12,6 +16,19 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FAKE_PKILL = r'''#!/usr/bin/env python3
+import os, re, sys
+# `pkill -f <regex>` for the rig only: refuses any pattern that does not name this test's temp home. It matches the regex
+# against a FAKE process table (RIG_PROC_TABLE: "<pid> <command line>" rows) and drops the matching rows — no real `ps`,
+# no real signal (review r1: tests must not start or kill real processes).
+args = sys.argv[1:]
+if len(args) != 2 or args[0] != "-f" or os.environ["RIG_HOME"] not in args[1].replace("\\", ""):
+    sys.exit(97)
+pat = re.compile(args[1]); table = os.environ["RIG_PROC_TABLE"]
+rows = open(table).read().splitlines()
+keep = [r for r in rows if not pat.search(r.partition(" ")[2])]
+open(table, "w").write("".join(r + "\n" for r in keep))
+'''
 
 
 class FailureAndDaemonGateTests(unittest.TestCase):
@@ -242,35 +259,36 @@ printf '%s\n' "$STEP_OBSERVED"
         app_cysd = wave / "apps/Wave Terminal.app/Contents/MacOS/cysd"
         app_cysd.parent.mkdir(parents=True, exist_ok=True)
         app_cysd.write_text("")  # 이 경로를 인자로만 가진 프로세스(tail) 대조군용 파일
-        # 서명 문제 없이 명령줄만 원하는 모양으로 보이게 한다: argv[0]=가짜 명령줄, 실제 실행 파일=/bin/sleep
-        fake = lambda line: subprocess.Popen([line, "60"], executable="/bin/sleep")
+        # 가짜 프로세스 표: 실제 프로세스를 띄우지 않고 "<pid> <명령줄>" 행만 둔다(검토 r1 — 시험은 실제 프로세스를 띄우거나 죽이지 않는다).
         targets = {
-            "daemon-app-path": fake(app_cysd),
-            "daemon-link-path": fake(wave / "bin/cysd"),  # bin/cys 링크로 뜬 데몬은 명령줄이 링크 경로다
-            "events-client-link": fake("%s events --reconnect --cursor-file x" % (wave / "bin/cys")),
-            "events-client-app": fake("%s events --reconnect" % (wave / "apps/Wave Terminal.app/Contents/MacOS/cys")),
-            "office-bridge": fake("%s/runtime/python/bin/python3 %s/bin/javis_hud_bridge.py" % (wave / "apps/Wave Terminal.app", pack)),
+            "daemon-app-path": str(app_cysd) + " 60",
+            "daemon-link-path": "%s 60" % (wave / "bin/cysd"),  # bin/cys 링크로 뜬 데몬은 명령줄이 링크 경로다
+            "events-client-link": "%s events --reconnect --cursor-file x 60" % (wave / "bin/cys"),
+            "events-client-app": "%s events --reconnect 60" % (wave / "apps/Wave Terminal.app/Contents/MacOS/cys"),
+            "office-bridge": "%s/runtime/python/bin/python3 %s/bin/javis_hud_bridge.py 60" % (wave / "apps/Wave Terminal.app", pack),
             # macOS 프레임워크 파이썬(Xcode CLT·Homebrew 의 python3)은 명령줄이 대문자 Python.app/Contents/MacOS/Python <script>
-            "office-bridge-framework": fake("/opt/homebrew/Cellar/python@3.14/3.14.0/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python %s/bin/javis_hud_bridge.py" % pack),
+            "office-bridge-framework": "/opt/homebrew/Cellar/python@3.14/3.14.0/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python %s/bin/javis_hud_bridge.py 60" % pack,
         }
         controls = {
-            "other-install-daemon": fake(self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"),
-            "other-install-bridge": fake("python3 %s/other/.cys/pack/bin/javis_hud_bridge.py" % self.home),
-            "same-install-status-call": fake("%s status --json" % (wave / "bin/cys")),
-            "path-as-argument": subprocess.Popen(["tail", "-f", str(app_cysd)]),
+            "other-install-daemon": "%s 60" % (self.home / "other-wave/apps/Wave Terminal.app/Contents/MacOS/cysd"),
+            "other-install-bridge": "python3 %s/other/.cys/pack/bin/javis_hud_bridge.py 60" % self.home,
+            "same-install-status-call": "%s status --json 60" % (wave / "bin/cys"),
+            "path-as-argument": "tail -f %s" % app_cysd,
         }
         everything = {**targets, **controls}
-        self.addCleanup(lambda: [(q.poll() is None and q.kill(), q.wait()) for q in everything.values()])
-        time.sleep(0.7)
-        for name, proc in everything.items():  # 안내 줄 실행 전에 모두 살아 있어야 시험이 공허하지 않다
-            self.assertIsNone(proc.poll(), "%s died before the stop line ran" % name)
-        subprocess.run(["bash", "-c", cmd], env=self.env, timeout=10)
-        for name, proc in targets.items():
-            proc.wait(timeout=5)
-            self.assertEqual(proc.returncode, -signal.SIGTERM, "%s not stopped by: %s" % (name, cmd))
-        time.sleep(0.5)
-        for name, proc in controls.items():
-            self.assertIsNone(proc.poll(), "%s must survive: %s" % (name, cmd))
+        pid_of = {name: 100001 + i for i, name in enumerate(everything)}  # above the macOS pid limit: never a real process
+        table = self.home / "proc-table"
+        table.write_text("".join("%d %s\n" % (pid_of[n], line) for n, line in everything.items()))
+        # rig-only pkill (python re over the fake table): the real pkill is stubbed by rig_guard and must never run in a test.
+        pkdir = self.home / "pkill-bin"; pkdir.mkdir()
+        (pkdir / "pkill").write_text(FAKE_PKILL); (pkdir / "pkill").chmod(0o755)
+        pk_env = dict(self.env, PATH=str(pkdir) + os.pathsep + self.env.get("PATH", os.environ["PATH"]), RIG_HOME=str(self.home), RIG_PROC_TABLE=str(table))
+        subprocess.run(["bash", "-c", cmd], env=pk_env, timeout=10)
+        left = {int(r.split(" ", 1)[0]) for r in table.read_text().splitlines()}
+        for name in targets:
+            self.assertNotIn(pid_of[name], left, "%s not stopped by: %s" % (name, cmd))
+        for name in controls:
+            self.assertIn(pid_of[name], left, "%s must survive: %s" % (name, cmd))
 
     def test_s04_stop_line_is_printed_when_only_children_remain(self):
         # 데몬은 이미 없는데(상태 전부 false) 앱 번들을 연 자식(events 클라이언트 등)만 남아 lsof 가 막는 경우:

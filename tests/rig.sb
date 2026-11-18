@@ -1,0 +1,18 @@
+;; OS-level write sandbox for the installer test suite (review r2 / Theo R5 kai#f6adbe): the kernel refuses every write
+;; outside the rig, whatever program makes it (absolute /bin/rm, shell redirection, a test's own Python open()).
+;; Used by tests/run_sandboxed.sh. Allowed writes: /private/tmp (rig roots /private/tmp/wave-test-root-*, c10-rig-*, ...),
+;; the per-user temp dir ($TMPDIR, param TMPDIR_REAL), a few device files and three named scratch-dir prefixes in the repo. Everything else, including $HOME, the repo
+;; checkout and /private/var/tmp (where the outside sentinel lives), is EPERM.
+(version 1)
+(allow default)
+(deny file-write*)
+(allow file-write*
+  (subpath "/private/tmp")
+  (subpath (param "TMPDIR_REAL"))
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/dtracehelper")
+  (regex #"^/dev/(tty|ttys[0-9]+|fd/[0-9]+|stdout|stderr|ptmx|pty)")
+  ;; three tests (test_windows_checks, test_workflow_contract) use TemporaryDirectory(dir=<repo>, prefix='.<name>-test-'):
+  ;; only those self-removing scratch dirs inside the checkout are writable, nothing else in the repo.
+  (require-all (subpath (param "REPO")) (regex #"/\.(balance|help|yaml)-test-[^/]+(/.*)?$")))

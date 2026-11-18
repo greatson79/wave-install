@@ -1,0 +1,240 @@
+{
+  "base": "aab5f1d",
+  "tip": "8591f09",
+  "patches": [
+    {
+      "commit": "bab383491b66563a74d3b12e6751e76e9651446d",
+      "patch_id": "f571472356fe4b527e2eec2c08cf509d4215dc85",
+      "reverse_patch_id": "455191a7a328876f6d8c1b304d38d43e3eca8a62"
+    },
+    {
+      "commit": "765c669aa13cdcd4b1947d12e06d2557cef0d0a7",
+      "patch_id": "6af7882446f214fbf89de566bc4a439f225d79be",
+      "reverse_patch_id": "72e6ff9c1f7cebce92d404370649d142b3e815cb"
+    },
+    {
+      "commit": "10329493f3ddc6383ac0c641028c149e97eb11f8",
+      "patch_id": "0b01124c69c19abe578a2462c8ad0de36d289a01",
+      "reverse_patch_id": "e869fc6a960d276c2ef02e2745ed856dd4e6fff6"
+    },
+    {
+      "commit": "cf04f4409d9428d372805541dc738b664a5759f3",
+      "patch_id": "58c2e197a86c7a21ccbeae6a8c1017e894f1c584",
+      "reverse_patch_id": "2a15389740b467d5bbc0c585b33ad06b239b9a73"
+    },
+    {
+      "commit": "f239efd4ca6228586d6f24b4ac9131a34530b79e",
+      "patch_id": "1ec17d92592be17494541bfa4d830f5f7cfde5a0",
+      "reverse_patch_id": "04950a034de9eaaf2b17955a14ae624609369925"
+    },
+    {
+      "commit": "82609ca7f1a2d7d87b723d5a09d8b54171caf7f1",
+      "patch_id": "42c27c0434f9ee9041817ae173f4716781283ad8",
+      "reverse_patch_id": "78c0bbff08398484ac24cd31417a2b233a76bfcd"
+    },
+    {
+      "commit": "1a4e003fd2a4a9e00829155561ca3419e4be28e7",
+      "patch_id": "57e86ae56c7c0745d5b1a1f08001aba1b76027ab",
+      "reverse_patch_id": "1d0b0c31f33a4163bfa31c2a80df884b967c912d"
+    },
+    {
+      "commit": "73b911b7d0e288e4a2b337f9f8ff813b1d4b5b2a",
+      "patch_id": "ed7d68b8d1c3fccc6ecec1b8b17ccd5b4c202e46",
+      "reverse_patch_id": "b0bb71509de13063ca05bed3da72569e063fbf5d"
+    },
+    {
+      "commit": "10a34ac641e812454da0d51ba95a6aeb7275cca2",
+      "patch_id": "f403e7f09b96d071e39028ae755b930fd3647908",
+      "reverse_patch_id": "efa1d92ab6c500cdc96287cec63791fe4d87d6e2"
+    },
+    {
+      "commit": "991181c52e15cd479b19aa4c6c3657e9fe3da6c2",
+      "patch_id": "71dad13837a2d9df6a7d730c4541e33e4c16eee2",
+      "reverse_patch_id": "9c063e4ef03fa8ca35b988855e01c09c7743257e"
+    },
+    {
+      "commit": "73558ef2d6e6f770597a69fdfc4dc1790e0bbed3",
+      "patch_id": "f746aeb4cb72139c83e0a42efc1898423911785d",
+      "reverse_patch_id": "15dc75608d01691fc8f95cf70dccc6c8d678e822"
+    },
+    {
+      "commit": "077e9ab6ded799f70eb05ea87102d65df6a5aace",
+      "patch_id": "108e3189c0e110a0466041ab4389138c950f767b",
+      "reverse_patch_id": "2478dc06125adf631b10d3d6975282ba84a1bdfa"
+    },
+    {
+      "commit": "1d5222e9b88c3a0d19ef908587bc87b3e1a0f870",
+      "patch_id": "72c4094c49fa198d9a960defc6b2965a0310000b",
+      "reverse_patch_id": "c10e7a085744e16a295826bfd69c0968a8cbc9c6"
+    },
+    {
+      "commit": "c48905be547f9a29e2b64cb4a8be5b821d23e609",
+      "patch_id": "7d81e48d90260b862cb52e3ee679532d641d3117",
+      "reverse_patch_id": "2094a50296f2a6724bc0e653cd1c1ea84d214ca1"
+    },
+    {
+      "commit": "8591f093f9a4f216baef097e4a8ca0b840e5f4a5",
+      "patch_id": "1d97bc8ea9c772cb867187416ac5b3e2b8e513c9",
+      "reverse_patch_id": "016b8fd92410158aae0acce64d243ef5ad94af0f"
+    }
+  ],
+  "assets": [
+    {
+      "asset": "bootstrap.ps1",
+      "release": "v0.3.3",
+      "evidence": "release033_av/UPLOAD_hf5/bootstrap.ps1",
+      "sha256": "2fd1680ced09015ef098c1d92bed460ba1b346dfa1ce5d7ac32153d08884320b",
+      "source_commit": "1d5222e9b88c3a0d19ef908587bc87b3e1a0f870",
+      "normalized_sha256": "bf2a6805474367eaa257a5d24cc1f20b1b87a96410b2c07b3fb8c1e13f30302a",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "wave-install-0.3.0.zip",
+      "release": "v0.3.3",
+      "evidence": "release033_av/UPLOAD_hf5/wave-install-0.3.0.zip",
+      "sha256": "ea77e86c12cfb679ed50748946e1fbc8d58afa8d0f743735de7aed2d7135f7c5",
+      "source_commit": "1d5222e9b88c3a0d19ef908587bc87b3e1a0f870",
+      "normalized_sha256": "bf2a6805474367eaa257a5d24cc1f20b1b87a96410b2c07b3fb8c1e13f30302a",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "win-start.ps1",
+      "release": "v0.3.3",
+      "evidence": "release033_av/UPLOAD_hf5/win-start.ps1",
+      "sha256": "b47f8c577ac47835fab45b2c15f86f40782bb7196a8f665bde7cd2db3a04615b",
+      "source_commit": "1d5222e9b88c3a0d19ef908587bc87b3e1a0f870",
+      "normalized_sha256": "e9b4db555f042adc0405cbda64b271f95a2fbed37c2fa82eb8341644f60d0067",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "SHA256SUMS",
+      "release": "v0.3.3",
+      "evidence": "release033_av/UPLOAD_hf5/SHA256SUMS",
+      "sha256": "1269d524383d63a115cdc6e661cac631185e3f8e39c999ec3b3fc75b59691fcd",
+      "source_commit": "1d5222e9b88c3a0d19ef908587bc87b3e1a0f870",
+      "binding": "checksum manifest derived from sibling assets"
+    },
+    {
+      "asset": "bootstrap.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf/bootstrap.ps1",
+      "sha256": "786381dfe298c10295571f63a4c8392d5e7ac9cefdaffdb8d4571d3e4a8add97",
+      "source_commit": "bab383491b66563a74d3b12e6751e76e9651446d",
+      "normalized_sha256": "bc7ce80cc14a421e878093e6a3e9b2e18405c1ebae64764d1fba99ba7e44fa16",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "wave-install-0.3.0.zip",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf/wave-install-0.3.0.zip",
+      "sha256": "46743f2a67f1fc6067ef35c96f06e01231a9f70bf0ebd452d4c3d039ef2ac355",
+      "source_commit": "bab383491b66563a74d3b12e6751e76e9651446d",
+      "normalized_sha256": "bc7ce80cc14a421e878093e6a3e9b2e18405c1ebae64764d1fba99ba7e44fa16",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "win-start.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf/win-start.ps1",
+      "sha256": "8a3d81282f9345fcfdbed0ffdbc35d39724b9bc22b9e318ce172ff4373f1f479",
+      "source_commit": "bab383491b66563a74d3b12e6751e76e9651446d",
+      "normalized_sha256": "ff90e5b882c1a94757e977d878da16b5057b4dc0fb354529d1ea43e8d1ed4780",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "SHA256SUMS",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf/SHA256SUMS",
+      "sha256": "eb8623b43c81fcc5377dce9310b9d2a5e7dde09c8dba29f400062f51d141952b",
+      "source_commit": "bab383491b66563a74d3b12e6751e76e9651446d",
+      "binding": "checksum manifest derived from sibling assets"
+    },
+    {
+      "asset": "bootstrap.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf2/bootstrap.ps1",
+      "sha256": "09ef235fbd74d2f3a252593872d3e4deb5d65fd97f1fa5764e69d8d4ac8330e3",
+      "source_commit": "82609ca7f1a2d7d87b723d5a09d8b54171caf7f1",
+      "normalized_sha256": "12a71473b435fd9882e83322f6eb19bd02cb268f220de726e46c4785d06ff699",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "wave-install-0.3.0.zip",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf2/wave-install-0.3.0.zip",
+      "sha256": "afa683f6e17a88b208427d0ee2f202a338e6b792f94d817cd745aa117f6e68c7",
+      "source_commit": "82609ca7f1a2d7d87b723d5a09d8b54171caf7f1",
+      "normalized_sha256": "12a71473b435fd9882e83322f6eb19bd02cb268f220de726e46c4785d06ff699",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "win-start.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf2/win-start.ps1",
+      "sha256": "1501c3e3a3df4d9e807a97c5ca660e09444d56cf85ba862ae8e5b987996de151",
+      "source_commit": "bab383491b66563a74d3b12e6751e76e9651446d",
+      "normalized_sha256": "ff90e5b882c1a94757e977d878da16b5057b4dc0fb354529d1ea43e8d1ed4780",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "SHA256SUMS",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf2/SHA256SUMS",
+      "sha256": "9987a7310680f08c1ad5b6ae00a2e59fedbb50fc7af427d172a135be4d25e809",
+      "source_commit": "82609ca7f1a2d7d87b723d5a09d8b54171caf7f1,bab383491b66563a74d3b12e6751e76e9651446d",
+      "binding": "checksum manifest derived from sibling assets"
+    },
+    {
+      "asset": "win-start.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf3/win-start.ps1",
+      "sha256": "e627cce8e5a1e57712db6b7f64c3b4e3a5e9cdc922642c85e861b8a09fec59fd",
+      "source_commit": "73b911b7d0e288e4a2b337f9f8ff813b1d4b5b2a",
+      "normalized_sha256": "319f8b980f87b2c184372ff23b7ca7f038d048bd87ef48bbc1f71124a2b1bc60",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "SHA256SUMS",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf3/SHA256SUMS",
+      "sha256": "0060c095b95932db565eeed3fc4add32abe2966d3a77543d273fe2add021cbb9",
+      "source_commit": "73b911b7d0e288e4a2b337f9f8ff813b1d4b5b2a",
+      "binding": "checksum manifest derived from sibling assets"
+    },
+    {
+      "asset": "bootstrap.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf4/bootstrap.ps1",
+      "sha256": "55bf59816dfebd99de4b732634efd984d1e3ee2e33a68bbb822ee23efbf92210",
+      "source_commit": "73558ef2d6e6f770597a69fdfc4dc1790e0bbed3",
+      "normalized_sha256": "0fce034c342381e98042309a238013276bd5a8d375cf92b270f2f6a7189483dd",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "wave-install-0.3.0.zip",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf4/wave-install-0.3.0.zip",
+      "sha256": "c68f3f47b0f8aeb298f047f57f4d1053d1d2e2ee808bcd6577638ae7925ccf2d",
+      "source_commit": "73558ef2d6e6f770597a69fdfc4dc1790e0bbed3",
+      "normalized_sha256": "0fce034c342381e98042309a238013276bd5a8d375cf92b270f2f6a7189483dd",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "win-start.ps1",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf4/win-start.ps1",
+      "sha256": "f5e43d6eca675506d32b843c8198c48e83bc3fcd9d385738e98e6443ba441b1e",
+      "source_commit": "73b911b7d0e288e4a2b337f9f8ff813b1d4b5b2a",
+      "normalized_sha256": "319f8b980f87b2c184372ff23b7ca7f038d048bd87ef48bbc1f71124a2b1bc60",
+      "binding": "earliest exact normalized source match; ZIP bootstrap member only"
+    },
+    {
+      "asset": "SHA256SUMS",
+      "release": "v0.3.3",
+      "evidence": "release034_gpt/UPLOAD_hf4/SHA256SUMS",
+      "sha256": "af830562a54e7b9588181653ebca93bcf6165026db022ad490a084322f9d3d54",
+      "source_commit": "73558ef2d6e6f770597a69fdfc4dc1790e0bbed3,73b911b7d0e288e4a2b337f9f8ff813b1d4b5b2a",
+      "binding": "checksum manifest derived from sibling assets"
+    }
+  ]
+}

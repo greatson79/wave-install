@@ -1,4 +1,8 @@
 """Portable execution of Windows helpers. External IO uses explicit test doubles."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import os
 import json
 from pathlib import Path
@@ -169,6 +173,7 @@ if ($env:OS -eq 'Windows_NT') {
 }
 function Run-S00 { Say 'ACTION-S00' }
 function Ensure-Pack { }
+function Ensure-WaveShortcuts { }
 function Run-S01 { Say 'ACTION-S01' }
 function Run-S02 { Say 'ACTION-S02' }
 function Run-S03 { Say 'ACTION-S03' }
@@ -420,7 +425,7 @@ function Test-Path { param($LiteralPath, $PathType) return $true }
 function New-ItemProperty { throw 'installer must not register HKCU directly' }
 function Get-ItemProperty { throw 'installer must not inspect HKCU directly' }
 function New-Item { throw 'installer must not create a registry key' }
-function Start-Process {
+function Start-WaveDetached {
   param($FilePath)
   $script:starts += $FilePath
   $script:phase++
@@ -528,9 +533,17 @@ $script:fixtureStatus=[pscustomobject]@{surfaces=@('master','cso','worker' | For
 })}
 $fixtureStatus.surfaces[0].surface_ref = 'surface:1'
 $script:appCalls=0
+function claude {
+  param($noun, $verb)
+  if ($noun -ne 'auth' -or $verb -ne 'status') { throw 'unexpected Claude request' }
+  $global:LASTEXITCODE = 0
+}
 function Start-WaveApp { $script:appCalls++ }
 function Invoke-BoundedCheck {
   param($FilePath,$Arguments,$Name,$TimeoutMs)
+  if (($Arguments -join ' ') -eq '--version') {
+    return [pscustomobject]@{timed_out=$false;exit_code=0;stdout='cys 0.0.0';stderr=''}
+  }
   if (($Arguments -join ' ') -ne 'status --json') { throw 'unexpected process request; no daemon access allowed' }
   return [pscustomobject]@{timed_out=$false;exit_code=0;stdout=($fixtureStatus|ConvertTo-Json -Depth 8);stderr=''}
 }

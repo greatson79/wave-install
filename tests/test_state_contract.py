@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Bash/PowerShell 공통 상태 계약 단위 회귀. 실설치·실데몬은 호출하지 않는다."""
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import copy
 import json
 import os

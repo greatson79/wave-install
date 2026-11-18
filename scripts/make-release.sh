@@ -7,6 +7,7 @@ VER="${1:?버전}"; BASE="${2:?릴리스 베이스 URL}"; OUT="${3:?출력 폴�
 [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "버전 형식 오류" >&2; exit 2; }
 [[ "$BASE" == https://* || "$BASE" == file://* ]] || { echo "베이스 URL은 https:// (시험용 file://)" >&2; exit 2; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+python3 "$ROOT/scripts/check-installer-launch.py" "$ROOT"
 NAME="wave-install-$VER"; TGZ="$OUT/$NAME.tar.gz"; ZIP="$OUT/$NAME.zip"
 mkdir -p "$OUT"; STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/$NAME"

@@ -8,6 +8,8 @@
 set -euo pipefail
 REPO="${1:?owner/repo}"; V="${2:?app version}"; ART="${3:?art dir}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+python3 "$ROOT/scripts/check-installer-launch.py" "$ROOT"
+python3 "$ROOT/scripts/check-hotfix-coverage.py" --root "$ROOT"
 IV="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$ROOT/steps.json")"
 [[ -d "$ART" ]] || { echo "art 폴더 없음: $ART" >&2; exit 2; }
 [[ ! -e "$ART/SHA256SUMS" ]] || { echo "✗ $ART 에 이미 SHA256SUMS — 새 폴더로 다시 조립(지우지 않음)" >&2; exit 1; }
@@ -40,5 +42,6 @@ for marker, value in [('__WAVE_BOOTSTRAP_URL__', url), ('__WAVE_BOOTSTRAP_SHA256
     text = text.replace(marker, value)
 target.write_text(text, encoding='ascii')
 PY
+python3 "$ROOT/scripts/check-installer-launch.py" "$ART"
 ( cd "$ART" && shasum -a 256 $(ls | sort) > "$STAGE/sums" && mv "$STAGE/sums" SHA256SUMS )
 echo "조립 끝: $ART ($REPO v$V · 설치기 $IV)"; cat "$ART/SHA256SUMS"

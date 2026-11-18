@@ -2,7 +2,7 @@
 
 `tests/help-rules.tsv` 정본에서 생성합니다. `python3 tests/help-rules-check.py --write`로 갱신하세요.
 
-12범주·25세부 코드입니다. 사례 열은 우리 코드·회귀 검체의 근거이며, 실기 관측과 구별합니다.
+12범주·26세부 코드입니다. 사례 열은 우리 코드·회귀 검체의 근거이며, 실기 관측과 구별합니다.
 
 <a id="j-av-01"></a>
 
@@ -26,10 +26,19 @@
 
 ## J-AV-03 — 이전 실행이 실행 중 상태로 중단됨
 
-1. 창을 직접 닫았는지 확인하세요. 백신 기록도 확인하세요.
-2. 같은 명령으로 완료 단계를 건너뛰고 이어가세요.
+1. 안랩 Safe Transaction(ASTx)·V3·알약: 작업 표시줄에서 '종료'만으로는 부족할 수 있습니다;
+2. 설치하는 동안 해당 보안 프로그램의 예외 등록 또는 잠시 제거 후 같은 명령을 다시 실행하세요; 설치가 끝나면 다시 켜거나 설치하세요.
 
 근거: 우리 running 상태 중단 회귀; 백신 원인 미확정 · OS: win
+
+<a id="j-av-04"></a>
+
+## J-AV-04 — 보안 프로그램 또는 윈도우 보안 기능이 파일 실행을 막았습니다. 바이러스로 판정된 것은 아닙니다.
+
+1. 먼저: 안랩 Safe Transaction(ASTx)·V3·알약 같은 보안 프로그램이 있으면, 설치하는 동안 예외를 등록하거나 잠시 제거한 뒤 같은 명령을 다시 실행하세요(작업 표시줄 종료만으로는 부족할 수 있습니다). 설치가 끝나면 다시 켜 주세요. 설치 파일 실행 단계에서 막힌 경우에만: 받은 설치 파일을 직접 실행할 수 있습니다. 아래에 표시되는 파일 위치를 확인하고 파일 탐색기에서 이 파일을 두 번 눌러 설치하세요. 직접 설치한 뒤: Wave Terminal을 열어 사용하시면 됩니다. 이때 로그인할 때 자동 시작 등록 등 몇 단계가 빠질 수 있습니다. 설치 명령을 다시 실행하지 말고 접수번호를 담당자에게 알려 주세요. 마저 채우는 방법을 안내합니다. 설치 후 구성 요소 실행 단계에서 막힌 경우에도 설치 파일을 다시 실행하지 말고 접수번호를 담당자에게 알려 주세요.
+2. 다음 가능성은 Windows 스마트 앱 컨트롤입니다. Windows 보안 > 앱 및 브라우저 컨트롤 > 스마트 앱 컨트롤에서 상태를 확인하세요. 이 오류만으로 어느 제품이 원인인지, 서명 부족인지 바이러스인지 구별할 수 없습니다. Microsoft CodeIntegrity 이벤트 3077의 PolicyName과 제품 기록을 담당자가 대조해야 합니다. 서명된 배포판을 기다릴 수 있으며, 스마트 앱 컨트롤을 끌지는 사용자의 결정입니다. Microsoft 안내는 서로 다릅니다. 앱 및 브라우저 컨트롤 문서는 다시 켜려면 초기화·재설치가 필요하다고 하지만 최신 FAQ는 업데이트 후 다시 켤 수 있다고 합니다. 10월 KB5127648의 재활성화 문제는 26H2·25H2에서 10월 28일 KB5127936 이후, 24H2에서 11월 10일 KB5132061 이후 해결되었다는 안내입니다. PC의 업데이트 상태를 확인하세요. 평가 모드로 돌아가려면 여전히 초기화·재설치가 필요하다는 안내입니다.
+
+근거: Microsoft WinSDK winerror.h ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION=4551; 예외 주입 검증, 실제 정책 차단 미측정. https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/shared/winerror.h ; https://support.microsoft.com/en-us/help/4013218 ; https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003 ; https://support.microsoft.com/kb/KB5127648 ; AV 안내 근거: 11/11 hf5 J-AV-03(원인 자동 확정 아님); https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/event-id-explanations ; https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/appcontrol-debugging-and-troubleshooting ; 사용자 제보: 같은 받은 설치 파일을 직접 실행한 뒤 앱·마스터 작동; 나머지 단계와 재실행 안전성은 미확인 · OS: win
 
 <a id="j-dl-05"></a>
 

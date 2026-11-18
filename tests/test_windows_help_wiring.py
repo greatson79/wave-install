@@ -3,6 +3,10 @@
 Runs the real bootstrap.ps1 main path under pwsh with Invoke-ProgressPost / Invoke-HelpHttp test doubles.
 pwsh on macOS proves script logic only, not Windows PowerShell 5.1 networking.
 """
+try:
+    import rig_guard  # noqa: F401 -- fail-closed external-program guard (11/16 incident)
+except ImportError:  # run as tests.<module>
+    from tests import rig_guard  # noqa: F401
 import json
 import os
 from pathlib import Path
@@ -23,11 +27,11 @@ if ($env:REAL_TRANSPORT -eq '1' -and $env:WAVE_HELP_BASE_URL -notmatch '^https:/
 if ($env:REAL_TRANSPORT -ne '1') {
 function Invoke-ProgressPost {
   param($Uri, $Body, $TimeoutMs)
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
+  Add-Content -Encoding UTF8 -LiteralPath $env:REC -Value (@{ kind = 'progress'; timeout_ms = $TimeoutMs; body = [Text.Encoding]::UTF8.GetString($Body) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'network down' }
 }
 function Invoke-HelpHttp([string]$Method, [string]$Path, $Body, [string]$Token, [int]$TimeoutSec) {
-  Add-Content -LiteralPath $env:REC -Value (@{ kind = 'help'; method = $Method; path = $Path; timeout = $TimeoutSec; body = ($Body | ConvertTo-Json -Compress -Depth 5) } | ConvertTo-Json -Compress)
+  Add-Content -Encoding UTF8 -LiteralPath $env:REC -Value (@{ kind = 'help'; method = $Method; path = $Path; timeout = $TimeoutSec; body = ($Body | ConvertTo-Json -Compress -Depth 5) } | ConvertTo-Json -Compress)
   if ($env:FAKE_DOWN -eq '1') { throw 'help down' }
   return @{ status = 201; body = @{ id = ('c' * 32); client_token = ('b' * 64) } }
 }

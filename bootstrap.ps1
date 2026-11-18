@@ -63,7 +63,14 @@ function Say-Step([object]$Step, [string]$Message) {
   Say "[$CurrentStep] $($Step.title) — $Message"
 }
 
-function Get-JCode([string]$Message) {
+function Get-JCode($Failure) {
+  $exception = if ($Failure -is [Management.Automation.ErrorRecord]) { $Failure.Exception } elseif ($Failure -is [Exception]) { $Failure } else { $null }
+  while ($null -ne $exception) {
+    # Microsoft WinSDK winerror.h: ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION = 4551.
+    if (($exception -is [ComponentModel.Win32Exception] -and $exception.NativeErrorCode -eq 4551) -or $exception.HResult -eq -2147020345) { return 'J-AV-04' }
+    $exception = $exception.InnerException
+  }
+  $Message = if ($Failure -is [Management.Automation.ErrorRecord]) { $Failure.Exception.Message } elseif ($Failure -is [Exception]) { $Failure.Message } else { [string]$Failure }
   foreach ($rule in $HelpRules) {
     if ($Message -match $rule.pattern) { return [string]$rule.code }
   }
@@ -80,6 +87,10 @@ function Write-JCode([string]$Code) {
   try {
     Say "진단 코드: $Code — $($rule.symptom)"
     Say $rule.action1
+    if ($Code -eq 'J-AV-04') {
+      $artifact = Get-Variable -Scope Script -Name ArtifactPath -ErrorAction SilentlyContinue
+      if ($null -ne $artifact -and $artifact.Value) { Say ('받은 설치 파일 위치: ' + [string]$artifact.Value) }
+    }
     Say $rule.action2
     Say "도움말: https://github.com/greatson79/wave-install/blob/main/docs/help-codes.md#$($Code.ToLowerInvariant())"
   } catch { Write-Host "진단 코드: $Code — $($rule.symptom)" }
@@ -322,11 +333,21 @@ $HelpRulesJson = @'
     "code": "J-AV-03",
     "symptom": "이전 실행이 실행 중 상태로 중단됨",
     "pattern": "지난 실행이 끝을 알리지 않고 멈췄습니다",
-    "action1": "창을 직접 닫았는지 확인하세요. 백신 기록도 확인하세요.",
-    "action2": "같은 명령으로 완료 단계를 건너뛰고 이어가세요.",
+    "action1": "안랩 Safe Transaction(ASTx)·V3·알약: 작업 표시줄에서 '종료'만으로는 부족할 수 있습니다;",
+    "action2": "설치하는 동안 해당 보안 프로그램의 예외 등록 또는 잠시 제거 후 같은 명령을 다시 실행하세요; 설치가 끝나면 다시 켜거나 설치하세요.",
     "case": "우리 running 상태 중단 회귀; 백신 원인 미확정",
     "os": "win",
     "sample": "지난 실행이 끝을 알리지 않고 멈췄습니다"
+  },
+  {
+    "code": "J-AV-04",
+    "symptom": "보안 프로그램 또는 윈도우 보안 기능이 파일 실행을 막았습니다. 바이러스로 판정된 것은 아닙니다.",
+    "pattern": "^W-APP-CONTROL:",
+    "action1": "먼저: 안랩 Safe Transaction(ASTx)·V3·알약 같은 보안 프로그램이 있으면, 설치하는 동안 예외를 등록하거나 잠시 제거한 뒤 같은 명령을 다시 실행하세요(작업 표시줄 종료만으로는 부족할 수 있습니다). 설치가 끝나면 다시 켜 주세요. 설치 파일 실행 단계에서 막힌 경우에만: 받은 설치 파일을 직접 실행할 수 있습니다. 아래에 표시되는 파일 위치를 확인하고 파일 탐색기에서 이 파일을 두 번 눌러 설치하세요. 직접 설치한 뒤: Wave Terminal을 열어 사용하시면 됩니다. 이때 로그인할 때 자동 시작 등록 등 몇 단계가 빠질 수 있습니다. 설치 명령을 다시 실행하지 말고 접수번호를 담당자에게 알려 주세요. 마저 채우는 방법을 안내합니다. 설치 후 구성 요소 실행 단계에서 막힌 경우에도 설치 파일을 다시 실행하지 말고 접수번호를 담당자에게 알려 주세요.",
+    "action2": "다음 가능성은 Windows 스마트 앱 컨트롤입니다. Windows 보안 > 앱 및 브라우저 컨트롤 > 스마트 앱 컨트롤에서 상태를 확인하세요. 이 오류만으로 어느 제품이 원인인지, 서명 부족인지 바이러스인지 구별할 수 없습니다. Microsoft CodeIntegrity 이벤트 3077의 PolicyName과 제품 기록을 담당자가 대조해야 합니다. 서명된 배포판을 기다릴 수 있으며, 스마트 앱 컨트롤을 끌지는 사용자의 결정입니다. Microsoft 안내는 서로 다릅니다. 앱 및 브라우저 컨트롤 문서는 다시 켜려면 초기화·재설치가 필요하다고 하지만 최신 FAQ는 업데이트 후 다시 켤 수 있다고 합니다. 10월 KB5127648의 재활성화 문제는 26H2·25H2에서 10월 28일 KB5127936 이후, 24H2에서 11월 10일 KB5132061 이후 해결되었다는 안내입니다. PC의 업데이트 상태를 확인하세요. 평가 모드로 돌아가려면 여전히 초기화·재설치가 필요하다는 안내입니다.",
+    "case": "Microsoft WinSDK winerror.h ERROR_SYSTEM_INTEGRITY_POLICY_VIOLATION=4551; 예외 주입 검증, 실제 정책 차단 미측정. https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/shared/winerror.h ; https://support.microsoft.com/en-us/help/4013218 ; https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003 ; https://support.microsoft.com/kb/KB5127648 ; AV 안내 근거: 11/11 hf5 J-AV-03(원인 자동 확정 아님); https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/event-id-explanations ; https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/appcontrol-debugging-and-troubleshooting ; 사용자 제보: 같은 받은 설치 파일을 직접 실행한 뒤 앱·마스터 작동; 나머지 단계와 재실행 안전성은 미확인",
+    "os": "win",
+    "sample": "W-APP-CONTROL: injected policy failure"
   },
   {
     "code": "J-DL-05",
@@ -787,9 +808,24 @@ function Confirm-SeatClaudeAuth {
     & (Get-ClaudeExecutable) auth status *> $null
     if ($LASTEXITCODE -ne 0) {
       & (Get-ClaudeExecutable) auth login
-      if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 실패' }
+      $loginExit = $LASTEXITCODE
+      if ($loginExit -ne 0) {
+        # Real Windows learners hit a failed browser login here (11/11, help 427bf312, f7553a27).
+        # Fall back to Claude's own first-run screen, then check again.
+        Write-Log "claude auth login exit $loginExit; falling back to interactive claude"
+        Write-Host ''
+        Write-Host 'Claude 로그인이 끝나지 않았습니다. 이제 Claude 화면을 엽니다.'
+        Write-Host '  1) 화면 안내대로 Claude 계정(Pro 또는 Max)으로 로그인하세요. 로그인 메뉴가 안 보이면 /login 을 입력하세요.'
+        Write-Host '  2) 로그인이 끝나면 /exit 를 입력해 Claude 를 닫으세요. 설치가 이어집니다.'
+        Write-Host ''
+        & (Get-ClaudeExecutable)
+      }
       & (Get-ClaudeExecutable) auth status *> $null
-      if ($LASTEXITCODE -ne 0) { throw 'Claude 작업 칸 로그인 재확인 실패' }
+      if ($LASTEXITCODE -ne 0) {
+        throw ('Claude 작업 칸 로그인 실패. 새 PowerShell 창에서 아래 두 줄을 차례로 실행하세요(Claude Pro 또는 Max 계정 필요):' +
+          [Environment]::NewLine + '  $env:CLAUDE_CONFIG_DIR="$HOME\.cys\claude"; claude    (로그인 후 /exit)' +
+          [Environment]::NewLine + '  irm https://waveainetworks.com/win | iex    (새 창에서)')
+      }
     }
   } finally {
     $env:CLAUDE_CONFIG_DIR = $previous
@@ -836,7 +872,8 @@ function Run-S03 {
 
 function Ensure-WaveShortcuts {
   if ($env:OS -ne 'Windows_NT') { return }
-  $target = Join-Path $WaveHome 'bin\cys-app.exe'
+  $target = Join-Path $WaveHome 'bin\wave-app.exe'
+  $targets = @($target, (Join-Path $WaveHome 'bin\cys-app.exe'))
   if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw 'Wave Terminal 앱 실행 파일이 없습니다' }
   $programs = [Environment]::GetFolderPath('Programs')
   $desktop = [Environment]::GetFolderPath('Desktop')
@@ -845,29 +882,44 @@ function Ensure-WaveShortcuts {
   $desktopMarker = Join-Path $WaveHome 'install\desktop-shortcut'
   if (Test-Path -LiteralPath $nested) { $start = $nested }
   $shell = New-Object -ComObject WScript.Shell
-  foreach ($link in @($start)) {
-    if (-not (Test-Path -LiteralPath $link)) {
+  $links = @($start)
+  $flat = Join-Path $programs 'Wave Terminal.lnk'
+  if ($flat -ne $start -and (Test-Path -LiteralPath $flat)) { $links += $flat }
+  $desktopLink = Join-Path $desktop 'Wave Terminal.lnk'
+  if (Test-Path -LiteralPath $desktopLink) { $links += $desktopLink }
+  foreach ($link in $links) {
+    if (-not (Test-Path -LiteralPath $link) -or $targets -notcontains $shell.CreateShortcut($link).TargetPath) {
       $shortcut = $shell.CreateShortcut($link)
       $shortcut.TargetPath = $target
       $shortcut.Save()
     }
-    if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath($target)) {
+    if ($targets -notcontains [IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath)) {
       throw "Wave Terminal 바로가기 대상이 다릅니다: $link"
     }
   }
   if (-not (Test-Path -LiteralPath $desktopMarker)) {
     $link = Join-Path $desktop 'Wave Terminal.lnk'
-    if (-not (Test-Path -LiteralPath $link)) {
+    if (-not (Test-Path -LiteralPath $link) -or $targets -notcontains $shell.CreateShortcut($link).TargetPath) {
       $shortcut = $shell.CreateShortcut($link)
       $shortcut.TargetPath = $target
       $shortcut.Save()
     }
-    if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath($target)) {
+    if ($targets -notcontains [IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath)) {
       throw "Wave Terminal 바로가기 대상이 다릅니다: $link"
     }
     New-Item -ItemType Directory -Force -Path (Split-Path $desktopMarker) | Out-Null
     New-Item -ItemType File -Path $desktopMarker -Force | Out-Null
   }
+}
+
+# Launch the NSIS setup through a separate cmd so that a security tool killing the launcher (11/11 learner:
+# step 5 ended with exit 1 and no text) hits cmd, not this installer — the exit code is then reported.
+function Invoke-NsisSetup([string]$Setup, [string]$Dir) {
+  Write-Log "setup launch: $Setup"
+  $launcher = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /v:on /c start "" /wait "' + $Setup + '" /S /D=' + $Dir + ' & exit /b !errorlevel!') -WindowStyle Hidden -Wait -PassThru
+  Write-Log "setup exit: $($launcher.ExitCode)"
+  if ($launcher.ExitCode -eq 4551) { throw [ComponentModel.Win32Exception]::new(4551) }
+  return [int]$launcher.ExitCode
 }
 
 function Run-S04 {
@@ -884,13 +936,14 @@ function Run-S04 {
   New-Item -ItemType Directory -Force -Path $bin | Out-Null
   # NSIS /D는 공백이 있어도 따옴표 없이 마지막 인자여야 한다.
   # 정본: https://nsis.sourceforge.io/Docs/Chapter3.html#installerusage
-  $process = Start-Process -FilePath $ArtifactPath -ArgumentList "/S /D=$bin" -Wait -PassThru
-  if ($process.ExitCode -ne 0) { throw "W-NSIS-EXIT: 설치기 종료값 $($process.ExitCode)" }
+  $process = [pscustomobject]@{ ExitCode = (Invoke-NsisSetup $ArtifactPath $bin) }
+  if ($process.ExitCode -ne 0) { throw "W-NSIS-EXIT: 설치기 종료값 $($process.ExitCode) (백신이 설치 파일을 막았다면 Windows 보안 > 보호 기록에서 허용한 뒤 다시 실행하세요)" }
   $cys = Join-Path $bin "cys.exe"
   $cysd = Join-Path $bin "cysd.exe"
   if (-not (Test-Path -LiteralPath $cys -PathType Leaf) -or -not (Test-Path -LiteralPath $cysd -PathType Leaf)) { throw "S2 설치 산출물의 cys/cysd 경로가 없음" }
-  $cliVersion = (& $cys --version 2>&1 | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0 -or -not $cliVersion) { throw "cys 실행 확인 실패" }
+  $versionCheck = Invoke-BoundedCheck $cys @('--version') 'cys-version' 15000
+  $cliVersion = $versionCheck.stdout.Trim()
+  if ($versionCheck.exit_code -ne 0 -or -not $cliVersion) { throw "cys 실행 확인 실패" }
   # cysd에는 --version 계약이 없다. 여기서 실행하면 데몬이 기동되어 설치기가 대기한다.
   # 서명·고정 해시가 검증된 NSIS의 설치 결과를 정적 검사하고 실제 기동은 러너의 별도 스모크로 검증한다.
   $daemonFile = [IO.File]::OpenRead($cysd)
@@ -919,16 +972,20 @@ function Test-DaemonReady {
     try {
       $ping = Invoke-BoundedCheck $cys @('ping') "daemon-ping-$attempt" 3000
       if (-not $ping.timed_out -and $ping.exit_code -eq 0 -and $ping.stdout.Trim() -eq 'pong') { return $true }
-    } catch { Write-Log $_.Exception.Message }
+    } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log $_.Exception.Message }
     Start-Sleep -Milliseconds 500
   }
   return $false
 }
 
+function Start-WaveDetached([string]$FilePath) {
+  Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /c start "" "' + $FilePath + '"') -WorkingDirectory $env:USERPROFILE | Out-Null
+}
+
 function Start-WaveApp {
   $app = Join-Path $WaveHome 'bin\cys-app.exe'
   if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw 'cys-app.exe 없음' }
-  Start-Process -FilePath $app -WorkingDirectory $env:USERPROFILE | Out-Null   # 홈에서 시작 — 앱이 띄우는 데몬·복원 좌석이 호출자 폴더를 상속하지 않게(2238)
+  Start-WaveDetached $app   # 홈에서 시작 — 앱이 띄우는 데몬·복원 좌석이 호출자 폴더를 상속하지 않게(2238)
 }
 
 function Run-S05 {
@@ -938,15 +995,15 @@ function Run-S05 {
     $install = Invoke-BoundedCheck $cys @('daemon', 'install') 'daemon-install' 30000
     $registered = (-not $install.timed_out -and $install.exit_code -eq 0)
     if (-not $registered) { Write-Log "daemon install 미완료: $($install.stderr)" }
-  } catch { Write-Log "daemon install 실패: $($_.Exception.Message)" }
+  } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log "daemon install 실패: $($_.Exception.Message)" }
   $ready = Test-DaemonReady
   $fallback = $false
   if (-not $ready) {
     $fallback = $true
-    try { Start-Process -FilePath (Join-Path $WaveHome 'bin\cysd.exe') -WorkingDirectory $env:USERPROFILE | Out-Null } catch { Write-Log $_.Exception.Message }
+    try { Start-WaveDetached (Join-Path $WaveHome 'bin\cysd.exe') } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log $_.Exception.Message }
     $ready = Test-DaemonReady
     if (-not $ready) {
-      try { Start-WaveApp } catch { Write-Log $_.Exception.Message }
+      try { Start-WaveApp } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log $_.Exception.Message }
       $ready = Test-DaemonReady
     }
   }
@@ -1061,7 +1118,7 @@ function Wait-GuiOnboarded([Diagnostics.Stopwatch]$Clock, [int]$CapMs = 180000) 
   try {
     $v = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('--version') 'cys-version' (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds)
     if (-not $v.timed_out -and $v.exit_code -eq 0) { $version = @($v.stdout.Trim() -split '\s+')[-1] }
-  } catch { Write-Log "cys --version 확인 실패: $($_.Exception.Message)" }
+  } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Write-Log "cys --version 확인 실패: $($_.Exception.Message)" }
   $wait = [Diagnostics.Stopwatch]::StartNew()
   while ($wait.ElapsedMilliseconds -lt $CapMs -and (Get-AwakeningBudgetMs $Clock.ElapsedMilliseconds) -gt 0) {
     if (Test-Path -LiteralPath $marker -PathType Leaf) {
@@ -1259,7 +1316,7 @@ function Show-FirstRunGateNotice([object]$Status) {
   if ($null -eq $Status) { return }
   $needles = @('Quicksafetycheck', 'Isthisaprojectyoucreatedoroneyoutrust', 'Doyoutrustthefilesinthisfolder', 'Doyoutrustthisfolder', 'WARNING:ClaudeCoderunninginBypassPermissionsmode', 'InBypassPermissionsmode,ClaudeCodewillnotaskforyourapproval', 'Trythenewfullscreenrenderer?')
   foreach ($seat in @($Status.surfaces | Where-Object { $_.exited -eq $false -and ([string]$_.role) -match '^(master|cso|worker)' -and $_.surface_ref })) {
-    try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { continue }
+    try { $screen = Invoke-BoundedCheck (Join-Path $WaveHome 'bin\cys.exe') @('read-screen', '--surface', [string]$seat.surface_ref) 'read-screen' 3000 } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; continue }
     if ($screen.timed_out -or $screen.exit_code -ne 0) { continue }
     $flat = ([string]$screen.stdout) -replace '\s', ''
     foreach ($n in $needles) {
@@ -1415,7 +1472,8 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
   New-Item -ItemType Directory -Force -Path $verify | Out-Null
   $stdoutPath = Join-Path $verify ($Name + '.stdout.log')
   $stderrPath = Join-Path $verify ($Name + '.stderr.log')
-  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -WorkingDirectory $env:USERPROFILE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+  # ASTx blocked PowerShell starting fresh installed binaries; cmd stays their direct parent.
+  $process = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList ('/d /c ""' + $FilePath + '" ' + ($Arguments -join ' ') + '"') -WorkingDirectory $env:USERPROFILE -NoNewWindow -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
   $exitCode = $null
   $killError = $null
   try {
@@ -1424,7 +1482,12 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
     if ($finished) {
       $exitCode = $process.ExitCode
     } else {
-      try { if (-not $process.HasExited) { $process.Kill() } }
+      try {
+        if (-not $process.HasExited) {
+          & "$env:SystemRoot\System32\taskkill.exe" /T /F /PID $process.Id 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0 -and -not $process.HasExited) { $killError = "taskkill failed (exit $LASTEXITCODE)" }
+        }
+      }
       catch { if (-not $process.HasExited) { $killError = $_.Exception.Message } }
     }
     # Keep the final wait bounded: descendants may retain redirected handles.
@@ -1432,6 +1495,7 @@ function Invoke-BoundedCheck([string]$FilePath, [string[]]$Arguments, [string]$N
     if (-not $process.WaitForExit(1000) -and -not $killError) { $killError = 'Client exit was not confirmed within 1000ms' }
   } finally { $process.Dispose() }
   # Read errors propagate to Run-S08's unmeasured boundary, never an empty success.
+  if ($exitCode -eq 4551) { throw [ComponentModel.Win32Exception]::new(4551) }
   $stdout = Read-SharedCheckLog $stdoutPath
   $stderr = Read-SharedCheckLog $stderrPath
   return [pscustomobject]@{ timed_out = (-not $finished); timeout_ms = $TimeoutMs; exit_code = $exitCode; stdout = $stdout; stderr = $stderr; kill_error = $killError }
@@ -1499,11 +1563,11 @@ function Get-MasterAwakeState([object]$Status) {
 function Run-S08 {
   $cys = Join-Path $WaveHome 'bin\cys.exe'
   try { $identify = Invoke-BoundedCheck $cys @('identify') 'identify' 30000 }
-  catch { Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
+  catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Set-S08CallFailure 'cys identify' $null $_.Exception.Message; return }
   if ($identify.timed_out) { Set-S08Timeout 'cys identify' $identify.timeout_ms $identify.kill_error; return }
   if ($identify.exit_code -ne 0) { Set-S08CallFailure 'cys identify' $identify.exit_code $identify.stderr; return }
   try { $result = Invoke-BoundedCheck $cys @('status', '--json') 'fleet-status' 5000 }
-  catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
+  catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
   if ($result.timed_out) { Set-S08Timeout 'cys status --json' $result.timeout_ms $result.kill_error; return }
   if ($result.exit_code -ne 0) { Set-S08CallFailure 'cys status --json' $result.exit_code $result.stderr; return }
   try {
@@ -1512,7 +1576,7 @@ function Run-S08 {
     New-Item -ItemType Directory -Force -Path $verify | Out-Null
     Set-Content -LiteralPath (Join-Path $verify 'status.json') -Value ($status | ConvertTo-Json -Depth 20) -Encoding UTF8
     if (-not (Test-AwakenedFleet $status)) { throw '마스터·CSO·worker 각성 증거 없음' }
-  } catch { Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
+  } catch { if ((Get-JCode $_) -eq 'J-AV-04') { throw }; Set-S08CallFailure 'cys status --json' $null $_.Exception.Message; return }
   try { $evidence = Test-OriginalInjection }
   catch {
     $script:StepObserved = [ordered]@{ original_match = $false; new_file_count = $null; source = 'app-manifest+installed-pack'; reason = $_.Exception.Message }
@@ -1640,7 +1704,7 @@ function Invoke-Step([string]$Id, [scriptblock]$Action) {
     }
     $reason = $_.Exception.Message
     $position = $_.InvocationInfo.PositionMessage
-    $code = Get-JCode $reason
+    $code = Get-JCode $_
     $script:StepObserved['j_code'] = $code
     $script:StepObserved['reason'] = ConvertTo-StateReason $reason
     $script:StepObserved['position'] = ConvertTo-StateReason $position
@@ -1681,7 +1745,7 @@ function Complete-State {
 
 trap {
   $failure = $_
-  if (-not $DiagnosticWritten) { Write-JCode (Get-JCode $failure.Exception.Message) }
+  if (-not $DiagnosticWritten) { Write-JCode (Get-JCode $failure) }
   try {
     Write-Log $failure.Exception.Message
     if ($failure.InvocationInfo.PositionMessage) { Write-Log $failure.InvocationInfo.PositionMessage }

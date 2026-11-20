@@ -269,6 +269,7 @@ function Test-StepComplete([string]$Id) {
       Release-Context
       $cys = Join-Path $WaveHome 'bin\cys.exe'
       $cysd = Join-Path $WaveHome 'bin\cysd.exe'
+      if (-not (Test-Path -LiteralPath (Join-Path $WaveHome 'bin\wave-app.exe') -PathType Leaf)) { return $false }
       if ((Get-StateField $entry.observed 'verified_installer_sha256') -ne $WaveWinSha256 -or
           (Get-ArtifactHash $cys) -ne (Get-StateField $entry.observed 'cli_sha256') -or
           (Get-ArtifactHash $cysd) -ne (Get-StateField $entry.observed 'daemon_sha256')) { return $false }
@@ -945,8 +946,8 @@ function Start-WaveDetached([string]$FilePath) {
 }
 
 function Start-WaveApp {
-  $app = Join-Path $WaveHome 'bin\cys-app.exe'
-  if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw 'cys-app.exe 없음' }
+  $app = Join-Path $WaveHome 'bin\wave-app.exe'
+  if (-not (Test-Path -LiteralPath $app -PathType Leaf)) { throw 'wave-app.exe 없음' }
   Start-WaveDetached $app   # 홈에서 시작 — 앱이 띄우는 데몬·복원 좌석이 호출자 폴더를 상속하지 않게(2238)
 }
 
@@ -1019,10 +1020,10 @@ function Run-S06 {
   $script:StepObserved = [ordered]@{ pack_installed = $true; legacy_backed_up = $moved; directive_count = $directives.Count; directive_mismatches = $mismatches; new_files = $pending.Count; directive_bytes_match = ($mismatches.Count -eq 0) }
   if ($mismatches.Count -or $pending.Count) {
     $prefix = (Get-Item -LiteralPath $PackHome).FullName + [IO.Path]::DirectorySeparatorChar
-    $names = @($mismatches) + @($pending | ForEach-Object {
+    $names = @(@($mismatches) + @($pending | ForEach-Object {
       if (-not $_.FullName.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw '병합 대기 경로가 팩 밖입니다' }
       ($_.FullName.Substring($prefix.Length) -replace '\.new$', '') -replace '\\', '/'
-    }) | Select-Object -Unique
+    }) | Select-Object -Unique)
     Say "직접 고치신 파일 $($names.Count)개는 그대로 두었습니다 · 새 판은 옆에 .new · 합치려면 cys pack-merge"
     Write-Log ("병합 대기: " + ($names -join ", "))
   }
@@ -1598,6 +1599,7 @@ function Summarize-State([bool]$Final) {
         $original = Get-StateField $observed 'original_match'
         $newCount = Get-StateField $observed 'new_file_count'
         $custom = Get-StateField $observed 'custom_preserved'
+        if ($custom -is [string] -and $observed.custom_preserved -is [array]) { $custom = @($custom) }
         if ($original -isnot [bool] -or (-not $original -and ($custom -isnot [array] -or $custom.Count -eq 0))) { $reasons += 'original_injection_unverified' }
         if (-not (Test-ByteCount $newCount)) { $reasons += 'pending_new_unverified' }
       }

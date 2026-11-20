@@ -93,7 +93,7 @@ foreach ($invalid in @('12345', 0, -1, $null, $true)) {
             overrides = r'''
 if ($env:OS -eq 'Windows_NT') {
   . (Join-Path $env:TEST_ROOT 'tests/windows_native_stub.ps1')
-  $app = Join-Path $WaveHome 'bin/cys-app.exe'
+  $app = Join-Path $WaveHome 'bin/wave-app.exe'
   if (-not (Test-Path -LiteralPath $app)) { New-NativeTestExecutable $app 'public class AppFixture { public static int Main() { return 0; } }' }
 }
 function Run-S00 { Say 'ACTION-S00' }
@@ -374,7 +374,7 @@ foreach ($case in @('ready','daemon-fallback','app-fallback','unavailable','regi
   if ($calls[0] -ne 'daemon install' -or $StepObserved.registration -ne 'cys daemon install') { throw 'CLI registration missing' }
   if ($case -eq 'ready' -and ($starts.Count -ne 0 -or -not $StepObserved.daemon_ready -or $StepStatus -ne 'passed')) { throw 'ready daemon was restarted' }
   if ($case -eq 'daemon-fallback' -and ($starts.Count -ne 1 -or $starts[0] -ne (Join-Path $WaveHome 'bin/cysd.exe') -or -not $StepObserved.daemon_ready)) { throw 'daemon fallback wrong' }
-  if ($case -eq 'app-fallback' -and ($starts.Count -ne 2 -or $starts[1] -ne (Join-Path $WaveHome 'bin/cys-app.exe') -or -not $StepObserved.daemon_ready)) { throw 'app fallback wrong' }
+  if ($case -eq 'app-fallback' -and ($starts.Count -ne 2 -or $starts[1] -ne (Join-Path $WaveHome 'bin/wave-app.exe') -or -not $StepObserved.daemon_ready)) { throw 'app fallback wrong' }
   if ($case -eq 'unavailable' -and ($StepStatus -ne 'skipped_with_reason' -or $StepObserved.daemon_ready -or $calls.Count -ne 16)) { throw 'unavailable daemon not bounded/nonblocking' }
   if ($case -eq 'registration-failed' -and ($StepStatus -ne 'skipped_with_reason' -or $StepObserved.registered -or -not $StepObserved.daemon_ready)) { throw 'registration failure hidden' }
 }

@@ -9,6 +9,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_GATE = "github.event_name == 'workflow_dispatch' && inputs.release_smoke"
+SIGNED_GATE = '!cancelled() && ' + RELEASE_GATE  # test branch: Windows leg checked by the gate step
 
 
 class UniqueLoader(yaml.BaseLoader):
@@ -73,7 +74,9 @@ def validate(workflow):
             need(step.get('if') == RELEASE_GATE, 'live release pin check must be opt-in')
     need(any(is_live_pin(s.get('run', '')) for s in steps), 'release pin gate missing')
     signed = jobs.get('signed-install', {})
-    need(signed.get('if') == RELEASE_GATE, 'real installation must be opt-in')
+    need(signed.get('if') == SIGNED_GATE, 'real installation must be opt-in')
+    need(any('bootstrap-contract (windows-latest)' in s.get('run', '') and "-ne 'success'" in s.get('run', '')
+             for s in signed.get('steps', [])), 'real installation must require the Windows contract leg')
     need(signed.get('needs') == 'bootstrap-contract', 'real installation must depend on contract matrix')
     need(signed.get('runs-on') == 'windows-latest', 'NSIS installation requires Windows')
     signed_steps = signed.get('steps', [])

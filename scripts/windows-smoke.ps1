@@ -69,10 +69,49 @@ if ($startLinks.Count -eq 0) { throw '시작 메뉴 Wave Terminal 바로가기 �
 $desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Wave Terminal.lnk'
 if (-not (Test-Path -LiteralPath $desktopLink)) { throw '바탕화면 Wave Terminal 바로가기 없음' }
 $shell = New-Object -ComObject WScript.Shell
+Write-Host "SMOKE_PS_VERSION=$($PSVersionTable.PSVersion)"
+$canonical = [IO.Path]::GetFullPath((Join-Path $env:WAVE_HOME 'bin\wave-app.exe'))
 foreach ($link in @(($startLinks | Select-Object -First 1), $desktopLink)) {
-  if ([IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath) -ne [IO.Path]::GetFullPath((Join-Path $env:WAVE_HOME 'bin\cys-app.exe'))) { throw "바로가기 대상 불일치: $link" }
+  $linkTarget = [IO.Path]::GetFullPath($shell.CreateShortcut($link).TargetPath)
+  Write-Host "SHORTCUT link=$link target=$linkTarget"
+  if ($linkTarget -ne $canonical) { throw "B2 FAIL 바로가기 대상 불일치: $link" }
 }
-[ordered]@{ status = 'completed'; scope = 'S03/S04 Windows runner smoke'; terminal_version = $ReleaseVersion; release_tag = $env:WAVE_TERMINAL_TAG; repository = $env:WAVE_TERMINAL_REPO; asset = $ReleaseAssetName; sha256 = $ReleaseExpectedSha256; observed = $firstObserved; same_version_rerun = $rerunObserved; exclusions = @('S02 실로그인 미검증','실기기 미검증','10단계 전량 PASS 아님') } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'windows-smoke-evidence.json') -Encoding utf8NoBOM
+Write-Host "PASS B2: Start Menu + desktop shortcut targets == $canonical"
+# B1: canonical GUI exists and equals the pinned NSIS payload wave-app.exe.
+$pinnedGuiSha = '3051b9db73ac2de5eb7e5bf9ef1d59563f6a764aa32758f238f4ca012c8e866c'
+if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw 'B1 FAIL: bin\wave-app.exe 없음' }
+$guiBytes = (Get-Item -LiteralPath $canonical).Length
+$guiSha = (Get-FileHash -LiteralPath $canonical -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "B1 wave-app.exe path=$canonical bytes=$guiBytes sha256=$guiSha pinned=$pinnedGuiSha"
+$legacy = Join-Path $env:WAVE_HOME 'bin\cys-app.exe'
+if (Test-Path -LiteralPath $legacy -PathType Leaf) { Write-Host "B1 legacy cys-app.exe path=$legacy bytes=$((Get-Item -LiteralPath $legacy).Length) sha256=$((Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash.ToLowerInvariant())" } else { Write-Host "B1 legacy cys-app.exe absent: $legacy" }
+if ($guiSha -ne $pinnedGuiSha) { throw 'B1 FAIL: wave-app.exe SHA256 != pinned NSIS payload' }
+Write-Host 'PASS B1: bin\wave-app.exe present and SHA256 == pinned NSIS payload'
+# B3: source Test-StepComplete S04 on a DISPOSABLE copy of bin (the real install is never deleted or renamed).
+$copyHome = Join-Path $PSScriptRoot 'b-disposable\wave'
+$copyBin = Join-Path $copyHome 'bin'
+New-Item -ItemType Directory -Force -Path $copyBin | Out-Null
+foreach ($name in @('cys.exe', 'cysd.exe', 'wave-app.exe')) { Copy-Item -LiteralPath (Join-Path $env:WAVE_HOME "bin\$name") -Destination $copyBin }
+$s04Observed = $rerunObserved | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+$State = [pscustomobject]@{ steps = [pscustomobject]@{ S04_INSTALL_LINK = [pscustomobject]@{ status = 'passed'; exit_code = 0; error_id = $null; version = [string]$Config.release.version; observed = $s04Observed } } }
+$WaveHome = $copyHome
+$b3Present = Test-StepComplete 'S04_INSTALL_LINK'
+Remove-Item -LiteralPath (Join-Path $copyBin 'wave-app.exe') -Force
+$b3Absent = Test-StepComplete 'S04_INSTALL_LINK'
+$WaveHome = $env:WAVE_HOME
+Write-Host "B3 Test-StepComplete S04 copy=$copyHome wave-app present=$b3Present absent=$b3Absent real_still_present=$(Test-Path -LiteralPath $canonical -PathType Leaf)"
+if ($b3Present -ne $true -or $b3Absent -ne $false -or -not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw 'B3 FAIL: Test-StepComplete S04 present/absent' }
+Write-Host 'PASS B3: Test-StepComplete S04 matching cli/daemon hashes -> wave-app present = true, absent = false'
+# B4: source Start-WaveApp resolves the canonical GUI; launch is captured, no GUI is started.
+function Start-WaveDetached([string]$FilePath) { $script:CapturedLaunch = $FilePath }
+$CapturedLaunch = $null
+Start-WaveApp
+$b4Target = [IO.Path]::GetFullPath([string]$CapturedLaunch)
+Write-Host "B4 Start-WaveApp captured target=$b4Target"
+if ($b4Target -ne $canonical) { throw 'B4 FAIL: Start-WaveApp target != bin\wave-app.exe' }
+Write-Host 'PASS B4: Start-WaveApp resolved target == bin\wave-app.exe (captured, not executed)'
+$bChecks = [ordered]@{ wave_app_path = $canonical; wave_app_bytes = $guiBytes; wave_app_sha256 = $guiSha; pinned_payload_sha256 = $pinnedGuiSha; shortcut_targets_canonical = $true; s04_complete_present = $b3Present; s04_complete_absent = $b3Absent; start_wave_app_target = $b4Target; ps_version = [string]$PSVersionTable.PSVersion }
+[ordered]@{ status = 'completed'; scope = 'S03/S04 Windows runner smoke'; terminal_version = $ReleaseVersion; release_tag = $env:WAVE_TERMINAL_TAG; repository = $env:WAVE_TERMINAL_REPO; asset = $ReleaseAssetName; sha256 = $ReleaseExpectedSha256; observed = $firstObserved; same_version_rerun = $rerunObserved; b_checks = $bChecks; exclusions = @('S02 실로그인 미검증','실기기 미검증','10단계 전량 PASS 아님') } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'windows-smoke-evidence.json') -Encoding utf8NoBOM
 '@
 ($parts[0] + "`n" + $tail) | Set-Content -LiteralPath $harness -Encoding utf8NoBOM
 & pwsh -NoProfile -NonInteractive -File $harness

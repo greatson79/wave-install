@@ -186,9 +186,13 @@ jobs:
           python -m unittest tests.test_win_start_runtime -v
           if ($LASTEXITCODE -ne 0) { throw 'built Windows entry regression failed' }
   signed-install:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_smoke
+    # Test branch: run when the Windows contract leg passed even if the macOS leg failed (gate step below).
+    if: "!cancelled() && github.event_name == 'workflow_dispatch' && inputs.release_smoke"
     needs: bootstrap-contract
     runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -199,6 +203,16 @@ jobs:
       - name: PowerShell delimiter precheck (first check)
         shell: cmd
         run: python tests/ps-balance.py --all
+      - name: Require bootstrap-contract (windows-latest) success
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $raw = gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100"
+          if ($LASTEXITCODE -ne 0) { throw 'jobs API failed' }
+          $c = @(($raw | Out-String | ConvertFrom-Json).jobs | Where-Object { $_.name -eq 'bootstrap-contract (windows-latest)' }).conclusion
+          Write-Host "WINDOWS_CONTRACT_CONCLUSION=$c"
+          if ("$c".Trim() -ne 'success') { throw 'bootstrap-contract (windows-latest) did not succeed' }
       - name: Install signature verifier
         shell: pwsh
         run: |

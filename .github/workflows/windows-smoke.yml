@@ -60,6 +60,14 @@ jobs:
             $null = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $file), [ref]$tokens, [ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
           }
+      - name: S06 scalar regression and summary arrays (native PS 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.ToString() -notlike '5.1.*') { throw 'Requires native PS5.1' }
+          Get-FileHash -LiteralPath ./bootstrap.ps1 -Algorithm SHA256
+          & ./tests/s06_count_fixture.ps1
       - name: Windows S06/G3 preservation tests (PS 5.1)
         if: runner.os == 'Windows'
         shell: powershell
